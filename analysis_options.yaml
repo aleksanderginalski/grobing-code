@@ -1,0 +1,35 @@
+# Static analysis for Grobing — the pattern of the author's earlier app (flutter_lints + strict
+# analyzer + error-prevention rules), not a copy of its file. Rules already in flutter_lints are not
+# repeated. Docs: https://dart.dev/tools/analysis
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  exclude:
+    - '**/*.g.dart'
+    - '**/*.freezed.dart'
+    - '**/*.mocks.dart'
+    - '**/generated/**'
+  errors:
+    always_declare_return_types: error
+    missing_required_param: error
+    invalid_assignment: error
+
+linter:
+  rules:
+    # Style
+    - prefer_single_quotes
+    - prefer_final_locals
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_const_literals_to_create_immutables
+    # Error prevention
+    - always_declare_return_types
+    - cancel_subscriptions
+    - close_sinks
+    # Organization
+    - directives_ordering
+    - prefer_relative_imports

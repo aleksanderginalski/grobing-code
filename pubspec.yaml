@@ -1,0 +1,27 @@
+name: grobing
+description: "Grobing — groby rodziny, osoby i to, jak łączą się z autorem."
+publish_to: 'none'
+
+# Android: build-name → versionName, build-number → versionCode (must grow with every install).
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+  # Pinned Flutter (ADR-002). The SDK is shared with another, live app of the author — `pub get`
+  # refuses any other version instead of letting an upgrade break either build. The declared value
+  # lives in grobing-agents/.claude/rules/project-config.example.md; change both together.
+  flutter: 3.41.1
+
+# No Firebase, analytics or crash-reporting SDKs — nothing leaves the phone (PROJECT_BRIEF §Security).
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

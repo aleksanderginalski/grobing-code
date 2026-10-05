@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Style B near-black; mirrors GrobingColors.background in lib/app/theme.dart. -->
+    <color name="grobing_background">#FF121110</color>
+</resources>
