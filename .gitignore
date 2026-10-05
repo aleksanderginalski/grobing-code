@@ -1,17 +1,48 @@
-# --- Family data: NEVER in this repo (grobing-agents/.claude/rules/family-data.md) ---
-# Databases, backups and exports of the real family record live on the phone, in the encrypted
-# cloud backup and with the family — never here. Test fixtures use invented people only.
+# --- Family data: NEVER in any Grobing repo (grobing-agents/.claude/rules/family-data.md) ---
+# The same block in all three repos (ISSUE-006). The PreToolUse guard in grobing-agents
+# (.claude/hooks/family-data-guard.ps1) refuses the same list for Claude; this file is what
+# protects the author's own commits. By file type and root folder, not by content.
+# Test fixtures use invented people only.
+# Databases
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 *.sqlite
 *.sqlite3
-*.grobing-backup
-exports/
-backups/
-family-data/
-real-data/
+*.sqlite-*
+# Backup and export (ADR-004): an age file with a tar inside; the export is HTML + PDF
+*.age
+*.tar
+*.html
+*.pdf
+# Photos and videos
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.dng
+*.mp4
+*.mov
+# Real-data folders, anchored to the repo root (unanchored `backups/` would also hide code
+# such as lib/features/backups/)
+/exports/
+/backups/
+/family-data/
+/real-data/
+# The only exception in this repo: UI images in Android resources (launcher icons). One line per
+# image type, never the whole folder -- `!/android/app/src/main/res/**` would re-include *.db there.
+!/android/app/src/main/res/**/*.png
+!/android/app/src/main/res/**/*.jpg
+!/android/app/src/main/res/**/*.jpeg
+!/android/app/src/main/res/**/*.gif
+!/android/app/src/main/res/**/*.webp
 
 # --- Secrets: never in the repo (hard floor, PROJECT_BRIEF §Security) ---
 *.jks
