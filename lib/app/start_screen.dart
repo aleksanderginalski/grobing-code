@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../data/database.dart';
+import 'data_state_screen.dart';
 import 'theme.dart';
 
-/// Empty start screen (ISSUE-002) — the foundation for the first real view.
+/// Start screen (ISSUE-002) — the foundation for the first real view; leads to "Stan danych"
+/// (ISSUE-007).
 class StartScreen extends StatelessWidget {
-  const StartScreen({super.key});
+  const StartScreen({
+    super.key,
+    required this.database,
+    required this.location,
+  });
+
+  final GrobingDatabase database;
+  final DataLocation location;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +37,16 @@ class StartScreen extends StatelessWidget {
               width: 32,
               height: 2,
               child: ColoredBox(color: GrobingColors.amber),
+            ),
+            const SizedBox(height: 48),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      DataStateScreen(database: database, location: location),
+                ),
+              ),
+              child: const Text('Stan danych'),
             ),
           ],
         ),

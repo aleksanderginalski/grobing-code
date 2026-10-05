@@ -50,7 +50,9 @@ void main() {
       for (final String entry in [
         '*.db',
         '*.sqlite',
-        '*.grobing-backup',
+        // Backup and key file are age files, the backup's inside is tar (ADR-004, ISSUE-006).
+        '*.age',
+        '*.tar',
         '*.jks',
         'key.properties',
       ]) {

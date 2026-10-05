@@ -17,11 +17,21 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  # Database (ADR-005). drift and drift_dev are pinned as a pair: the pinned Flutter holds analyzer at
+  # 10.x, so drift_dev cannot go past 2.34.0, and drift 2.34.1+ breaks that drift_dev (the schema dump
+  # and migration verifier stop compiling). Move both together, after an SDK decision (ADR-002).
+  drift: 2.34.0
+  # Bundles its own SQLite through build hooks — VACUUM INTO does not depend on the Android version.
+  sqlite3: ^3.5.2
+  path_provider: ^2.1.6
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  drift_dev: 2.34.0
+  build_runner: ^2.15.1
 
 flutter:
   uses-material-design: true

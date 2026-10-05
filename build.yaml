@@ -1,0 +1,11 @@
+# drift code generation and guided migrations (README → Baza danych). `make-migrations` keeps one
+# schema export per version in drift_schemas/grobing/ and the migration tests in test/drift/grobing/.
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          databases:
+            grobing: lib/data/database.dart
+          schema_dir: drift_schemas/
+          test_dir: test/drift/

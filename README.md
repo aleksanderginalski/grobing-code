@@ -31,6 +31,38 @@ flutter test
 flutter run            # debug — emulator albo telefon testowy
 ```
 
+## Baza danych
+
+SQLite przez `drift` (ADR-005 w vaulcie). Paczka `sqlite3` **dołącza własny SQLite** (build hooks), więc
+`VACUUM INTO`, na którym stoi kopia (ADR-004), nie zależy od wersji Androida. Przy pierwszym budowaniu
+hook pobiera gotową bibliotekę z wydań `sqlite3.dart` na GitHubie i sprawdza jej SHA-256 zapisane w
+paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero po pierwszym udanym buildzie.
+
+- **Gdzie leży:** `grobing.db` i katalog `media/` w katalogu wsparcia aplikacji (prywatny magazyn,
+  `path_provider`). Schemat: `lib/data/database.dart`.
+- **`drift` i `drift_dev` są przypięte parą** (`pubspec.yaml`, komentarz): przypięty Flutter trzyma
+  `analyzer` na 10.x. Zmiana jednej bez drugiej psuje generowanie kodu i weryfikator migracji.
+- **Po każdej zmianie tabel:**
+
+  ```sh
+  dart run build_runner build --delete-conflicting-outputs   # database.g.dart
+  ```
+
+  Pliki `*.g.dart` commitujesz razem ze zmianą.
+- **Zmiana schematu = migracja, nigdy „usuń i stwórz od nowa”** (NFR-003):
+  1. podbij `schemaVersion` w `GrobingDatabase`;
+  2. `dart run drift_dev make-migrations`: zapisuje schemat nowej wersji w `drift_schemas/grobing/`
+     i generuje testy migracji w `test/drift/grobing/`;
+  3. dopisz krok w `onUpgrade` i uruchom testy.
+
+  Wersja bez kroku migracji kończy się błędem przy otwarciu bazy, zamiast skasować dane.
+- **Odcisk danych** (ekran „Stan danych”, `lib/data/data_state.dart`) jest miarą dla kopii i
+  odtworzenia (NFR-002). Liczy się z **treści**, nie z pliku: tabele po nazwie, wiersze po wszystkich
+  kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.
+  **Zmiana tej definicji unieważnia wszystkie wcześniej zapisane odciski.**
+- **Wymyślone dane** (`lib/dev/`) są dostępne tylko w buildzie debug: przycisk na ekranie „Stan danych”.
+  W buildzie release tego kodu nie ma.
+
 ## Podpis wydania
 
 Aktualizacja wchodzi na telefon tylko wtedy, gdy jest podpisana **tym samym kluczem** co zainstalowana
