@@ -1,0 +1,28 @@
+# --- Family data: NEVER in this repo (grobing-agents/.claude/rules/family-data.md) ---
+# Databases, backups and exports of the real family record live on the phone, in the encrypted
+# cloud backup and with the family — never here. Test fixtures use invented people only.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.grobing-backup
+exports/
+backups/
+family-data/
+real-data/
+
+# --- Secrets: never in the repo (hard floor, PROJECT_BRIEF §Security) ---
+*.jks
+*.keystore
+key.properties
+local.properties
+**/google-services.json
+
+# --- Flutter / Android build output ---
+# ISSUE-002 merges Flutter's own default .gitignore entries below this block after `flutter create`.
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
