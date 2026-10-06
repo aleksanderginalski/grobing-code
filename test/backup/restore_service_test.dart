@@ -1,0 +1,867 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
+import 'package:drift/drift.dart' show MigrationStrategy, driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/backup/age/age.dart';
+import 'package:grobing/backup/backup_archive.dart';
+import 'package:grobing/backup/backup_service.dart';
+import 'package:grobing/backup/backup_settings.dart';
+import 'package:grobing/backup/restore_service.dart';
+import 'package:grobing/backup/tar_writer.dart';
+import 'package:grobing/data/data_state.dart';
+import 'package:grobing/data/database.dart';
+import 'package:grobing/dev/fictional_data.dart';
+
+import '../support/backup_fakes.dart';
+
+// ISSUE-009: restore from the backup file — key file + passphrase + backup file.
+// AC-1: the restored data has the source's fingerprint (NFR-002 → Method).
+// AC-2: a wrong passphrase, a damaged file, an unsafe tar, a manifest that does not match and a
+//       backup from a newer schema are refused with a readable message, the phone's data untouched.
+// AC-3: a backup from an older schema goes through the app's own migrations (synthetic v2).
+// AC-5: too large for the phone → refused before unpacking.
+// D3: what the backup does afterwards. Data: made-up people only (`fictional_data.dart`).
+
+const String _passphrase = 'hasło-testowe Żółć';
+final DateTime _createdAt = DateTime.utc(2026, 10, 6, 12);
+
+/// A key file as setup writes it, but with a cheap scrypt so that the many refusal tests stay fast;
+/// the real work factor runs in the end-to-end test through `BackupService`.
+Future<({Uint8List keyFile, X25519Identity identity})> _cheapKey(
+  String passphrase, {
+  int workFactor = 10,
+}) async {
+  final X25519Identity identity = X25519Identity.generate();
+  final BytesBuilder out = BytesBuilder();
+  await for (final List<int> c in ageEncrypt(
+    Stream.value(utf8.encode(encodeIdentityFile(identity, _createdAt))),
+    [ScryptRecipient(passphrase, workFactor: workFactor)],
+  )) {
+    out.add(c);
+  }
+  return (keyFile: out.takeBytes(), identity: identity);
+}
+
+Future<Uint8List> _decrypt(List<int> file, AgeIdentity identity) async {
+  final BytesBuilder out = BytesBuilder();
+  await for (final List<int> c in ageDecrypt(Stream.value(file), [identity])) {
+    out.add(c);
+  }
+  return out.takeBytes();
+}
+
+Future<Uint8List> _encrypt(List<int> plain, AgeRecipient to) async {
+  final BytesBuilder out = BytesBuilder();
+  await for (final List<int> c in ageEncrypt(Stream.value(plain), [to])) {
+    out.add(c);
+  }
+  return out.takeBytes();
+}
+
+typedef _Entry = ({String path, List<int> data});
+
+/// The files of a tar written by `tar_writer.dart`.
+List<_Entry> _untar(Uint8List tar) {
+  final List<_Entry> entries = [];
+  int offset = 0;
+  while (!tar.sublist(offset, offset + 512).every((b) => b == 0)) {
+    String field(int at, int length) {
+      final Uint8List b = tar.sublist(offset + at, offset + at + length);
+      final int end = b.indexOf(0);
+      return ascii.decode(end < 0 ? b : b.sublist(0, end));
+    }
+
+    final String prefix = field(345, 155);
+    final String name = field(0, 100);
+    final int size = int.parse(field(124, 12), radix: 8);
+    entries.add((
+      path: prefix.isEmpty ? name : '$prefix/$name',
+      data: tar.sublist(offset + 512, offset + 512 + size),
+    ));
+    offset += 512 + (size + 511) ~/ 512 * 512;
+  }
+  return entries;
+}
+
+/// A ustar header for any path and type — including ones the writer refuses.
+Uint8List _rawHeader(String path, int size, {String type = '0'}) {
+  final Uint8List h = Uint8List(512);
+  void put(int at, String s) => h.setRange(at, at + s.length, ascii.encode(s));
+  put(0, path);
+  put(100, '0000644');
+  put(108, '0000000');
+  put(116, '0000000');
+  put(124, size.toRadixString(8).padLeft(11, '0'));
+  put(136, '00000000000');
+  put(156, type);
+  put(257, 'ustar');
+  put(263, '00');
+  h.fillRange(148, 156, 0x20);
+  put(148, h.fold(0, (s, b) => s + b).toRadixString(8).padLeft(6, '0'));
+  h[154] = 0;
+  h[155] = 0x20;
+  return h;
+}
+
+List<int> _tar(List<_Entry> entries, {Set<String> raw = const {}}) => [
+  for (final _Entry e in entries) ...[
+    ...(raw.contains(e.path)
+        ? _rawHeader(e.path, e.data.length)
+        : tarFileHeader(e.path, e.data.length, _createdAt)),
+    ...e.data,
+    ...tarPadding(e.data.length),
+  ],
+  ...tarEnd(),
+];
+
+Map<String, Object?> _manifestOf(List<_Entry> entries) =>
+    jsonDecode(utf8.decode(entries.last.data)) as Map<String, Object?>;
+
+_Entry _manifestEntry(Map<String, Object?> manifest) =>
+    (path: backupManifestName, data: utf8.encode(jsonEncode(manifest)));
+
+/// The manifest's `files` recomputed from [files], as the writer would have written them.
+Map<String, Object?> _withFiles(
+  Map<String, Object?> manifest,
+  List<_Entry> files,
+) => {
+  ...manifest,
+  'files': [
+    for (final _Entry f in files)
+      {
+        'path': f.path,
+        'size': f.data.length,
+        'sha256': sha256.convert(f.data).toString(),
+      },
+  ],
+};
+
+class _SchemaV2 extends GrobingDatabase {
+  _SchemaV2(super.executor);
+
+  @override
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from == 1) {
+        await customStatement('ALTER TABLE persons ADD COLUMN nickname TEXT');
+      }
+    },
+  );
+}
+
+void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+  late Directory tmp;
+  late FakeDocumentStore drive;
+
+  /// The source phone's data — made-up people, two photos — and its fingerprint.
+  late Directory source;
+  late String sourceFingerprint;
+  late Map<String, int> sourceCounts;
+
+  /// A valid backup of [source], its tar, and the key that opens it (cheap scrypt).
+  late X25519Identity identity;
+  late Uint8List backupTar;
+
+  setUp(() async {
+    tmp = Directory.systemTemp.createTempSync('grobing_restore_test');
+    drive = FakeDocumentStore(Directory('${tmp.path}/drive'));
+    source = Directory('${tmp.path}/source')..createSync();
+    final GrobingDatabase db = GrobingDatabase(
+      NativeDatabase(File('${source.path}/grobing.db')),
+    );
+    await addFictionalData(db, Directory('${source.path}/media'));
+    final DataState state = await readDataState(
+      db,
+      mediaDir: Directory('${source.path}/media'),
+    );
+    sourceFingerprint = state.fingerprint;
+    sourceCounts = state.rowCounts;
+    await db.customStatement('VACUUM INTO ?', ['${tmp.path}/snapshot.db']);
+    await db.close();
+
+    final ({Uint8List keyFile, X25519Identity identity}) key = await _cheapKey(
+      _passphrase,
+    );
+    identity = key.identity;
+    drive.fileFor(FakeDocumentStore.uriOf('klucz.age'))
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(key.keyFile);
+    final File backup = drive.fileFor(FakeDocumentStore.uriOf('kopia.age'));
+    await writeEncryptedBackup(
+      snapshot: File('${tmp.path}/snapshot.db'),
+      mediaDir: Directory('${source.path}/media'),
+      recipient: identity.recipient,
+      output: backup,
+      createdAt: _createdAt,
+    );
+    backupTar = await _decrypt(backup.readAsBytesSync(), identity);
+  });
+
+  tearDown(() => tmp.deleteSync(recursive: true));
+
+  /// A phone: its data directory and the open live database, optionally with made-up data.
+  Future<({Directory dir, GrobingDatabase db})> phone(
+    String name, {
+    bool withData = false,
+  }) async {
+    final Directory dir = Directory('${tmp.path}/$name')..createSync();
+    final GrobingDatabase db = GrobingDatabase(
+      NativeDatabase(File('${dir.path}/grobing.db')),
+    );
+    if (withData) {
+      await addFictionalData(db, Directory('${dir.path}/media'));
+      await addFictionalData(db, Directory('${dir.path}/media'));
+    } else {
+      await db.customSelect('SELECT 1').get();
+    }
+    return (dir: dir, db: db);
+  }
+
+  /// The phone's data as it is on disk now (after a restore closed the live database).
+  Future<DataState> stateOnDisk(Directory dir) async {
+    final GrobingDatabase db = GrobingDatabase(
+      NativeDatabase(File('${dir.path}/grobing.db')),
+    );
+    try {
+      return await readDataState(db, mediaDir: Directory('${dir.path}/media'));
+    } finally {
+      await db.close();
+    }
+  }
+
+  /// Puts [bytes] in "Drive" as a backup file and returns its uri.
+  String upload(String name, List<int> bytes) {
+    final String uri = FakeDocumentStore.uriOf(name);
+    drive.fileFor(uri)
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(bytes);
+    return uri;
+  }
+
+  Future<String> uploadTar(String name, List<int> tar) async =>
+      upload(name, await _encrypt(tar, identity.recipient));
+
+  group('AC-1 — the restored data is the source data', () {
+    test(
+      'end to end with the real setup: BackupService writes key and backup, a fresh phone '
+      'restores them with the fingerprint of the source; nothing is left behind',
+      () async {
+        // The source phone sets up its backup exactly as the app does (scrypt work factor 18).
+        final GrobingDatabase sourceDb = GrobingDatabase(
+          NativeDatabase(File('${source.path}/grobing.db')),
+        );
+        final FakeDocumentStore realDrive = FakeDocumentStore(
+          Directory('${tmp.path}/real-drive'),
+        );
+        final BackupService backup = BackupService(
+          database: sourceDb,
+          location: DataLocation.inDirectory(source),
+          workDir: Directory('${tmp.path}/cache'),
+          settings: BackupSettingsStore(File('${source.path}/backup.json')),
+          documents: realDrive,
+        );
+        final BackupSettings settings = (await backup.setUp(_passphrase))!;
+        await sourceDb.close();
+
+        final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+          'fresh',
+        );
+        final List<RestoreStep> steps = [];
+        final RestoreResult result =
+            await restoreServiceIn(fresh.dir, fresh.db, realDrive).restore(
+              backupUri: settings.documentUri,
+              keyUri: FakeDocumentStore.uriOf(backupKeyFileName),
+              passphrase: _passphrase,
+              onStep: steps.add,
+            );
+
+        final DataState restored = await stateOnDisk(fresh.dir);
+        expect(restored.fingerprint, sourceFingerprint);
+        expect(restored.rowCounts, sourceCounts);
+        expect(result.dataFingerprint, sourceFingerprint);
+        expect((result.schemaFrom, result.schemaTo), (1, 1));
+        expect(steps, [
+          RestoreStep.checkingSpace,
+          RestoreStep.unlockingKey,
+          RestoreStep.copying,
+          RestoreStep.decrypting,
+          RestoreStep.verifying,
+          RestoreStep.replacing,
+        ]);
+        // Only the data is left: no staging, no old data, no marker, no secret.
+        expect(
+          fresh.dir
+              .listSync()
+              .map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty))
+              .toSet(),
+          {'grobing.db', 'media', 'backup.json'},
+        );
+        final String stored = File(
+          '${fresh.dir.path}/backup.json',
+        ).readAsStringSync();
+        expect(stored, isNot(contains('AGE-SECRET-KEY')));
+        expect(stored, isNot(contains(_passphrase)));
+      },
+    );
+
+    test(
+      'a phone with other data: replaced entirely — also photos the backup does not have',
+      () async {
+        // A backup without photos onto a phone with photos: old photos must not survive.
+        final List<_Entry> entries = _untar(backupTar);
+        final List<_Entry> noPhotos = [
+          entries.firstWhere((e) => e.path == backupDatabaseName),
+        ];
+        final Map<String, Object?> manifest = _withFiles(
+          _manifestOf(entries),
+          noPhotos,
+        );
+        // The fingerprint covers the photos too: recompute it from the database alone.
+        final Directory check = Directory('${tmp.path}/check')..createSync();
+        File('${check.path}/grobing.db').writeAsBytesSync(noPhotos.single.data);
+        final GrobingDatabase checkDb = GrobingDatabase(
+          NativeDatabase(File('${check.path}/grobing.db')),
+        );
+        final DataState withoutPhotos = await readDataState(
+          checkDb,
+          mediaDir: Directory('${check.path}/media'),
+        );
+        await checkDb.close();
+        manifest['data_fingerprint'] = withoutPhotos.fingerprint;
+        final String uri = await uploadTar(
+          'bez-zdjec.age',
+          _tar([...noPhotos, _manifestEntry(manifest)]),
+        );
+
+        final ({Directory dir, GrobingDatabase db}) used = await phone(
+          'used',
+          withData: true,
+        );
+        await restoreServiceIn(used.dir, used.db, drive).restore(
+          backupUri: uri,
+          keyUri: FakeDocumentStore.uriOf('klucz.age'),
+          passphrase: _passphrase,
+        );
+
+        final DataState after = await stateOnDisk(used.dir);
+        expect(after.fingerprint, withoutPhotos.fingerprint);
+        expect(after.mediaFileCount, 0);
+      },
+    );
+  });
+
+  group('D3 — the backup after a restore', () {
+    test(
+      'fresh phone: goes on with the restored key, to the restored file',
+      () async {
+        final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+          'fresh',
+        );
+        final RestoreResult result =
+            await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+              backupUri: FakeDocumentStore.uriOf('kopia.age'),
+              keyUri: FakeDocumentStore.uriOf('klucz.age'),
+              passphrase: _passphrase,
+            );
+
+        expect(result.backup, RestoredBackup.continued);
+        final BackupSettings settings = (await BackupSettingsStore(
+          File('${fresh.dir.path}/backup.json'),
+        ).read())!;
+        expect(settings.recipient, identity.recipient.encode());
+        expect(settings.documentUri, FakeDocumentStore.uriOf('kopia.age'));
+        expect(drive.kept, {FakeDocumentStore.uriOf('kopia.age')});
+      },
+    );
+
+    test(
+      'fresh phone, provider refuses writing: not configured, no settings',
+      () async {
+        drive.writable = false;
+        final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+          'fresh',
+        );
+        final RestoreResult result =
+            await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+              backupUri: FakeDocumentStore.uriOf('kopia.age'),
+              keyUri: FakeDocumentStore.uriOf('klucz.age'),
+              passphrase: _passphrase,
+            );
+
+        expect(result.backup, RestoredBackup.notConfigured);
+        expect(File('${fresh.dir.path}/backup.json').existsSync(), isFalse);
+        expect((await stateOnDisk(fresh.dir)).fingerprint, sourceFingerprint);
+      },
+    );
+
+    test('phone with a backup set up: keeps its own key and file', () async {
+      final ({Directory dir, GrobingDatabase db}) used = await phone(
+        'used',
+        withData: true,
+      );
+      const BackupSettings own = BackupSettings(
+        recipient: 'age1ownkey',
+        documentUri: 'content://fake/own.age',
+      );
+      await BackupSettingsStore(
+        File('${used.dir.path}/backup.json'),
+      ).write(own);
+
+      final RestoreResult result =
+          await restoreServiceIn(used.dir, used.db, drive).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.backup, RestoredBackup.kept);
+      final BackupSettings after = (await BackupSettingsStore(
+        File('${used.dir.path}/backup.json'),
+      ).read())!;
+      expect(
+        (after.recipient, after.documentUri),
+        (own.recipient, own.documentUri),
+      );
+      expect((await stateOnDisk(used.dir)).fingerprint, sourceFingerprint);
+    });
+  });
+
+  group('AC-2 — refused with a readable message, the phone untouched', () {
+    late ({Directory dir, GrobingDatabase db}) used;
+    late String before;
+
+    setUp(() async {
+      used = await phone('used', withData: true);
+      before = (await readDataState(
+        used.db,
+        mediaDir: Directory('${used.dir.path}/media'),
+      )).fingerprint;
+    });
+
+    tearDown(() => used.db.close());
+
+    /// Restores and expects a refusal whose message contains [message]; then checks that nothing
+    /// changed: same fingerprint, database still open, no staging, no marker, no path in the message.
+    Future<void> refused(
+      String message, {
+      String? backupUri,
+      String? keyUri,
+      String passphrase = _passphrase,
+    }) async {
+      final RestoreService restore = restoreServiceIn(used.dir, used.db, drive);
+      await expectLater(
+        restore.restore(
+          backupUri: backupUri ?? FakeDocumentStore.uriOf('kopia.age'),
+          keyUri: keyUri ?? FakeDocumentStore.uriOf('klucz.age'),
+          passphrase: passphrase,
+        ),
+        throwsA(
+          isA<BackupException>()
+              .having((e) => e.message, 'message', contains(message))
+              .having((e) => e.message, 'message', isNot(contains(tmp.path)))
+              .having((e) => e.message, 'message', isNot(contains(passphrase))),
+        ),
+      );
+      expect(restore.databaseClosed, isFalse);
+      final DataState after = await readDataState(
+        used.db,
+        mediaDir: Directory('${used.dir.path}/media'),
+      );
+      expect(after.fingerprint, before);
+      expect(
+        Directory('${used.dir.path}/restore-staging').existsSync(),
+        isFalse,
+      );
+      expect(File('${used.dir.path}/restore.json').existsSync(), isFalse);
+    }
+
+    test(
+      'wrong passphrase',
+      () => refused('Złe hasło', passphrase: 'inne hasło'),
+    );
+
+    test('a key file from another setup', () async {
+      final ({Uint8List keyFile, X25519Identity identity}) other =
+          await _cheapKey(_passphrase);
+      upload('inny-klucz.age', other.keyFile);
+      await refused(
+        'Ten plik klucza nie otwiera tej kopii',
+        keyUri: FakeDocumentStore.uriOf('inny-klucz.age'),
+      );
+    });
+
+    test('a "key file" too large to be one (e.g. the backup picked twice)', () {
+      upload('duzy.age', Uint8List(RestoreService.keyFileMaxBytes + 1));
+      return refused(
+        'To nie jest plik klucza',
+        keyUri: FakeDocumentStore.uriOf('duzy.age'),
+      );
+    });
+
+    test(
+      'a key file whose scrypt would need more memory than a phone has',
+      () async {
+        final ({Uint8List keyFile, X25519Identity identity}) heavy =
+            await _cheapKey(_passphrase);
+        // Same stanza, work factor 21 written in: refused before anything is computed.
+        final String text = latin1.decode(heavy.keyFile);
+        final String heavier = text.replaceFirstMapped(
+          RegExp(r'(-> scrypt \S+) 10\n'),
+          (m) => '${m[1]} 21\n',
+        );
+        expect(heavier, isNot(text));
+        upload('ciezki-klucz.age', latin1.encode(heavier));
+        await refused(
+          'Nie da się otworzyć pliku klucza',
+          keyUri: FakeDocumentStore.uriOf('ciezki-klucz.age'),
+        );
+      },
+    );
+
+    test('not an age file at all', () {
+      upload('notatka.age', utf8.encode('to jest zwykły tekst, nie kopia'));
+      return refused(
+        'To nie jest plik kopii Grobing',
+        backupUri: FakeDocumentStore.uriOf('notatka.age'),
+      );
+    });
+
+    test('one changed bit in the backup file', () {
+      final Uint8List bytes = drive
+          .fileFor(FakeDocumentStore.uriOf('kopia.age'))
+          .readAsBytesSync();
+      bytes[bytes.length - 100] ^= 0x01;
+      upload('zmieniona.age', bytes);
+      return refused(
+        'uszkodzony',
+        backupUri: FakeDocumentStore.uriOf('zmieniona.age'),
+      );
+    });
+
+    test('a backup file cut short', () {
+      final Uint8List bytes = drive
+          .fileFor(FakeDocumentStore.uriOf('kopia.age'))
+          .readAsBytesSync();
+      upload('ucieta.age', bytes.sublist(0, bytes.length - 3000));
+      return refused(
+        'niepełny',
+        backupUri: FakeDocumentStore.uriOf('ucieta.age'),
+      );
+    });
+
+    for (final (String what, String path, String type) in [
+      ('a path that climbs out with ..', 'media/../../evil', '0'),
+      ('an absolute path', '/evil', '0'),
+      ('a symbolic link', 'media/link', '2'),
+      ('a file Grobing does not write', 'other.txt', '0'),
+    ]) {
+      test('a correctly encrypted tar with $what', () async {
+        final List<_Entry> entries = _untar(backupTar);
+        final List<int> tar = [
+          ..._rawHeader(path, 1, type: type),
+          0x41,
+          ...Uint8List(511),
+          ..._tar(entries),
+        ];
+        final String uri = await uploadTar('zla.age', tar);
+        await refused('której Grobing nie zapisuje', backupUri: uri);
+        expect(File('${tmp.path}/evil').existsSync(), isFalse);
+        expect(File('${used.dir.path}/other.txt').existsSync(), isFalse);
+      });
+    }
+
+    test('the database twice in the archive', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final String uri = await uploadTar(
+        'podwojna.age',
+        _tar([entries.first, ...entries]),
+      );
+      await refused('której Grobing nie zapisuje', backupUri: uri);
+    });
+
+    test('a photo whose SHA-256 does not match the manifest', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final int photo = entries.indexWhere(
+        (e) => e.path.startsWith(backupMediaPrefix),
+      );
+      final List<int> changed = [...entries[photo].data]..[0] ^= 0xff;
+      entries[photo] = (path: entries[photo].path, data: changed);
+      final String uri = await uploadTar('suma.age', _tar(entries));
+      await refused('nie zgadza się z jej opisem', backupUri: uri);
+    });
+
+    test('a manifest listing a file the archive does not have', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final Map<String, Object?> manifest = _manifestOf(entries);
+      (manifest['files']! as List<Object?>).add({
+        'path': 'media/brak.jpg',
+        'size': 1,
+        'sha256': '0' * 64,
+      });
+      final String uri = await uploadTar(
+        'brak.age',
+        _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
+      );
+      await refused('nie zgadza się z jej opisem', backupUri: uri);
+    });
+
+    test('a data fingerprint that does not match the database', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final Map<String, Object?> manifest = _manifestOf(entries)
+        ..['data_fingerprint'] = '0' * 64;
+      final String uri = await uploadTar(
+        'odcisk.age',
+        _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
+      );
+      await refused('nie zgadza się z jej opisem', backupUri: uri);
+    });
+
+    test('record counts that do not match the database', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final Map<String, Object?> manifest = _manifestOf(entries);
+      (manifest['record_counts']! as Map<String, Object?>)['persons'] = 999;
+      final String uri = await uploadTar(
+        'liczby.age',
+        _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
+      );
+      await refused('nie zgadza się z jej opisem', backupUri: uri);
+    });
+
+    test('the manifest not last in the archive', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final String uri = await uploadTar(
+        'kolejnosc.age',
+        _tar([entries.last, ...entries.take(entries.length - 1)]),
+      );
+      await refused('nie zgadza się z jej opisem', backupUri: uri);
+    });
+
+    test('a damaged database whose checksums match its manifest', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final List<int> db = [...entries.first.data];
+      // Overwrite the second page (the first table's b-tree) with noise; the header stays valid.
+      for (int i = 4096 + 8; i < 4096 + 400; i++) {
+        db[i] = (i * 31) & 0xff;
+      }
+      final List<_Entry> files = [
+        (path: backupDatabaseName, data: db),
+        ...entries.skip(1).take(entries.length - 2),
+      ];
+      final String uri = await uploadTar(
+        'baza.age',
+        _tar([
+          ...files,
+          _manifestEntry(_withFiles(_manifestOf(entries), files)),
+        ]),
+      );
+      await refused('uszkodzona', backupUri: uri);
+    });
+
+    test('a backup from a newer schema asks for an update', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final Map<String, Object?> manifest = _manifestOf(entries)
+        ..['schema_version'] = 2;
+      final String uri = await uploadTar(
+        'nowsza.age',
+        _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
+      );
+      await refused('Zaktualizuj aplikację', backupUri: uri);
+    });
+
+    test('a backup in a newer format asks for an update', () async {
+      final List<_Entry> entries = _untar(backupTar);
+      final Map<String, Object?> manifest = _manifestOf(entries)
+        ..['format_version'] = 2;
+      final String uri = await uploadTar(
+        'format2.age',
+        _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
+      );
+      await refused('Zaktualizuj aplikację', backupUri: uri);
+    });
+  });
+
+  group('AC-5 — too large for the phone: refused before unpacking', () {
+    late ({Directory dir, GrobingDatabase db}) used;
+
+    setUp(() async => used = await phone('used', withData: true));
+    tearDown(() => used.db.close());
+
+    test(
+      'known size: free space under 2 × size + 200 MB → refused before copying',
+      () async {
+        final int size = drive
+            .fileFor(FakeDocumentStore.uriOf('kopia.age'))
+            .lengthSync();
+        drive.free = 2 * size + RestoreService.spaceMargin - 1;
+        final RestoreService restore = restoreServiceIn(
+          used.dir,
+          used.db,
+          drive,
+        );
+        await expectLater(
+          restore.restore(
+            backupUri: FakeDocumentStore.uriOf('kopia.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          ),
+          throwsA(
+            isA<BackupException>().having(
+              (e) => e.message,
+              'm',
+              contains('Za mało miejsca'),
+            ),
+          ),
+        );
+        // Not even the key file was read: the check comes first.
+        expect(drive.readBudgets, isEmpty);
+        expect(
+          Directory('${used.dir.path}/restore-staging').existsSync(),
+          isFalse,
+        );
+      },
+    );
+
+    test('known size and just enough space → restored', () async {
+      final int size = drive
+          .fileFor(FakeDocumentStore.uriOf('kopia.age'))
+          .lengthSync();
+      drive.free = 2 * size + RestoreService.spaceMargin;
+      await restoreServiceIn(used.dir, used.db, drive).restore(
+        backupUri: FakeDocumentStore.uriOf('kopia.age'),
+        keyUri: FakeDocumentStore.uriOf('klucz.age'),
+        passphrase: _passphrase,
+      );
+      expect((await stateOnDisk(used.dir)).fingerprint, sourceFingerprint);
+    });
+
+    test(
+      'unknown size: reading stops at what fits twice → refused, nothing left',
+      () async {
+        drive.sizeUnknown = true;
+        final int size = drive
+            .fileFor(FakeDocumentStore.uriOf('kopia.age'))
+            .lengthSync();
+        // Budget = (free - margin) / 2, one byte short of the file.
+        drive.free = RestoreService.spaceMargin + 2 * (size - 1);
+        final RestoreService restore = restoreServiceIn(
+          used.dir,
+          used.db,
+          drive,
+        );
+        await expectLater(
+          restore.restore(
+            backupUri: FakeDocumentStore.uriOf('kopia.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          ),
+          throwsA(
+            isA<BackupException>().having(
+              (e) => e.message,
+              'm',
+              contains('Za mało miejsca'),
+            ),
+          ),
+        );
+        expect(drive.readBudgets.last, size - 1);
+        expect(
+          Directory('${used.dir.path}/restore-staging').existsSync(),
+          isFalse,
+        );
+      },
+    );
+  });
+
+  test(
+    'AC-3 — a backup from schema v1 restores into an app at v2 through its own migration',
+    () async {
+      final Directory dir = Directory('${tmp.path}/v2')..createSync();
+      final _SchemaV2 live = _SchemaV2(
+        NativeDatabase(File('${dir.path}/grobing.db')),
+      );
+      await live.customSelect('SELECT 1').get();
+
+      final RestoreResult result =
+          await restoreServiceIn(
+            dir,
+            live,
+            drive,
+            schemaVersion: 2,
+            openDatabase: (file) => _SchemaV2(NativeDatabase(file)),
+          ).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect((result.schemaFrom, result.schemaTo), (1, 2));
+      final _SchemaV2 reopened = _SchemaV2(
+        NativeDatabase(File('${dir.path}/grobing.db')),
+      );
+      final DataState state = await readDataState(
+        reopened,
+        mediaDir: Directory('${dir.path}/media'),
+      );
+      expect(state.schemaVersion, 2);
+      expect(state.rowCounts, sourceCounts);
+      final List<String> columns =
+          (await reopened.customSelect('PRAGMA table_info(persons)').get())
+              .map((r) => r.read<String>('name'))
+              .toList();
+      expect(columns, contains('nickname'));
+      await reopened.close();
+    },
+  );
+
+  test(
+    'a failed migration refuses the restore and leaves the phone untouched',
+    () async {
+      final ({Directory dir, GrobingDatabase db}) used = await phone(
+        'used',
+        withData: true,
+      );
+      final String before = (await readDataState(
+        used.db,
+        mediaDir: Directory('${used.dir.path}/media'),
+      )).fingerprint;
+      // An app that says v2 but opens the file without reaching v2: the migration did not happen.
+      await expectLater(
+        restoreServiceIn(
+          used.dir,
+          used.db,
+          drive,
+          schemaVersion: 2,
+          openDatabase: (file) => GrobingDatabase(NativeDatabase(file)),
+        ).restore(
+          backupUri: FakeDocumentStore.uriOf('kopia.age'),
+          keyUri: FakeDocumentStore.uriOf('klucz.age'),
+          passphrase: _passphrase,
+        ),
+        throwsA(
+          isA<BackupException>().having(
+            (e) => e.message,
+            'm',
+            contains('przenieść'),
+          ),
+        ),
+      );
+      expect(
+        (await readDataState(
+          used.db,
+          mediaDir: Directory('${used.dir.path}/media'),
+        )).fingerprint,
+        before,
+      );
+      await used.db.close();
+    },
+  );
+}

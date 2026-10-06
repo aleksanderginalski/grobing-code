@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../backup/backup_service.dart';
+import '../backup/restore_service.dart';
 import '../data/database.dart';
 import 'data_state_screen.dart';
 import 'theme.dart';
@@ -13,11 +14,15 @@ class StartScreen extends StatelessWidget {
     required this.database,
     required this.location,
     required this.backup,
+    this.restore,
+    this.onRestored,
   });
 
   final GrobingDatabase database;
   final DataLocation location;
   final BackupService backup;
+  final RestoreService? restore;
+  final Future<void> Function(String notice)? onRestored;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +54,8 @@ class StartScreen extends StatelessWidget {
                     database: database,
                     location: location,
                     backup: backup,
+                    restore: restore,
+                    onRestored: onRestored,
                   ),
                 ),
               ),

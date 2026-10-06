@@ -4,26 +4,38 @@ import 'package:flutter/material.dart';
 import '../backup/backup_archive.dart';
 import '../backup/backup_service.dart';
 import '../backup/backup_settings.dart';
+import '../backup/restore_service.dart';
 import '../data/data_state.dart';
 import '../data/database.dart';
 import '../dev/fictional_data.dart';
 import 'backup_setup_screen.dart';
+import 'restore_screen.dart';
 import 'theme.dart';
 
 /// "Stan danych" (ISSUE-007): schema version, row counts and the data fingerprint — the measure that
-/// backup and restore are checked against — and the backup (ISSUE-008). A technical screen in the
-/// base theme, not a product view.
+/// backup and restore are checked against — the backup (ISSUE-008) and restore (ISSUE-009). A
+/// technical screen in the base theme, not a product view.
 class DataStateScreen extends StatefulWidget {
   const DataStateScreen({
     super.key,
     required this.database,
     required this.location,
     required this.backup,
+    this.restore,
+    this.onRestored,
+    this.notice,
   });
 
   final GrobingDatabase database;
   final DataLocation location;
   final BackupService backup;
+  final RestoreService? restore;
+
+  /// Reopens the app on the restored data (`GrobingApp`).
+  final Future<void> Function(String notice)? onRestored;
+
+  /// What the last restore did, shown once on top.
+  final String? notice;
 
   @override
   State<DataStateScreen> createState() => _DataStateScreenState();
@@ -90,6 +102,19 @@ class _DataStateScreenState extends State<DataStateScreen> {
     if (mounted) _refresh();
   }
 
+  Future<void> _restoreFromBackup(DataState current) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RestoreScreen(
+          restore: widget.restore!,
+          current: current,
+          onRestored: widget.onRestored!,
+        ),
+      ),
+    );
+    if (mounted) _refresh();
+  }
+
   Future<void> _addFictionalData() async {
     await addFictionalData(widget.database, widget.location.mediaDir);
     _refresh();
@@ -122,6 +147,16 @@ class _DataStateScreenState extends State<DataStateScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (widget.notice != null) ...[
+                Text(
+                  widget.notice!,
+                  style: const TextStyle(
+                    color: GrobingColors.amber,
+                    height: 1.4,
+                  ),
+                ),
+                const Divider(height: 32),
+              ],
               _Row(label: 'Wersja schematu', value: '${state.schemaVersion}'),
               _Row(
                 label: 'Odcisk danych',
@@ -149,6 +184,16 @@ class _DataStateScreenState extends State<DataStateScreen> {
                 onSetUp: () => _setUp(replacesExisting: false),
                 onSetUpAgain: () => _setUp(replacesExisting: true),
               ),
+              // In release too: restoring is what a new phone needs (ISSUE-009).
+              if (widget.restore != null && widget.onRestored != null) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _backingUp
+                      ? null
+                      : () => _restoreFromBackup(state),
+                  child: const Text('Odtwórz z kopii'),
+                ),
+              ],
               if (kDebugMode) ...[
                 const SizedBox(height: 32),
                 OutlinedButton(

@@ -97,6 +97,36 @@ Konfiguracja i „Zrób kopię teraz” są na ekranie „Stan danych”.
 - **Kopia Androida i transfer na nowy telefon (D2D) są wyłączone** (`allowBackup="false"` +
   `res/xml/data_extraction_rules.xml`). Jedyna droga na nowy telefon to ta kopia.
 
+### Odtworzenie
+
+„Stan danych” → „Odtwórz z kopii” (ISSUE-009 w vaulcie): plik kopii i plik klucza z systemowego okna
+otwarcia pliku, hasło. **Dane w telefonie zmieniają się dopiero po sprawdzeniu całej kopii** — zła
+kopia kończy się komunikatem i niczego nie rusza.
+
+- **Kolejność** (`lib/backup/restore_service.dart`), wszystko w `restore-staging/` w katalogu danych
+  aplikacji:
+  1. miejsce: wolne ≥ 2 × rozmiar pliku kopii + 200 MB; gdy Dysk nie zna rozmiaru, czytanie przerywa
+     budżet bajtów (kopia zaszyfrowana i rozpakowane pliki są na dysku naraz);
+  2. plik klucza otwierany hasłem (scrypt, work factor do 20 — więcej nie zmieści się w pamięci
+     telefonu); tożsamość nigdy nie trafia na dysk;
+  3. plik kopii skopiowany lokalnie, odszyfrowany i rozpakowany ścisłym czytnikiem tar
+     (`tar_reader.dart`: tylko zwykłe pliki, bezpieczne ścieżki tą samą regułą co zapis, tylko
+     `grobing.db`, `media/…` i `manifest.json` na końcu, sumy nagłówków, budżet bajtów);
+  4. manifest: wersja formatu, wersja schematu (nowsza → „zaktualizuj aplikację”), lista plików,
+     rozmiary i SHA-256;
+  5. baza: `integrity_check`, `user_version`, liczby rekordów i **odcisk danych = manifest**;
+  6. starszy schemat → zwykłe migracje aplikacji, potem znów `integrity_check` i liczby rekordów.
+- **Podmiana odporna na przerwanie** (`restore_swap.dart`): znacznik `restore.json` jest punktem
+  zatwierdzenia. Bez znacznika nic się nie zmieniło, a resztki są usuwane; ze znacznikiem każdy start
+  aplikacji (`main.dart`, **przed** otwarciem bazy) kończy podmianę. Stara baza odchodzi razem ze swoim
+  dziennikiem (`-journal`/`-wal`/`-shm`), zanim przyjdzie nowa. Po odtworzeniu aplikacja otwiera dane
+  od nowa tą samą drogą co przy starcie.
+- **Kopia po odtworzeniu:** telefon z konfiguracją kopii zostaje przy niej. Świeży telefon pisze dalej
+  **tym samym kluczem** do pliku, z którego odtworzono (o ile Dysk pozwala w nim zapisywać), więc plik
+  klucza z notki przekazania otwiera także nowe kopie.
+- Telefon, który ma już dane, dostaje ostrzeżenie z liczbami i „Zastąp dane”. Nie ma tam „najpierw
+  zrób kopię”: to nadpisałoby plik, z którego właśnie odtwarzasz.
+
 ## Podpis wydania
 
 Aktualizacja wchodzi na telefon tylko wtedy, gdy jest podpisana **tym samym kluczem** co zainstalowana
