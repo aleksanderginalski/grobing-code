@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../backup/backup_service.dart';
 import '../data/database.dart';
 import 'data_state_screen.dart';
 import 'theme.dart';
@@ -11,10 +12,12 @@ class StartScreen extends StatelessWidget {
     super.key,
     required this.database,
     required this.location,
+    required this.backup,
   });
 
   final GrobingDatabase database;
   final DataLocation location;
+  final BackupService backup;
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +45,11 @@ class StartScreen extends StatelessWidget {
             TextButton(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) =>
-                      DataStateScreen(database: database, location: location),
+                  builder: (_) => DataStateScreen(
+                    database: database,
+                    location: location,
+                    backup: backup,
+                  ),
                 ),
               ),
               child: const Text('Stan danych'),

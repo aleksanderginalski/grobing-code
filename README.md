@@ -63,6 +63,40 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
 - **Wymyślone dane** (`lib/dev/`) są dostępne tylko w buildzie debug: przycisk na ekranie „Stan danych”.
   W buildzie release tego kodu nie ma.
 
+## Kopia
+
+Jeden zaszyfrowany plik w Dysku autora, nadpisywany przy każdej kopii (ADR-004 i ISSUE-008 w vaulcie).
+Konfiguracja i „Zrób kopię teraz” są na ekranie „Stan danych”.
+
+- **Format v1** — kontrakt, który zamraża pierwsza prawdziwa kopia; opis w vaulcie
+  (`04_ARCHITECTURE/`). Plik `age` v1 do jednego klucza X25519, w środku `tar` (ustar):
+  `grobing.db` (migawka `VACUUM INTO`), `media/…`, na końcu `manifest.json` (wersja formatu i
+  schematu, liczby rekordów, odcisk danych, rozmiar i SHA-256 każdego pliku). Zmiana czegokolwiek to
+  nowy `format_version`, bo odtworzenie musi czytać każdą wersję, która kiedykolwiek powstała.
+- **Klucz:** w telefonie zostaje tylko klucz publiczny (`backup.json` obok bazy), więc kopia nie
+  potrzebuje hasła. Klucz prywatny jest w pliku `grobing-klucz.age`, zaszyfrowanym hasłem (scrypt).
+  **Odtworzenie = plik kopii + plik klucza + hasło.** Hasła aplikacja nigdzie nie zapisuje.
+- **Stan kopii poza bazą** (`backup.json`: klucz publiczny, plik w Dysku, czas ostatniej kopii): czas
+  kopii w bazie zmieniałby odcisk danych przy każdej kopii i wymagałby migracji.
+- **Otwarcie bez Grobing**, na PC, oficjalnym [`age`](https://github.com/FiloSottile/age) — poza każdym
+  repozytorium, bo to dane rodziny:
+
+  ```sh
+  age -d -i grobing-klucz.age grobing-kopia.age > kopia.tar   # age pyta o hasło do pliku klucza
+  mkdir kopia && tar -xf kopia.tar -C kopia
+  dart run tool/fingerprint.dart kopia                       # odcisk i manifest, ta sama funkcja co ekran
+  ```
+
+- **Moduł `age`** (`lib/backup/age/`) jest nasz — `dage` i `dartage` odpadły w SPIKE-003. Sprawdzają go
+  oficjalne wektory testowe [C2SP/CCTV](https://github.com/C2SP/CCTV/tree/main/age) w `flutter test`
+  i oficjalne CLI (bramka zgodności). `cryptography` i `pointycastle` są przypięte dokładnie: nowa
+  wersja to zmiana do sprawdzenia tą samą bramką.
+- **Do Dysku przez systemowe okno zapisu pliku** (`BackupDocuments.kt`): aplikacja ma uprawnienie do
+  jednego pliku, bez kluczy API, bez OAuth i bez uprawnienia `INTERNET` — wysyła aplikacja Dysk.
+  „Ostatnia udana kopia” znaczy: Dysk w telefonie przyjął plik, nie: plik jest już w chmurze.
+- **Kopia Androida i transfer na nowy telefon (D2D) są wyłączone** (`allowBackup="false"` +
+  `res/xml/data_extraction_rules.xml`). Jedyna droga na nowy telefon to ta kopia.
+
 ## Podpis wydania
 
 Aktualizacja wchodzi na telefon tylko wtedy, gdy jest podpisana **tym samym kluczem** co zainstalowana

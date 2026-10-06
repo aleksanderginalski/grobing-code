@@ -5,11 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/data_state_screen.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 
+import '../support/backup_fakes.dart';
+
 // ISSUE-007 AC-3: the "Stan danych" screen. Tests run in debug mode, so the made-up-data button is
 // there; its absence in the release build is a manual step (stop #2).
+// ISSUE-008 AC-1: the backup section — set-up offer, or the last successful backup and its failure.
 
 /// Lets real file and database work finish between frames (widget tests run in a fake clock).
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
@@ -24,31 +28,49 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
 }
 
 void main() {
+  late Directory tmp;
+  late GrobingDatabase db;
+  late DataLocation location;
+
+  setUp(() {
+    tmp = Directory.systemTemp.createTempSync('grobing_screen_test');
+    db = GrobingDatabase(NativeDatabase.memory());
+    location = DataLocation.inDirectory(Directory('${tmp.path}/data'));
+  });
+
+  Future<void> pumpScreen(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: GrobingTheme.dark,
+        home: DataStateScreen(
+          database: db,
+          location: location,
+          backup: backupServiceIn(
+            tmp,
+            db,
+            FakeDocumentStore(Directory('${tmp.path}/drive')),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> cleanUp(WidgetTester tester) => tester.runAsync(() async {
+    await db.close();
+    await tmp.delete(recursive: true);
+  });
+
   testWidgets(
     'shows schema version, fingerprint and counts; the debug button adds made-up data',
     (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      final Directory tmp = Directory.systemTemp.createTempSync(
-        'grobing_screen_test',
-      );
-      final DataLocation location = DataLocation(
-        databaseFile: File('${tmp.path}/unused.db'),
-        mediaDir: Directory('${tmp.path}/media'),
-      );
-      final GrobingDatabase db = GrobingDatabase(NativeDatabase.memory());
       final DataState empty = (await tester.runAsync(
         () => readDataState(db, mediaDir: location.mediaDir),
       ))!;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: GrobingTheme.dark,
-          home: DataStateScreen(database: db, location: location),
-        ),
-      );
+      await pumpScreen(tester);
       await _pumpUntil(
         tester,
         () => find.text(empty.shortFingerprint).evaluate().isNotEmpty,
@@ -75,10 +97,63 @@ void main() {
 
       expect(find.text('3'), findsNWidgets(2)); // persons, burials
 
-      await tester.runAsync(() async {
-        await db.close();
-        await tmp.delete(recursive: true);
-      });
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets('without a backup the screen offers the setup', (tester) async {
+    await pumpScreen(tester);
+    await _pumpUntil(
+      tester,
+      () => find.text('Skonfiguruj kopię').evaluate().isNotEmpty,
+    );
+
+    expect(
+      find.textContaining('Kopia nie jest skonfigurowana'),
+      findsOneWidget,
+    );
+    expect(find.text('Zrób kopię teraz'), findsNothing);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets(
+    'with a backup the screen shows the last successful backup, an honest note and the last failure',
+    (tester) async {
+      final DateTime success = DateTime(2026, 10, 6, 14, 32);
+      final DateTime failure = DateTime(2026, 10, 6, 15, 5);
+      await tester.runAsync(
+        () => BackupSettingsStore(File('${tmp.path}/data/backup.json')).write(
+          BackupSettings(
+            recipient: 'age1test',
+            documentUri: 'content://fake/kopia',
+            lastSuccessAt: success,
+            lastFailureAt: failure,
+            lastFailure: 'Pliku kopii nie ma już w Dysku.',
+          ),
+        ),
+      );
+
+      await pumpScreen(tester);
+      await _pumpUntil(
+        tester,
+        () => find.text('Ostatnia udana kopia').evaluate().isNotEmpty,
+      );
+
+      expect(find.text('2026-10-06 14:32'), findsOneWidget);
+      expect(find.textContaining('Grobing nie widzi, kiedy'), findsOneWidget);
+      expect(
+        find.textContaining('2026-10-06 15:05) nie powiodła się'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Pliku kopii nie ma już w Dysku'),
+        findsOneWidget,
+      );
+      expect(find.text('Zrób kopię teraz'), findsOneWidget);
+      expect(find.text('Skonfiguruj kopię od nowa'), findsOneWidget);
+
+      await cleanUp(tester);
     },
   );
 }

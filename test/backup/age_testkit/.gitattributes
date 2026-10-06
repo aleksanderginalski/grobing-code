@@ -1,0 +1,5 @@
+# The vectors are exact bytes: a text header followed by a binary age file. core.autocrlf would turn
+# LF into CRLF in the ones without NUL bytes and break them (the age header is LF-only).
+* -text
+.gitattributes text
+README.md text

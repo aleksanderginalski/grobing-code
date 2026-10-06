@@ -7,6 +7,8 @@ import 'package:grobing/app/grobing_app.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/data/database.dart';
 
+import 'support/backup_fakes.dart';
+
 // ISSUE-002 AC-8: the app starts on a dark (Style B) start screen.
 // ISSUE-007: the start screen leads to "Stan danych".
 void main() {
@@ -24,6 +26,11 @@ void main() {
           location: DataLocation(
             databaseFile: File('${tmp.path}/unused.db'),
             mediaDir: Directory('${tmp.path}/media'),
+          ),
+          backup: backupServiceIn(
+            tmp,
+            db,
+            FakeDocumentStore(Directory('${tmp.path}/drive')),
           ),
         ),
       );

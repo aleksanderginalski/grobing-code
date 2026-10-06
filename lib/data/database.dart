@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
 
 part 'database.g.dart';
 
@@ -147,13 +146,12 @@ class DataLocation {
   final File databaseFile;
   final Directory mediaDir;
 
-  static Future<DataLocation> appDefault() async {
-    final Directory support = await getApplicationSupportDirectory();
-    return DataLocation(
-      databaseFile: File('${support.path}/grobing.db'),
-      mediaDir: Directory('${support.path}/media'),
-    );
-  }
+  /// The layout inside [directory] — on the phone, the app's private support directory
+  /// (`main.dart`). No `path_provider` here, so the data layer also runs on a PC (`tool/`).
+  factory DataLocation.inDirectory(Directory directory) => DataLocation(
+    databaseFile: File('${directory.path}/grobing.db'),
+    mediaDir: Directory('${directory.path}/media'),
+  );
 }
 
 @DriftDatabase(

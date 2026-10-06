@@ -86,14 +86,14 @@ Future<DataState> readDataState(
     }
   }
 
-  final List<File> media = _mediaFiles(mediaDir);
+  final List<File> media = listMediaFiles(mediaDir);
   hash
     ..addTag('M')
     ..addInt(media.length);
   for (final File file in media) {
     final Digest content = await sha256.bind(file.openRead()).first;
     hash
-      ..addText(_relativePath(mediaDir, file))
+      ..addText(mediaRelativePath(mediaDir, file))
       ..addBytes(content.bytes);
   }
 
@@ -107,19 +107,25 @@ Future<DataState> readDataState(
 
 String _quote(String identifier) => '"${identifier.replaceAll('"', '""')}"';
 
-List<File> _mediaFiles(Directory mediaDir) {
+/// Photo files under [mediaDir], ordered by [mediaRelativePath] — the same list the fingerprint
+/// counts and the backup archives (links are not followed).
+List<File> listMediaFiles(Directory mediaDir) {
   if (!mediaDir.existsSync()) return const [];
   final List<File> files = mediaDir
       .listSync(recursive: true, followLinks: false)
       .whereType<File>()
       .toList();
   files.sort(
-    (a, b) => _relativePath(mediaDir, a).compareTo(_relativePath(mediaDir, b)),
+    (a, b) => mediaRelativePath(
+      mediaDir,
+      a,
+    ).compareTo(mediaRelativePath(mediaDir, b)),
   );
   return files;
 }
 
-String _relativePath(Directory root, File file) => file.path
+/// Path of [file] relative to [root], with `/` separators on every platform.
+String mediaRelativePath(Directory root, File file) => file.path
     .substring(root.path.length)
     .replaceAll(r'\', '/')
     .replaceFirst(RegExp('^/+'), '');

@@ -25,6 +25,12 @@ dependencies:
   sqlite3: ^3.5.2
   path_provider: ^2.1.6
   crypto: ^3.0.7
+  # Backup (ADR-004): primitives for our own age v1 module (lib/backup/age/) — X25519 and
+  # ChaCha20-Poly1305 from cryptography, scrypt from pointycastle; both pure Dart, no network.
+  # Pinned exactly: the module is gated by the official age test vectors and CLI (ISSUE-008), so a
+  # new version of either is a reviewed change, not a `pub upgrade`.
+  cryptography: 2.9.0
+  pointycastle: 4.0.0
 
 dev_dependencies:
   flutter_test:

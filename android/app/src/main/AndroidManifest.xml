@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No android.permission.INTERNET in release: the backup reaches Drive through the system
+         "save as" window and the Drive app uploads it (ADR-004 pkt 1, NFR-005). Android's own backup
+         and device transfer are off (ADR-004 pkt 4, res/xml/data_extraction_rules.xml). -->
     <application
         android:label="Grobing"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

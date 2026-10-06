@@ -79,4 +79,61 @@ void main() {
         .toList();
     expect(keystores, isEmpty);
   });
+
+  // ISSUE-008 AC-4 (ADR-004 pkt 4): Android's cloud backup and device-to-device transfer carry no
+  // Grobing data. allowBackup="false" alone does not stop D2D on Android 12+ (SPIKE-003, M7).
+  test(
+    'Android backup is off and both extraction rules exclude every domain (ISSUE-008 AC-4)',
+    () {
+      final String manifest = File(
+        'android/app/src/main/AndroidManifest.xml',
+      ).readAsStringSync();
+      expect(manifest, contains('android:allowBackup="false"'));
+      expect(
+        manifest,
+        contains('android:dataExtractionRules="@xml/data_extraction_rules"'),
+      );
+
+      final String rules = File(
+        'android/app/src/main/res/xml/data_extraction_rules.xml',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      expect(rules, isNot(contains('<include')));
+      for (final String section in ['cloud-backup', 'device-transfer']) {
+        final String body = RegExp(
+          '<$section>(.*?)</$section>',
+          dotAll: true,
+        ).firstMatch(rules)!.group(1)!;
+        for (final String domain in [
+          'root',
+          'file',
+          'database',
+          'sharedpref',
+          'external',
+          'device_root',
+          'device_file',
+          'device_database',
+          'device_sharedpref',
+        ]) {
+          expect(
+            body,
+            contains('<exclude domain="$domain" path="." />'),
+            reason: '$section excludes $domain',
+          );
+        }
+      }
+    },
+  );
+
+  // ISSUE-008 AC-5, NFR-005: the backup reaches Drive through the system window; the app itself has
+  // no network permission. Debug and profile manifests add INTERNET for the Flutter tools only; the
+  // release APK is checked with aapt (Verification in the item).
+  test(
+    'the main manifest asks for no INTERNET permission (ISSUE-008 AC-5)',
+    () {
+      final String manifest = File(
+        'android/app/src/main/AndroidManifest.xml',
+      ).readAsStringSync();
+      expect(manifest, isNot(contains('android.permission.INTERNET"')));
+    },
+  );
 }
