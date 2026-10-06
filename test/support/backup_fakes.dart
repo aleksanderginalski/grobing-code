@@ -3,6 +3,7 @@ import 'dart:io';
 // drift has its own `DatabaseOpener` (LazyDatabase); this one is the restore's.
 import 'package:drift/drift.dart' show GeneratedDatabase;
 import 'package:flutter/services.dart';
+import 'package:grobing/backup/background.dart';
 import 'package:grobing/backup/backup_service.dart';
 import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/backup/documents.dart';
@@ -111,18 +112,56 @@ class FakeDocumentStore implements DocumentStore {
   Future<int> freeSpace() async => free;
 }
 
+/// The native data lock (ISSUE-010, D3) as one object several services can share — like two Flutter
+/// engines in one process.
+class FakeDataLock implements DataLock {
+  bool held = false;
+
+  /// How many times the lock was taken.
+  int acquired = 0;
+
+  @override
+  Future<bool> tryAcquire() async {
+    if (held) return false;
+    held = true;
+    acquired++;
+    return true;
+  }
+
+  @override
+  Future<void> release() async => held = false;
+}
+
+/// WorkManager as a counter of requests (ISSUE-010, D2).
+class FakeBackgroundBackups implements BackgroundBackups {
+  int requests = 0;
+
+  /// When set, [request] fails like a broken channel.
+  Object? error;
+
+  @override
+  Future<void> request() async {
+    if (error != null) throw error!;
+    requests++;
+  }
+}
+
 /// A [BackupService] with everything under [tmp]: data, scratch space, settings, "Drive".
 BackupService backupServiceIn(
   Directory tmp,
   GrobingDatabase db,
   FakeDocumentStore documents, {
   DateTime Function()? clock,
+  DataLock? lock,
+  BackgroundBackups? background,
 }) => BackupService(
   database: db,
   location: DataLocation.inDirectory(Directory('${tmp.path}/data')),
   workDir: Directory('${tmp.path}/cache/backup'),
   settings: BackupSettingsStore(File('${tmp.path}/data/backup.json')),
   documents: documents,
+  lock: lock ?? FakeDataLock(),
+  background: background,
   clock: clock,
 );
 
@@ -133,11 +172,13 @@ RestoreService restoreServiceIn(
   FakeDocumentStore documents, {
   int schemaVersion = 1,
   DatabaseOpener? openDatabase,
+  DataLock? lock,
 }) => RestoreService(
   dataDir: dataDir,
   database: db,
   settings: BackupSettingsStore(File('${dataDir.path}/backup.json')),
   documents: documents,
   schemaVersion: schemaVersion,
+  lock: lock ?? FakeDataLock(),
   openDatabase: openDatabase,
 );

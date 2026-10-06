@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:sqlite3/sqlite3.dart' show Database;
 
 part 'database.g.dart';
 
@@ -139,6 +140,15 @@ class Settings extends Table {
   List<String> get customConstraints => ['CHECK (id = 1)'];
 }
 
+/// Run on every connection to the phone's database. The open app and the background backup
+/// (ISSUE-010) may hold a connection each: `VACUUM INTO` keeps a read lock while it copies, so without
+/// a busy timeout a write in the app would fail at once with `SQLITE_BUSY` instead of waiting. Both
+/// connections use the same bundled SQLite library — the one safe way to share a file within a process
+/// (https://www.sqlite.org/howtocorrupt.html, 2.3). Top-level: drift runs it in its own isolate.
+void configureConnection(Database database) {
+  database.execute('PRAGMA busy_timeout = 5000');
+}
+
 /// Where the data lives on the phone: the database file and the photo directory next to it.
 class DataLocation {
   const DataLocation({required this.databaseFile, required this.mediaDir});
@@ -171,13 +181,16 @@ class DataLocation {
 class GrobingDatabase extends _$GrobingDatabase {
   GrobingDatabase(super.executor);
 
-  factory GrobingDatabase.atFile(File file) =>
-      GrobingDatabase(NativeDatabase.createInBackground(file));
+  factory GrobingDatabase.atFile(File file) => GrobingDatabase(
+    NativeDatabase.createInBackground(file, setup: configureConnection),
+  );
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
+  static const int currentSchemaVersion = 1;
+
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => currentSchemaVersion;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

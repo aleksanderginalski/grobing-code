@@ -74,3 +74,11 @@ gradle.taskGraph.whenReady {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The background backup (ISSUE-010, D1): Jetpack WorkManager directly, no Flutter plugin — the
+    // worker starts its own headless engine with the documents channel. 2.11.x: minSdk 23 (ours is
+    // flutter.minSdkVersion = 24). Adds WAKE_LOCK, ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED and
+    // FOREGROUND_SERVICE to the merged manifest (SPIKE-003, M3) — never INTERNET (NFR-005).
+    implementation("androidx.work:work-runtime:2.11.2")
+}

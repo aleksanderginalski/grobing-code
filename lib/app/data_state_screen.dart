@@ -269,12 +269,20 @@ class _BackupSection extends StatelessWidget {
                 label: 'Ostatnia udana kopia',
                 value: backup.lastSuccessAt == null
                     ? 'jeszcze nie było'
-                    : _formatLocal(backup.lastSuccessAt!),
+                    : '${_formatLocal(backup.lastSuccessAt!)}'
+                          '${backup.lastSuccessInBackground ? ' (w tle)' : ''}',
               ),
-              // Honest about what the app can see (ADR-004, Consequences; SPIKE-003, M3).
+              // Honest about what the app can see (ADR-004, Consequences; SPIKE-003, M3) and when
+              // the background backup runs (ISSUE-010, D2; SPIKE-003, M2a).
               const Text(
                 'Zapisana w Dysku na telefonie. Do chmury wysyła ją aplikacja Dysk — '
                 'Grobing nie widzi, kiedy.',
+                style: _muted,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Kopia w tle: ok. 10 minut po ostatniej zmianie, przy dłuższej pracy co '
+                'godzinę; dokładny termin wyznacza Android.',
                 style: _muted,
               ),
               if (backup.lastAttemptFailed) ...[

@@ -127,6 +127,47 @@ kopia kończy się komunikatem i niczego nie rusza.
 - Telefon, który ma już dane, dostaje ostrzeżenie z liczbami i „Zastąp dane”. Nie ma tam „najpierw
   zrób kopię”: to nadpisałoby plik, z którego właśnie odtwarzasz.
 
+### Kopia w tle
+
+Kopia robi się sama, **jedna po sesji pracy:** ok. 10 min po ostatniej zmianie danych, a przy dłuższej,
+nieprzerwanej pracy najpóźniej godzinę po pierwszej niezapisanej zmianie (ISSUE-010 w vaulcie). Gdy
+aplikacji nikt nie używa, nic się nie dzieje — bez cyklicznych sprawdzeń.
+
+- **Wyzwalacze:** **każdy zapis do bazy** (`watchChanges` — `tableUpdates` z `drift`, jeden obserwator w
+  `GrobingApp`), a do tego wyjście z aplikacji (`paused`) i start (`main.dart`: dane po odtworzeniu,
+  zmiany poza `drift`). Zamówienie idzie w chwili zapisu, bo samo wyjście z aplikacji przegrywa wyścig z
+  wyrzuceniem jej z ostatnich: proces ginie ~2 s po geście, zanim zadanie zostanie zapisane (stop #2).
+  Każdy wyzwalacz zamawia kopię tylko wtedy, gdy **stempel danych** (`data_stamp.dart`: licznik zmian z
+  nagłówka SQLite, rozmiar i czas pliku bazy, rozmiar i czas każdego zdjęcia — nigdy treść) różni się
+  od stempla ostatniej udanej kopii w `backup.json`. Stempel jest porównywany na równość, więc cofnięty
+  zegar niczego nie ukryje.
+- **Zadanie** (`BackgroundBackup.kt`): jednorazowe zadanie WorkManagera (`androidx.work`, bez wtyczki
+  Fluttera) z opóźnieniem 10 min, warunkiem `StorageNotLow` i czasem pierwszej zmiany. Jedno czekające
+  zadanie obejmuje wszystkie zmiany; biegnące **nigdy nie jest anulowane** (anulowany zapis `"wt"`
+  zostawiłby w Dysku ucięty plik), następne idzie za nim. **Cisza:** jeśli dane zmieniły się mniej niż
+  10 min temu, przebieg kończy się bez kopii i zamawia następny na chwilę, gdy minie 10 min ciszy — chyba
+  że od pierwszej zmiany minęła godzina (`backupQuiet`, `backupCap` w `background.dart`). Nieudana kopia →
+  do 4 prób z rosnącym odstępem, potem czeka na następne wyzwolenie; błąd widać na „Stanie danych”.
+- **Dart w tle:** zadanie startuje bezgłowy silnik Fluttera, rejestruje w nim `BackupDocuments` (bez
+  okien) i kanał `com.grobing.app/background`, a potem uruchamia `backgroundBackupMain` z `main.dart`
+  (`@pragma('vm:entry-point')` — inaczej build release by ją wyciął). Przebieg
+  (`background_backup.dart`) robi tę samą kopię co przycisk, z dopiskiem „(w tle)” na ekranie. Zadanie ma
+  ~10 min (limit Androida); przy ~8 MB/s szyfrowania to kopie rzędu kilku GB.
+- **Jedna operacja na danych naraz:** kopia w tle, „Zrób kopię teraz”, konfiguracja i odtworzenie biorą
+  ten sam zamek, trzymany natywnie (`DataLock`), bo silniki nie dzielą pamięci Darta, a blokada pliku w
+  Darcie działa na poziomie procesu. Kopia w tle przy znaczniku `restore.json` albo przy innej wersji
+  schematu nie robi nic — dokończenie odtworzenia i migracja należą do startu aplikacji.
+- **Dwa połączenia z bazą** (otwarta aplikacja + kopia w tle) używają tej samej dołączonej biblioteki
+  SQLite i `PRAGMA busy_timeout`. **Kotlin nigdy nie otwiera `grobing.db`**: druga kopia SQLite w
+  procesie nie widzi cudzych blokad ([How To Corrupt](https://www.sqlite.org/howtocorrupt.html), 2.3).
+- **Do testów** — wymuszenie zadania bez czekania (przy danych zmienionych < 10 min temu przebieg tylko
+  zamówi następny):
+
+  ```sh
+  adb shell dumpsys jobscheduler | grep "u0a.*BackupWorker"   # numer zadania po "/"
+  adb shell cmd jobscheduler run -f -n androidx.work.systemjobscheduler com.grobing.app <numer>
+  ```
+
 ## Podpis wydania
 
 Aktualizacja wchodzi na telefon tylko wtedy, gdy jest podpisana **tym samym kluczem** co zainstalowana

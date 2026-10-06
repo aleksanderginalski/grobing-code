@@ -10,6 +10,8 @@ class BackupSettings {
     required this.recipient,
     required this.documentUri,
     this.lastSuccessAt,
+    this.lastSuccessStamp,
+    this.lastSuccessInBackground = false,
     this.lastFailureAt,
     this.lastFailure,
   });
@@ -18,6 +20,9 @@ class BackupSettings {
     recipient: json['recipient']! as String,
     documentUri: json['document_uri']! as String,
     lastSuccessAt: _time(json['last_success_at']),
+    lastSuccessStamp: json['last_success_stamp'] as String?,
+    lastSuccessInBackground:
+        json['last_success_in_background'] as bool? ?? false,
     lastFailureAt: _time(json['last_failure_at']),
     lastFailure: json['last_failure'] as String?,
   );
@@ -31,6 +36,14 @@ class BackupSettings {
   /// When the provider (e.g. Google Drive) last accepted the whole file — not when it reached the
   /// cloud; the app cannot see that (ADR-004, Consequences).
   final DateTime? lastSuccessAt;
+
+  /// The data stamp (`data_stamp.dart`) taken right before the last successful backup's snapshot:
+  /// a different stamp now means data the backup does not have (ISSUE-010, D2). Null before the
+  /// first backup and in files written before ISSUE-010 — both read as "changed".
+  final String? lastSuccessStamp;
+
+  /// Whether the last successful backup was the background one, for the screen.
+  final bool lastSuccessInBackground;
   final DateTime? lastFailureAt;
 
   /// Polish, for the screen; no family data, no secrets.
@@ -40,10 +53,16 @@ class BackupSettings {
       lastFailureAt != null &&
       (lastSuccessAt == null || lastFailureAt!.isAfter(lastSuccessAt!));
 
-  BackupSettings succeeded(DateTime at) => BackupSettings(
+  BackupSettings succeeded(
+    DateTime at, {
+    required String stamp,
+    required bool inBackground,
+  }) => BackupSettings(
     recipient: recipient,
     documentUri: documentUri,
     lastSuccessAt: at,
+    lastSuccessStamp: stamp,
+    lastSuccessInBackground: inBackground,
     lastFailureAt: lastFailureAt,
     lastFailure: lastFailure,
   );
@@ -52,6 +71,8 @@ class BackupSettings {
     recipient: recipient,
     documentUri: documentUri,
     lastSuccessAt: lastSuccessAt,
+    lastSuccessStamp: lastSuccessStamp,
+    lastSuccessInBackground: lastSuccessInBackground,
     lastFailureAt: at,
     lastFailure: reason,
   );
@@ -60,6 +81,8 @@ class BackupSettings {
     'recipient': recipient,
     'document_uri': documentUri,
     'last_success_at': lastSuccessAt?.toUtc().toIso8601String(),
+    'last_success_stamp': lastSuccessStamp,
+    'last_success_in_background': lastSuccessInBackground,
     'last_failure_at': lastFailureAt?.toUtc().toIso8601String(),
     'last_failure': lastFailure,
   };

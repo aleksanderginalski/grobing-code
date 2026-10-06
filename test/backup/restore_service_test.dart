@@ -269,6 +269,7 @@ void main() {
           workDir: Directory('${tmp.path}/cache'),
           settings: BackupSettingsStore(File('${source.path}/backup.json')),
           documents: realDrive,
+          lock: FakeDataLock(),
         );
         final BackupSettings settings = (await backup.setUp(_passphrase))!;
         await sourceDb.close();

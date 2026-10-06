@@ -23,13 +23,14 @@ import java.util.concurrent.Executors
  * file only. No API keys, no OAuth, no INTERNET permission — the cloud app behind the window (Google
  * Drive) uploads and downloads.
  *
- * Writing needs only a [Context], not an Activity, so a background backup can reuse it (ISSUE-010).
- * Errors carry a code and the exception type only, never a path or file content.
+ * Writing needs only a [Context], not an Activity, so the background backup registers it too
+ * (ISSUE-010) — without [startForResult], since no window can open there. Errors carry a code and the
+ * exception type only, never a path or file content.
  */
 class BackupDocuments(
     private val context: Context,
     messenger: BinaryMessenger,
-    private val startForResult: (Intent, Int) -> Unit,
+    private val startForResult: ((Intent, Int) -> Unit)?,
 ) : MethodChannel.MethodCallHandler {
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -97,12 +98,17 @@ class BackupDocuments(
     }
 
     private fun startWindow(result: MethodChannel.Result, requestCode: Int, intent: Intent) {
+        val start = startForResult
+        if (start == null) {
+            result.error("no_window", "No window in the background", null)
+            return
+        }
         if (pending != null) {
             result.error("busy", "A system window is already open", null)
             return
         }
         pending = requestCode to result
-        startForResult(intent, requestCode)
+        start(intent, requestCode)
     }
 
     /** Called from [MainActivity.onActivityResult]; true when the result was ours. */

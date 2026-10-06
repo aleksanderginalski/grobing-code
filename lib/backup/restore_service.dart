@@ -12,6 +12,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../data/data_state.dart';
 import '../data/database.dart';
 import 'age/age.dart';
+import 'background.dart';
 import 'backup_archive.dart';
 import 'backup_settings.dart';
 import 'documents.dart';
@@ -76,6 +77,7 @@ class RestoreService {
     required this.settings,
     required this.documents,
     required this.schemaVersion,
+    required this.lock,
     DatabaseOpener? openDatabase,
   }) : _openDatabase = openDatabase ?? _openGrobingDatabase;
 
@@ -89,6 +91,11 @@ class RestoreService {
 
   /// The app's schema version: older backups are migrated, newer ones refused (ADR-004 pkt 5).
   final int schemaVersion;
+
+  /// Held from the first check to the end of the swap (ISSUE-010, D3), so no backup reads the data
+  /// half replaced. Released before the app reopens its data: a background run that starts then sees
+  /// either finished data or, after an interrupted swap, the marker — which it leaves to the app.
+  final DataLock lock;
   final DatabaseOpener _openDatabase;
 
   /// Free space kept after the restore's own needs (ISSUE-009, D2).
@@ -119,6 +126,25 @@ class RestoreService {
     void Function(RestoreStep step)? onStep,
   }) async {
     if (passphrase.isEmpty) throw const BackupException('Wpisz hasło.');
+    if (!await lock.tryAcquire()) throw const BackupException(dataBusyMessage);
+    try {
+      return await _restoreLocked(
+        backupUri: backupUri,
+        keyUri: keyUri,
+        passphrase: passphrase,
+        onStep: onStep,
+      );
+    } finally {
+      await lock.release();
+    }
+  }
+
+  Future<RestoreResult> _restoreLocked({
+    required String backupUri,
+    required String keyUri,
+    required String passphrase,
+    void Function(RestoreStep step)? onStep,
+  }) async {
     final Directory staging = Directory('${dataDir.path}/$restoreStagingName');
     final Directory incoming = restoreIncomingDir(dataDir);
     try {
