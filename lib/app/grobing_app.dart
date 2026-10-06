@@ -7,7 +7,7 @@ import '../backup/backup_service.dart';
 import '../backup/restore_service.dart';
 import '../data/database.dart';
 import 'data_state_screen.dart';
-import 'start_screen.dart';
+import 'home/home_screen.dart';
 import 'theme.dart';
 
 /// Everything the screens work on, opened together — and replaced together after a restore.
@@ -103,7 +103,7 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final Future<void> Function(String notice)? onRestored =
         widget.reopen == null ? null : _reload;
-    Widget start() => StartScreen(
+    Widget start() => HomeScreen(
       database: _database,
       location: _location,
       backup: _backup,
@@ -115,8 +115,9 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       title: 'Grobing',
       debugShowCheckedModeBanner: false,
       theme: GrobingTheme.dark,
-      // No `home`: Flutter refuses it next to `onGenerateInitialRoutes`. The start screen is the only
-      // named route; after a restore "Stan danych" opens on top of it with the notice.
+      // No `home`: Flutter refuses it next to `onGenerateInitialRoutes`. The home screen (the map of
+      // Poland, ISSUE-014) is the only named route; after a restore "Stan danych" opens on top of it
+      // with the notice.
       onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (_) => start()),
       onGenerateInitialRoutes: (_) => [
         MaterialPageRoute<void>(builder: (_) => start()),

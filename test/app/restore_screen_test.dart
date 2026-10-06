@@ -8,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/data_state_screen.dart';
 import 'package:grobing/app/grobing_app.dart';
+import 'package:grobing/app/home/home_screen.dart';
 import 'package:grobing/app/restore_screen.dart';
-import 'package:grobing/app/start_screen.dart';
 import 'package:grobing/backup/age/age.dart';
 import 'package:grobing/backup/backup_archive.dart';
 import 'package:grobing/backup/restore_swap.dart';
@@ -35,6 +35,13 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
     await tester.pump();
   }
   fail('condition not met in time');
+}
+
+/// Unmounts the app and lets drift finish closing the home screen's stream query: it does so on a
+/// timer of the test's fake clock, and closing the database waits for it (ISSUE-014).
+Future<void> _unmount(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox());
+  await tester.pump(const Duration(seconds: 1));
 }
 
 void main() {
@@ -136,7 +143,7 @@ void main() {
         reopen: open,
       ),
     );
-    await tester.tap(find.text('Stan danych'));
+    await tester.tap(find.byTooltip('Ustawienia'));
     await _pumpUntil(
       tester,
       () => find.text('Odtwórz z kopii').evaluate().isNotEmpty,
@@ -205,10 +212,11 @@ void main() {
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
-      expect(find.byType(StartScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsOneWidget);
 
       expect(opened, hasLength(2));
       expect(opened.first, same(before.database));
+      await _unmount(tester);
     },
   );
 
@@ -239,6 +247,7 @@ void main() {
       );
 
       expect(data.restore.databaseClosed, isFalse);
+      await _unmount(tester);
     },
   );
 
@@ -257,6 +266,7 @@ void main() {
       expect(find.textContaining('Złe hasło'), findsOneWidget);
       expect(find.byType(RestoreScreen), findsOneWidget);
       expect(data.restore.databaseClosed, isFalse);
+      await _unmount(tester);
     },
   );
 }

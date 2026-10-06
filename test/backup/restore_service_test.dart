@@ -12,6 +12,7 @@ import 'package:grobing/backup/backup_service.dart';
 import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/backup/restore_service.dart';
 import 'package:grobing/backup/tar_writer.dart';
+import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_data.dart';
@@ -383,6 +384,67 @@ void main() {
       },
     );
   });
+
+  test(
+    'ISSUE-014 DoD — cemeteries added and corrected on the home screen come back from a backup '
+    'with their points',
+    () async {
+      final Directory from = Directory('${tmp.path}/home-screen')..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${from.path}/grobing.db')),
+      );
+      final int moved = await addCemetery(
+        db,
+        name: 'Cmentarz Wymyślny',
+        locality: 'Miejscowość Testowa',
+        point: const GeoPoint(50.5, 19.5),
+      );
+      await updateCemetery(
+        db,
+        moved,
+        name: 'Cmentarz Wymyślony',
+        locality: 'Miejscowość Testowa',
+        point: const GeoPoint(51.0, 20.0),
+      );
+      await addCemetery(db, name: 'Cmentarz Próbny');
+      final DataState before = await readDataState(
+        db,
+        mediaDir: Directory('${from.path}/media'),
+      );
+      await db.customStatement('VACUUM INTO ?', ['${tmp.path}/home.db']);
+      await db.close();
+      final File backup = File('${tmp.path}/home.age');
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/home.db'),
+        mediaDir: Directory('${from.path}/media'),
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+      final String uri = upload('home.age', backup.readAsBytesSync());
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+      await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+        backupUri: uri,
+        keyUri: FakeDocumentStore.uriOf('klucz.age'),
+        passphrase: _passphrase,
+      );
+
+      expect((await stateOnDisk(fresh.dir)).fingerprint, before.fingerprint);
+      final GrobingDatabase restored = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      try {
+        final List<CemeterySummary> all = await watchCemeteries(restored).first;
+        expect(all.map((c) => (c.name, c.point)), [
+          ('Cmentarz Wymyślony', const GeoPoint(51.0, 20.0)),
+          ('Cmentarz Próbny', null),
+        ]);
+      } finally {
+        await restored.close();
+      }
+    },
+  );
 
   group('D3 — the backup after a restore', () {
     test(

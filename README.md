@@ -72,7 +72,24 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.
   **Zmiana tej definicji unieważnia wszystkie wcześniej zapisane odciski.**
 - **Wymyślone dane** (`lib/dev/`) są dostępne tylko w buildzie debug: przycisk na ekranie „Stan danych”.
-  W buildzie release tego kodu nie ma.
+  W buildzie release tego kodu nie ma. Wymyślone cmentarze mają wymyślone punkty w Polsce: partie 1 i 2
+  stoją w jednym miejscu (znicz z liczbą), co trzecia partia jest bez punktu.
+
+## Mapa
+
+Ekran główny to mapa Polski (ISSUE-014, ADR-007 w vaulcie). **Bez warstwy kafelków i bez sieci:** kontur
+kraju, rzeki i 9 miast są w aplikacji, w `assets/map/poland.json` (ok. 37 KB).
+- **Źródło:** [Natural Earth](https://www.naturalearthdata.com/about/terms-of-use/) 1:10m — domena
+  publiczna, bez wymogu podpisu. Plik odtwarza `tool/map/extract_poland.dart` z trzech plików GeoJSON
+  repozytorium [`nvkelso/natural-earth-vector`](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson)
+  (lista i polecenie w nagłówku skryptu). Plików źródłowych nie ma w repo.
+- **`flutter_map` 8.3.2 i `latlong2` 0.10.1 są przypięte dokładnie.** Paczka zależy od `http`, ale używa
+  go tylko warstwa kafelków, której tu nie ma. Aplikacja nie ma uprawnienia `INTERNET`.
+- **Pułapka:** ruch mapy ogranicza `CameraConstraint.containCenter`, a nie `contain`. Na pionowym ekranie
+  cała szerokość Polski daje widok wyższy niż Polska, więc „wszystkie krawędzie w granicach” nie da się
+  spełnić i mapa jest pusta (zmierzone przy planie ISSUE-014).
+- **Znicze, które nachodzą na siebie** (cel dotyku 48 dp), łączą się w jeden znicz z liczbą
+  (`lib/app/home/pin_groups.dart`). Ikona znicza jest jedna na całą aplikację: `lib/app/widgets/candle.dart`.
 
 ## Kopia
 

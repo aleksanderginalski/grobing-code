@@ -12,6 +12,16 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
   final int batch =
       (await db.select(db.cemeteries).get()).length + 1; // numbers the names
 
+  // A made-up point in Poland for the map of ISSUE-014 (05_DESIGN/cmentarze.md D15): batches 1 and 2
+  // a few hundred metres apart, so they share one candle with a number; every third batch without a
+  // point, so only the search finds it. Round, invented coordinates — no real cemetery is meant.
+  final ({double lat, double lon})? point = switch (batch) {
+    _ when batch % 3 == 0 => null,
+    1 => (lat: 51.0, lon: 20.0),
+    2 => (lat: 51.002, lon: 20.003),
+    _ => (lat: 50.0 + (batch % 5) * 0.5, lon: 17.0 + (batch % 7) * 0.8),
+  };
+
   await db.transaction(() async {
     final int cemetery = await db
         .into(db.cemeteries)
@@ -19,6 +29,8 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
           CemeteriesCompanion.insert(
             name: 'Cmentarz Wymyślony $batch',
             locality: const Value('Miejscowość Testowa'),
+            centerLat: Value(point?.lat),
+            centerLon: Value(point?.lon),
           ),
         );
     final int grave = await db

@@ -41,10 +41,16 @@ void main() {
     settings = BackupSettingsStore(File('${tmp.path}/data/backup.json'));
   });
 
-  Future<void> cleanUp(WidgetTester tester) => tester.runAsync(() async {
-    await db.close();
-    await tmp.delete(recursive: true);
-  });
+  Future<void> cleanUp(WidgetTester tester) async {
+    // The home screen's stream query closes on a timer of the fake clock; closing the database waits
+    // for it (ISSUE-014).
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(() async {
+      await db.close();
+      await tmp.delete(recursive: true);
+    });
+  }
 
   testWidgets(
     'leaving the app (paused) with changed data asks for one background backup; other lifecycle '
