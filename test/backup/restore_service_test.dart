@@ -16,13 +16,15 @@ import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_data.dart';
 
+import '../drift/grobing/generated/schema_v1.dart' as v1;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
 // AC-1: the restored data has the source's fingerprint (NFR-002 → Method).
 // AC-2: a wrong passphrase, a damaged file, an unsafe tar, a manifest that does not match and a
 //       backup from a newer schema are refused with a readable message, the phone's data untouched.
-// AC-3: a backup from an older schema goes through the app's own migrations (synthetic v2).
+// AC-3: a backup from an older schema goes through the app's own migrations (synthetic next version);
+//       ISSUE-011 AC-4: a real v1 backup into the v2 app.
 // AC-5: too large for the phone → refused before unpacking.
 // D3: what the backup does afterwards. Data: made-up people only (`fictional_data.dart`).
 
@@ -140,22 +142,37 @@ Map<String, Object?> _withFiles(
   ],
 };
 
-class _SchemaV2 extends GrobingDatabase {
-  _SchemaV2(super.executor);
+/// An app one schema version newer than this one: tests the mechanism "an older backup goes through
+/// the app's migrations" apart from any real migration step (ISSUE-009 AC-3; v3 since ISSUE-011).
+class _SchemaNext extends GrobingDatabase {
+  _SchemaNext(super.executor);
+
+  static const int version = GrobingDatabase.currentSchemaVersion + 1;
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => version;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      if (from == 1) {
+      if (from == GrobingDatabase.currentSchemaVersion) {
         await customStatement('ALTER TABLE persons ADD COLUMN nickname TEXT');
       }
     },
   );
 }
+
+/// Made-up rows of a phone still at schema v1 (ISSUE-011 AC-4): two dates, two burials.
+const List<String> _v1Rows = [
+  'INSERT INTO persons (id, given_names, surname) VALUES '
+      "(1, 'Ojciec 1', 'Wymyślona'), (2, 'Matka 1', 'Wymyślona')",
+  "INSERT INTO cemeteries (id, name) VALUES (1, 'Cmentarz Wymyślony 1')",
+  'INSERT INTO graves (id, cemetery_id) VALUES (1, 1)',
+  'INSERT INTO events (type, person_id, qualifier, year) VALUES '
+      "('birth', 1, 'about', 1890), ('death', 2, 'before', 1960)",
+  'INSERT INTO burials (person_id, grave_id) VALUES (1, 1), (2, 1)',
+];
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -290,7 +307,13 @@ void main() {
         expect(restored.fingerprint, sourceFingerprint);
         expect(restored.rowCounts, sourceCounts);
         expect(result.dataFingerprint, sourceFingerprint);
-        expect((result.schemaFrom, result.schemaTo), (1, 1));
+        expect(
+          (result.schemaFrom, result.schemaTo),
+          (
+            GrobingDatabase.currentSchemaVersion,
+            GrobingDatabase.currentSchemaVersion,
+          ),
+        );
         expect(steps, [
           RestoreStep.checkingSpace,
           RestoreStep.unlockingKey,
@@ -671,7 +694,7 @@ void main() {
     test('a backup from a newer schema asks for an update', () async {
       final List<_Entry> entries = _untar(backupTar);
       final Map<String, Object?> manifest = _manifestOf(entries)
-        ..['schema_version'] = 2;
+        ..['schema_version'] = GrobingDatabase.currentSchemaVersion + 1;
       final String uri = await uploadTar(
         'nowsza.age',
         _tar([...entries.take(entries.length - 1), _manifestEntry(manifest)]),
@@ -782,11 +805,77 @@ void main() {
     );
   });
 
+  test('ISSUE-011 AC-4 — a real v1 backup restores into the v2 app: v1 tables and counts kept, every '
+      'date and burial carried over with one claim', () async {
+    // The v1 phone's snapshot, made by the v1 schema itself (drift's export of v1). The backup
+    // writer reads snapshots at the app's own version, so the v1 archive is assembled here.
+    final File v1File = File('${tmp.path}/v1.db');
+    final v1.DatabaseAtV1 old = v1.DatabaseAtV1(NativeDatabase(v1File));
+    for (final String row in _v1Rows) {
+      await old.customStatement(row);
+    }
+    final DataState v1State = await readDataState(
+      old,
+      mediaDir: Directory('${tmp.path}/v1-media'),
+    );
+    expect(v1State.schemaVersion, 1);
+    await old.customStatement('VACUUM INTO ?', ['${tmp.path}/v1-snapshot.db']);
+    await old.close();
+    final List<_Entry> files = [
+      (
+        path: backupDatabaseName,
+        data: File('${tmp.path}/v1-snapshot.db').readAsBytesSync(),
+      ),
+    ];
+    final String uri = await uploadTar(
+      'kopia-v1.age',
+      _tar([
+        ...files,
+        _manifestEntry(
+          _withFiles({
+            ..._manifestOf(_untar(backupTar)),
+            'schema_version': 1,
+            'record_counts': v1State.rowCounts,
+            'data_fingerprint': v1State.fingerprint,
+          }, files),
+        ),
+      ]),
+    );
+
+    final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+    final RestoreResult result =
+        await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+          backupUri: uri,
+          keyUri: FakeDocumentStore.uriOf('klucz.age'),
+          passphrase: _passphrase,
+        );
+
+    expect((result.schemaFrom, result.schemaTo), (1, 2));
+    final DataState after = await stateOnDisk(fresh.dir);
+    expect(after.schemaVersion, 2);
+    for (final MapEntry<String, int> table in v1State.rowCounts.entries) {
+      expect(after.rowCounts[table.key], table.value, reason: table.key);
+    }
+    expect(after.rowCounts['assertions'], 4);
+
+    final GrobingDatabase reopened = GrobingDatabase(
+      NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+    );
+    final List<Assertion> claims = await reopened
+        .select(reopened.assertions)
+        .get();
+    await reopened.close();
+    expect(
+      claims.map((c) => (c.sourceKind, c.sourceDetail, c.status)).toSet(),
+      {(SourceKind.notes, carriedOverFromV1, AssertionStatus.claimed)},
+    );
+  });
+
   test(
-    'AC-3 — a backup from schema v1 restores into an app at v2 through its own migration',
+    'AC-3 — a backup from the previous schema restores into a newer app through its own migration',
     () async {
-      final Directory dir = Directory('${tmp.path}/v2')..createSync();
-      final _SchemaV2 live = _SchemaV2(
+      final Directory dir = Directory('${tmp.path}/next')..createSync();
+      final _SchemaNext live = _SchemaNext(
         NativeDatabase(File('${dir.path}/grobing.db')),
       );
       await live.customSelect('SELECT 1').get();
@@ -796,23 +885,26 @@ void main() {
             dir,
             live,
             drive,
-            schemaVersion: 2,
-            openDatabase: (file) => _SchemaV2(NativeDatabase(file)),
+            schemaVersion: _SchemaNext.version,
+            openDatabase: (file) => _SchemaNext(NativeDatabase(file)),
           ).restore(
             backupUri: FakeDocumentStore.uriOf('kopia.age'),
             keyUri: FakeDocumentStore.uriOf('klucz.age'),
             passphrase: _passphrase,
           );
 
-      expect((result.schemaFrom, result.schemaTo), (1, 2));
-      final _SchemaV2 reopened = _SchemaV2(
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (GrobingDatabase.currentSchemaVersion, _SchemaNext.version),
+      );
+      final _SchemaNext reopened = _SchemaNext(
         NativeDatabase(File('${dir.path}/grobing.db')),
       );
       final DataState state = await readDataState(
         reopened,
         mediaDir: Directory('${dir.path}/media'),
       );
-      expect(state.schemaVersion, 2);
+      expect(state.schemaVersion, _SchemaNext.version);
       expect(state.rowCounts, sourceCounts);
       final List<String> columns =
           (await reopened.customSelect('PRAGMA table_info(persons)').get())
@@ -834,13 +926,14 @@ void main() {
         used.db,
         mediaDir: Directory('${used.dir.path}/media'),
       )).fingerprint;
-      // An app that says v2 but opens the file without reaching v2: the migration did not happen.
+      // An app that says "one version newer" but opens the file without reaching it: the migration
+      // did not happen.
       await expectLater(
         restoreServiceIn(
           used.dir,
           used.db,
           drive,
-          schemaVersion: 2,
+          schemaVersion: _SchemaNext.version,
           openDatabase: (file) => GrobingDatabase(NativeDatabase(file)),
         ).restore(
           backupUri: FakeDocumentStore.uriOf('kopia.age'),

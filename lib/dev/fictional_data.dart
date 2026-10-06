@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 
+import '../data/claims.dart';
 import '../data/database.dart';
 
 /// Adds one batch of **made-up** people, families and graves (family-data.md: never real data in the
@@ -66,14 +67,35 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
           FamilyChildrenCompanion.insert(familyId: family, personId: child),
         );
 
-    await db.batch((b) {
-      b.insertAll(db.events, [
+    // A made-up dispute (US-004 AC-1): the notes and the grandmother give the father different birth
+    // years. Both claims stay, both contradicted; the notes' row, written first, is the one shown.
+    const ClaimSource notesDisputed = ClaimSource(
+      status: AssertionStatus.contradicted,
+    );
+    const ClaimSource grandmotherDisputed = ClaimSource(
+      kind: SourceKind.grandmother,
+      status: AssertionStatus.contradicted,
+    );
+    final List<(EventsCompanion, ClaimSource)> events = [
+      (
         EventsCompanion.insert(
           type: EventType.birth,
           personId: Value(father),
           qualifier: const Value(DateQualifier.about),
           year: const Value(1890),
         ),
+        notesDisputed,
+      ),
+      (
+        EventsCompanion.insert(
+          type: EventType.birth,
+          personId: Value(father),
+          qualifier: const Value(DateQualifier.exact),
+          year: const Value(1892),
+        ),
+        grandmotherDisputed,
+      ),
+      (
         EventsCompanion.insert(
           type: EventType.death,
           personId: Value(father),
@@ -82,6 +104,9 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
           month: const Value(3),
           day: const Value(14),
         ),
+        const ClaimSource(),
+      ),
+      (
         EventsCompanion.insert(
           type: EventType.birth,
           personId: Value(mother),
@@ -89,19 +114,28 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
           year: const Value(1893),
           yearTo: const Value(1895),
         ),
+        const ClaimSource(),
+      ),
+      (
         EventsCompanion.insert(
           type: EventType.marriage,
           familyId: Value(family),
           qualifier: const Value(DateQualifier.before),
           year: const Value(1920),
         ),
-      ]);
-      b.insertAll(db.burials, [
-        BurialsCompanion.insert(personId: father, graveId: grave),
-        BurialsCompanion.insert(personId: mother, graveId: grave),
-        BurialsCompanion.insert(personId: child, graveId: graveWithAddress),
-      ]);
-    });
+        const ClaimSource(),
+      ),
+    ];
+    for (final (EventsCompanion event, ClaimSource source) in events) {
+      await addEventWithClaim(db, event, source: source);
+    }
+    for (final (int person, int inGrave) in [
+      (father, grave),
+      (mother, grave),
+      (child, graveWithAddress),
+    ]) {
+      await addBurialWithClaim(db, personId: person, graveId: inGrave);
+    }
 
     // A placeholder file instead of a photo, so the media part of the fingerprint is exercised.
     final String relativePath = 'wymyslone/nota-$batch.txt';

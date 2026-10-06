@@ -55,7 +55,18 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
      i generuje testy migracji w `test/drift/grobing/`;
   3. dopisz krok w `onUpgrade` i uruchom testy.
 
-  Wersja bez kroku migracji kończy się błędem przy otwarciu bazy, zamiast skasować dane.
+  Wersja bez kroku migracji kończy się błędem przy otwarciu bazy, zamiast skasować dane. Wszystkie
+  kroki i `user_version` idą w jednej transakcji: przerwana aktualizacja zostawia starą wersję całą.
+  **Krok dodaje i przebudowuje, ale nie usuwa tabel ani wierszy:** odtworzenie starszej kopii sprawdza
+  po migracji każdą tabelę z jej manifestu i liczbę wierszy (`lib/backup/restore_service.dart`).
+- **Twierdzenia (schemat v2, ADR-006 w vaulcie).** Wartość żyje w wierszu `events` (data z dopiskiem)
+  albo `burials` (grób), a tabela `assertions` mówi, kto ją podał i jak mocna jest: rodzaj źródła,
+  opcjonalny szczegół, status, kiedy zapisane. Tak jak w GEDCOM 7:
+  - sprzeczna wartość z innego źródła to **osobny wiersz** z własnym twierdzeniem, nigdy nadpisanie;
+  - pokazuje się **pierwszy** wiersz (najniższe `id`);
+  - **każdy wiersz `events` i `burials` ma co najmniej jedno twierdzenie.** Dlatego zapisuje się je
+    przez `lib/data/claims.dart`, w jednej transakcji z twierdzeniem. Wiersze z v1 dostały przy migracji
+    twierdzenie „notatki, przeniesione z v1”.
 - **Odcisk danych** (ekran „Stan danych”, `lib/data/data_state.dart`) jest miarą dla kopii i
   odtworzenia (NFR-002). Liczy się z **treści**, nie z pliku: tabele po nazwie, wiersze po wszystkich
   kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.

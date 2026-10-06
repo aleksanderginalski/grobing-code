@@ -78,12 +78,13 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('1'),
+        find.text('2'),
         findsOneWidget,
       ); // the schema version; every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
-      expect(find.text('0'), findsNWidgets(11)); // 10 tables + photo files
+      expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
+      expect(find.text('0'), findsNWidgets(12)); // 11 tables + photo files
 
       // The button writes a file and a transaction: run it on the real clock, not the test's fake one.
       await tester.runAsync(() async {

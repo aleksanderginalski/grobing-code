@@ -27,12 +27,12 @@ void main() {
   });
 
   test(
-    'empty database: schema 1, zero rows in every table, no photos',
+    'empty database: schema 2, zero rows in every table, no photos',
     () async {
       final DataState state = await readDataState(db, mediaDir: media);
 
-      expect(state.schemaVersion, 1);
-      expect(state.rowCounts, hasLength(10));
+      expect(state.schemaVersion, 2);
+      expect(state.rowCounts, hasLength(11));
       expect(state.rowCounts.values, everyElement(0));
       expect(state.mediaFileCount, 0);
       expect(state.shortFingerprint, hasLength(16));
@@ -47,7 +47,9 @@ void main() {
     expect(state.rowCounts['persons'], 3);
     expect(state.rowCounts['families'], 1);
     expect(state.rowCounts['burials'], 3);
-    expect(state.rowCounts['events'], 4);
+    // One made-up dispute: the father's birth from the notes and from the grandmother (ISSUE-011).
+    expect(state.rowCounts['events'], 5);
+    expect(state.rowCounts['assertions'], 8);
     expect(state.mediaFileCount, 1);
   });
 
@@ -95,7 +97,7 @@ void main() {
 
       final DataState fromCopy = await readDataState(copy, mediaDir: media);
       expect(fromCopy.fingerprint, original.fingerprint);
-      expect(fromCopy.schemaVersion, 1);
+      expect(fromCopy.schemaVersion, GrobingDatabase.currentSchemaVersion);
     },
   );
 }

@@ -2314,13 +2314,22 @@ class Burials extends Table with TableInfo<Burials, BurialsData> {
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   Burials(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL PRIMARY KEY AUTOINCREMENT',
+  );
   late final GeneratedColumn<int> personId = GeneratedColumn<int>(
     'person_id',
     aliasedName,
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL UNIQUE REFERENCES persons(id)',
+    $customConstraints: 'NOT NULL REFERENCES persons(id)',
   );
   late final GeneratedColumn<int> graveId = GeneratedColumn<int>(
     'grave_id',
@@ -2331,18 +2340,26 @@ class Burials extends Table with TableInfo<Burials, BurialsData> {
     $customConstraints: 'NOT NULL REFERENCES graves(id)',
   );
   @override
-  List<GeneratedColumn> get $columns => [personId, graveId];
+  List<GeneratedColumn> get $columns => [id, personId, graveId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'burials';
   @override
-  Set<GeneratedColumn> get $primaryKey => const {};
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {personId, graveId},
+  ];
   @override
   BurialsData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return BurialsData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
       personId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}person_id'],
@@ -2360,23 +2377,35 @@ class Burials extends Table with TableInfo<Burials, BurialsData> {
   }
 
   @override
+  List<String> get customConstraints => const ['UNIQUE(person_id, grave_id)'];
+  @override
   bool get dontWriteConstraints => true;
 }
 
 class BurialsData extends DataClass implements Insertable<BurialsData> {
+  final int id;
   final int personId;
   final int graveId;
-  const BurialsData({required this.personId, required this.graveId});
+  const BurialsData({
+    required this.id,
+    required this.personId,
+    required this.graveId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
     map['person_id'] = Variable<int>(personId);
     map['grave_id'] = Variable<int>(graveId);
     return map;
   }
 
   BurialsCompanion toCompanion(bool nullToAbsent) {
-    return BurialsCompanion(personId: Value(personId), graveId: Value(graveId));
+    return BurialsCompanion(
+      id: Value(id),
+      personId: Value(personId),
+      graveId: Value(graveId),
+    );
   }
 
   factory BurialsData.fromJson(
@@ -2385,6 +2414,7 @@ class BurialsData extends DataClass implements Insertable<BurialsData> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return BurialsData(
+      id: serializer.fromJson<int>(json['id']),
       personId: serializer.fromJson<int>(json['personId']),
       graveId: serializer.fromJson<int>(json['graveId']),
     );
@@ -2393,17 +2423,20 @@ class BurialsData extends DataClass implements Insertable<BurialsData> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
       'personId': serializer.toJson<int>(personId),
       'graveId': serializer.toJson<int>(graveId),
     };
   }
 
-  BurialsData copyWith({int? personId, int? graveId}) => BurialsData(
+  BurialsData copyWith({int? id, int? personId, int? graveId}) => BurialsData(
+    id: id ?? this.id,
     personId: personId ?? this.personId,
     graveId: graveId ?? this.graveId,
   );
   BurialsData copyWithCompanion(BurialsCompanion data) {
     return BurialsData(
+      id: data.id.present ? data.id.value : this.id,
       personId: data.personId.present ? data.personId.value : this.personId,
       graveId: data.graveId.present ? data.graveId.value : this.graveId,
     );
@@ -2412,6 +2445,7 @@ class BurialsData extends DataClass implements Insertable<BurialsData> {
   @override
   String toString() {
     return (StringBuffer('BurialsData(')
+          ..write('id: $id, ')
           ..write('personId: $personId, ')
           ..write('graveId: $graveId')
           ..write(')'))
@@ -2419,65 +2453,66 @@ class BurialsData extends DataClass implements Insertable<BurialsData> {
   }
 
   @override
-  int get hashCode => Object.hash(personId, graveId);
+  int get hashCode => Object.hash(id, personId, graveId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is BurialsData &&
+          other.id == this.id &&
           other.personId == this.personId &&
           other.graveId == this.graveId);
 }
 
 class BurialsCompanion extends UpdateCompanion<BurialsData> {
+  final Value<int> id;
   final Value<int> personId;
   final Value<int> graveId;
-  final Value<int> rowid;
   const BurialsCompanion({
+    this.id = const Value.absent(),
     this.personId = const Value.absent(),
     this.graveId = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   BurialsCompanion.insert({
+    this.id = const Value.absent(),
     required int personId,
     required int graveId,
-    this.rowid = const Value.absent(),
   }) : personId = Value(personId),
        graveId = Value(graveId);
   static Insertable<BurialsData> custom({
+    Expression<int>? id,
     Expression<int>? personId,
     Expression<int>? graveId,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (id != null) 'id': id,
       if (personId != null) 'person_id': personId,
       if (graveId != null) 'grave_id': graveId,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   BurialsCompanion copyWith({
+    Value<int>? id,
     Value<int>? personId,
     Value<int>? graveId,
-    Value<int>? rowid,
   }) {
     return BurialsCompanion(
+      id: id ?? this.id,
       personId: personId ?? this.personId,
       graveId: graveId ?? this.graveId,
-      rowid: rowid ?? this.rowid,
     );
   }
 
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
     if (personId.present) {
       map['person_id'] = Variable<int>(personId.value);
     }
     if (graveId.present) {
       map['grave_id'] = Variable<int>(graveId.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
     }
     return map;
   }
@@ -2485,9 +2520,401 @@ class BurialsCompanion extends UpdateCompanion<BurialsData> {
   @override
   String toString() {
     return (StringBuffer('BurialsCompanion(')
+          ..write('id: $id, ')
           ..write('personId: $personId, ')
-          ..write('graveId: $graveId, ')
-          ..write('rowid: $rowid')
+          ..write('graveId: $graveId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class Assertions extends Table with TableInfo<Assertions, AssertionsData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  Assertions(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL PRIMARY KEY AUTOINCREMENT',
+  );
+  late final GeneratedColumn<int> eventId = GeneratedColumn<int>(
+    'event_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL REFERENCES events(id)',
+  );
+  late final GeneratedColumn<int> burialId = GeneratedColumn<int>(
+    'burial_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL REFERENCES burials(id)',
+  );
+  late final GeneratedColumn<String> sourceKind = GeneratedColumn<String>(
+    'source_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> sourceDetail = GeneratedColumn<String>(
+    'source_detail',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> recordedAt = GeneratedColumn<int>(
+    'recorded_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    eventId,
+    burialId,
+    sourceKind,
+    sourceDetail,
+    status,
+    recordedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'assertions';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AssertionsData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AssertionsData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      eventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}event_id'],
+      ),
+      burialId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}burial_id'],
+      ),
+      sourceKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_kind'],
+      )!,
+      sourceDetail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_detail'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+    );
+  }
+
+  @override
+  Assertions createAlias(String alias) {
+    return Assertions(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'CHECK((event_id IS NULL)<>(burial_id IS NULL))',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class AssertionsData extends DataClass implements Insertable<AssertionsData> {
+  final int id;
+  final int? eventId;
+  final int? burialId;
+  final String sourceKind;
+  final String? sourceDetail;
+  final String status;
+  final int recordedAt;
+  const AssertionsData({
+    required this.id,
+    this.eventId,
+    this.burialId,
+    required this.sourceKind,
+    this.sourceDetail,
+    required this.status,
+    required this.recordedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || eventId != null) {
+      map['event_id'] = Variable<int>(eventId);
+    }
+    if (!nullToAbsent || burialId != null) {
+      map['burial_id'] = Variable<int>(burialId);
+    }
+    map['source_kind'] = Variable<String>(sourceKind);
+    if (!nullToAbsent || sourceDetail != null) {
+      map['source_detail'] = Variable<String>(sourceDetail);
+    }
+    map['status'] = Variable<String>(status);
+    map['recorded_at'] = Variable<int>(recordedAt);
+    return map;
+  }
+
+  AssertionsCompanion toCompanion(bool nullToAbsent) {
+    return AssertionsCompanion(
+      id: Value(id),
+      eventId: eventId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eventId),
+      burialId: burialId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(burialId),
+      sourceKind: Value(sourceKind),
+      sourceDetail: sourceDetail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceDetail),
+      status: Value(status),
+      recordedAt: Value(recordedAt),
+    );
+  }
+
+  factory AssertionsData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AssertionsData(
+      id: serializer.fromJson<int>(json['id']),
+      eventId: serializer.fromJson<int?>(json['eventId']),
+      burialId: serializer.fromJson<int?>(json['burialId']),
+      sourceKind: serializer.fromJson<String>(json['sourceKind']),
+      sourceDetail: serializer.fromJson<String?>(json['sourceDetail']),
+      status: serializer.fromJson<String>(json['status']),
+      recordedAt: serializer.fromJson<int>(json['recordedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'eventId': serializer.toJson<int?>(eventId),
+      'burialId': serializer.toJson<int?>(burialId),
+      'sourceKind': serializer.toJson<String>(sourceKind),
+      'sourceDetail': serializer.toJson<String?>(sourceDetail),
+      'status': serializer.toJson<String>(status),
+      'recordedAt': serializer.toJson<int>(recordedAt),
+    };
+  }
+
+  AssertionsData copyWith({
+    int? id,
+    Value<int?> eventId = const Value.absent(),
+    Value<int?> burialId = const Value.absent(),
+    String? sourceKind,
+    Value<String?> sourceDetail = const Value.absent(),
+    String? status,
+    int? recordedAt,
+  }) => AssertionsData(
+    id: id ?? this.id,
+    eventId: eventId.present ? eventId.value : this.eventId,
+    burialId: burialId.present ? burialId.value : this.burialId,
+    sourceKind: sourceKind ?? this.sourceKind,
+    sourceDetail: sourceDetail.present ? sourceDetail.value : this.sourceDetail,
+    status: status ?? this.status,
+    recordedAt: recordedAt ?? this.recordedAt,
+  );
+  AssertionsData copyWithCompanion(AssertionsCompanion data) {
+    return AssertionsData(
+      id: data.id.present ? data.id.value : this.id,
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      burialId: data.burialId.present ? data.burialId.value : this.burialId,
+      sourceKind: data.sourceKind.present
+          ? data.sourceKind.value
+          : this.sourceKind,
+      sourceDetail: data.sourceDetail.present
+          ? data.sourceDetail.value
+          : this.sourceDetail,
+      status: data.status.present ? data.status.value : this.status,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssertionsData(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('burialId: $burialId, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceDetail: $sourceDetail, ')
+          ..write('status: $status, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    eventId,
+    burialId,
+    sourceKind,
+    sourceDetail,
+    status,
+    recordedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AssertionsData &&
+          other.id == this.id &&
+          other.eventId == this.eventId &&
+          other.burialId == this.burialId &&
+          other.sourceKind == this.sourceKind &&
+          other.sourceDetail == this.sourceDetail &&
+          other.status == this.status &&
+          other.recordedAt == this.recordedAt);
+}
+
+class AssertionsCompanion extends UpdateCompanion<AssertionsData> {
+  final Value<int> id;
+  final Value<int?> eventId;
+  final Value<int?> burialId;
+  final Value<String> sourceKind;
+  final Value<String?> sourceDetail;
+  final Value<String> status;
+  final Value<int> recordedAt;
+  const AssertionsCompanion({
+    this.id = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.burialId = const Value.absent(),
+    this.sourceKind = const Value.absent(),
+    this.sourceDetail = const Value.absent(),
+    this.status = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+  });
+  AssertionsCompanion.insert({
+    this.id = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.burialId = const Value.absent(),
+    required String sourceKind,
+    this.sourceDetail = const Value.absent(),
+    required String status,
+    required int recordedAt,
+  }) : sourceKind = Value(sourceKind),
+       status = Value(status),
+       recordedAt = Value(recordedAt);
+  static Insertable<AssertionsData> custom({
+    Expression<int>? id,
+    Expression<int>? eventId,
+    Expression<int>? burialId,
+    Expression<String>? sourceKind,
+    Expression<String>? sourceDetail,
+    Expression<String>? status,
+    Expression<int>? recordedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (eventId != null) 'event_id': eventId,
+      if (burialId != null) 'burial_id': burialId,
+      if (sourceKind != null) 'source_kind': sourceKind,
+      if (sourceDetail != null) 'source_detail': sourceDetail,
+      if (status != null) 'status': status,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+    });
+  }
+
+  AssertionsCompanion copyWith({
+    Value<int>? id,
+    Value<int?>? eventId,
+    Value<int?>? burialId,
+    Value<String>? sourceKind,
+    Value<String?>? sourceDetail,
+    Value<String>? status,
+    Value<int>? recordedAt,
+  }) {
+    return AssertionsCompanion(
+      id: id ?? this.id,
+      eventId: eventId ?? this.eventId,
+      burialId: burialId ?? this.burialId,
+      sourceKind: sourceKind ?? this.sourceKind,
+      sourceDetail: sourceDetail ?? this.sourceDetail,
+      status: status ?? this.status,
+      recordedAt: recordedAt ?? this.recordedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (eventId.present) {
+      map['event_id'] = Variable<int>(eventId.value);
+    }
+    if (burialId.present) {
+      map['burial_id'] = Variable<int>(burialId.value);
+    }
+    if (sourceKind.present) {
+      map['source_kind'] = Variable<String>(sourceKind.value);
+    }
+    if (sourceDetail.present) {
+      map['source_detail'] = Variable<String>(sourceDetail.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<int>(recordedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssertionsCompanion(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('burialId: $burialId, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceDetail: $sourceDetail, ')
+          ..write('status: $status, ')
+          ..write('recordedAt: $recordedAt')
           ..write(')'))
         .toString();
   }
@@ -2943,8 +3370,8 @@ class SettingsCompanion extends UpdateCompanion<SettingsData> {
   }
 }
 
-class DatabaseAtV1 extends GeneratedDatabase {
-  DatabaseAtV1(QueryExecutor e) : super(e);
+class DatabaseAtV2 extends GeneratedDatabase {
+  DatabaseAtV2(QueryExecutor e) : super(e);
   late final Persons persons = Persons(this);
   late final Families families = Families(this);
   late final FamilyPartners familyPartners = FamilyPartners(this);
@@ -2953,6 +3380,7 @@ class DatabaseAtV1 extends GeneratedDatabase {
   late final Cemeteries cemeteries = Cemeteries(this);
   late final Graves graves = Graves(this);
   late final Burials burials = Burials(this);
+  late final Assertions assertions = Assertions(this);
   late final Media media = Media(this);
   late final Settings settings = Settings(this);
   @override
@@ -2968,9 +3396,10 @@ class DatabaseAtV1 extends GeneratedDatabase {
     cemeteries,
     graves,
     burials,
+    assertions,
     media,
     settings,
   ];
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 }

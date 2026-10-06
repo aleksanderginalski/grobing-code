@@ -2736,6 +2736,19 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $BurialsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
   static const VerificationMeta _personIdMeta = const VerificationMeta(
     'personId',
   );
@@ -2747,7 +2760,7 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'UNIQUE REFERENCES persons (id)',
+      'REFERENCES persons (id)',
     ),
   );
   static const VerificationMeta _graveIdMeta = const VerificationMeta(
@@ -2765,7 +2778,7 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
     ),
   );
   @override
-  List<GeneratedColumn> get $columns => [personId, graveId];
+  List<GeneratedColumn> get $columns => [id, personId, graveId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2778,6 +2791,9 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
     if (data.containsKey('person_id')) {
       context.handle(
         _personIdMeta,
@@ -2798,11 +2814,19 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => const {};
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {personId, graveId},
+  ];
   @override
   Burial map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return Burial(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
       personId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}person_id'],
@@ -2821,19 +2845,29 @@ class $BurialsTable extends Burials with TableInfo<$BurialsTable, Burial> {
 }
 
 class Burial extends DataClass implements Insertable<Burial> {
+  final int id;
   final int personId;
   final int graveId;
-  const Burial({required this.personId, required this.graveId});
+  const Burial({
+    required this.id,
+    required this.personId,
+    required this.graveId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
     map['person_id'] = Variable<int>(personId);
     map['grave_id'] = Variable<int>(graveId);
     return map;
   }
 
   BurialsCompanion toCompanion(bool nullToAbsent) {
-    return BurialsCompanion(personId: Value(personId), graveId: Value(graveId));
+    return BurialsCompanion(
+      id: Value(id),
+      personId: Value(personId),
+      graveId: Value(graveId),
+    );
   }
 
   factory Burial.fromJson(
@@ -2842,6 +2876,7 @@ class Burial extends DataClass implements Insertable<Burial> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Burial(
+      id: serializer.fromJson<int>(json['id']),
       personId: serializer.fromJson<int>(json['personId']),
       graveId: serializer.fromJson<int>(json['graveId']),
     );
@@ -2850,17 +2885,20 @@ class Burial extends DataClass implements Insertable<Burial> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
       'personId': serializer.toJson<int>(personId),
       'graveId': serializer.toJson<int>(graveId),
     };
   }
 
-  Burial copyWith({int? personId, int? graveId}) => Burial(
+  Burial copyWith({int? id, int? personId, int? graveId}) => Burial(
+    id: id ?? this.id,
     personId: personId ?? this.personId,
     graveId: graveId ?? this.graveId,
   );
   Burial copyWithCompanion(BurialsCompanion data) {
     return Burial(
+      id: data.id.present ? data.id.value : this.id,
       personId: data.personId.present ? data.personId.value : this.personId,
       graveId: data.graveId.present ? data.graveId.value : this.graveId,
     );
@@ -2869,6 +2907,7 @@ class Burial extends DataClass implements Insertable<Burial> {
   @override
   String toString() {
     return (StringBuffer('Burial(')
+          ..write('id: $id, ')
           ..write('personId: $personId, ')
           ..write('graveId: $graveId')
           ..write(')'))
@@ -2876,65 +2915,66 @@ class Burial extends DataClass implements Insertable<Burial> {
   }
 
   @override
-  int get hashCode => Object.hash(personId, graveId);
+  int get hashCode => Object.hash(id, personId, graveId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Burial &&
+          other.id == this.id &&
           other.personId == this.personId &&
           other.graveId == this.graveId);
 }
 
 class BurialsCompanion extends UpdateCompanion<Burial> {
+  final Value<int> id;
   final Value<int> personId;
   final Value<int> graveId;
-  final Value<int> rowid;
   const BurialsCompanion({
+    this.id = const Value.absent(),
     this.personId = const Value.absent(),
     this.graveId = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   BurialsCompanion.insert({
+    this.id = const Value.absent(),
     required int personId,
     required int graveId,
-    this.rowid = const Value.absent(),
   }) : personId = Value(personId),
        graveId = Value(graveId);
   static Insertable<Burial> custom({
+    Expression<int>? id,
     Expression<int>? personId,
     Expression<int>? graveId,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (id != null) 'id': id,
       if (personId != null) 'person_id': personId,
       if (graveId != null) 'grave_id': graveId,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   BurialsCompanion copyWith({
+    Value<int>? id,
     Value<int>? personId,
     Value<int>? graveId,
-    Value<int>? rowid,
   }) {
     return BurialsCompanion(
+      id: id ?? this.id,
       personId: personId ?? this.personId,
       graveId: graveId ?? this.graveId,
-      rowid: rowid ?? this.rowid,
     );
   }
 
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
     if (personId.present) {
       map['person_id'] = Variable<int>(personId.value);
     }
     if (graveId.present) {
       map['grave_id'] = Variable<int>(graveId.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
     }
     return map;
   }
@@ -2942,9 +2982,492 @@ class BurialsCompanion extends UpdateCompanion<Burial> {
   @override
   String toString() {
     return (StringBuffer('BurialsCompanion(')
+          ..write('id: $id, ')
           ..write('personId: $personId, ')
-          ..write('graveId: $graveId, ')
-          ..write('rowid: $rowid')
+          ..write('graveId: $graveId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AssertionsTable extends Assertions
+    with TableInfo<$AssertionsTable, Assertion> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AssertionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _eventIdMeta = const VerificationMeta(
+    'eventId',
+  );
+  @override
+  late final GeneratedColumn<int> eventId = GeneratedColumn<int>(
+    'event_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES events (id)',
+    ),
+  );
+  static const VerificationMeta _burialIdMeta = const VerificationMeta(
+    'burialId',
+  );
+  @override
+  late final GeneratedColumn<int> burialId = GeneratedColumn<int>(
+    'burial_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES burials (id)',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<SourceKind, String> sourceKind =
+      GeneratedColumn<String>(
+        'source_kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<SourceKind>($AssertionsTable.$convertersourceKind);
+  static const VerificationMeta _sourceDetailMeta = const VerificationMeta(
+    'sourceDetail',
+  );
+  @override
+  late final GeneratedColumn<String> sourceDetail = GeneratedColumn<String>(
+    'source_detail',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<AssertionStatus, String> status =
+      GeneratedColumn<String>(
+        'status',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<AssertionStatus>($AssertionsTable.$converterstatus);
+  static const VerificationMeta _recordedAtMeta = const VerificationMeta(
+    'recordedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+    'recorded_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    eventId,
+    burialId,
+    sourceKind,
+    sourceDetail,
+    status,
+    recordedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'assertions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Assertion> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('event_id')) {
+      context.handle(
+        _eventIdMeta,
+        eventId.isAcceptableOrUnknown(data['event_id']!, _eventIdMeta),
+      );
+    }
+    if (data.containsKey('burial_id')) {
+      context.handle(
+        _burialIdMeta,
+        burialId.isAcceptableOrUnknown(data['burial_id']!, _burialIdMeta),
+      );
+    }
+    if (data.containsKey('source_detail')) {
+      context.handle(
+        _sourceDetailMeta,
+        sourceDetail.isAcceptableOrUnknown(
+          data['source_detail']!,
+          _sourceDetailMeta,
+        ),
+      );
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+        _recordedAtMeta,
+        recordedAt.isAcceptableOrUnknown(data['recorded_at']!, _recordedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Assertion map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Assertion(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      eventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}event_id'],
+      ),
+      burialId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}burial_id'],
+      ),
+      sourceKind: $AssertionsTable.$convertersourceKind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}source_kind'],
+        )!,
+      ),
+      sourceDetail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_detail'],
+      ),
+      status: $AssertionsTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AssertionsTable createAlias(String alias) {
+    return $AssertionsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<SourceKind, String, String> $convertersourceKind =
+      const EnumNameConverter<SourceKind>(SourceKind.values);
+  static JsonTypeConverter2<AssertionStatus, String, String> $converterstatus =
+      const EnumNameConverter<AssertionStatus>(AssertionStatus.values);
+}
+
+class Assertion extends DataClass implements Insertable<Assertion> {
+  final int id;
+  final int? eventId;
+  final int? burialId;
+  final SourceKind sourceKind;
+
+  /// Which relative, which record — "kto je podał" (FR-001). Optional.
+  final String? sourceDetail;
+  final AssertionStatus status;
+  final DateTime recordedAt;
+  const Assertion({
+    required this.id,
+    this.eventId,
+    this.burialId,
+    required this.sourceKind,
+    this.sourceDetail,
+    required this.status,
+    required this.recordedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || eventId != null) {
+      map['event_id'] = Variable<int>(eventId);
+    }
+    if (!nullToAbsent || burialId != null) {
+      map['burial_id'] = Variable<int>(burialId);
+    }
+    {
+      map['source_kind'] = Variable<String>(
+        $AssertionsTable.$convertersourceKind.toSql(sourceKind),
+      );
+    }
+    if (!nullToAbsent || sourceDetail != null) {
+      map['source_detail'] = Variable<String>(sourceDetail);
+    }
+    {
+      map['status'] = Variable<String>(
+        $AssertionsTable.$converterstatus.toSql(status),
+      );
+    }
+    map['recorded_at'] = Variable<DateTime>(recordedAt);
+    return map;
+  }
+
+  AssertionsCompanion toCompanion(bool nullToAbsent) {
+    return AssertionsCompanion(
+      id: Value(id),
+      eventId: eventId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eventId),
+      burialId: burialId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(burialId),
+      sourceKind: Value(sourceKind),
+      sourceDetail: sourceDetail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceDetail),
+      status: Value(status),
+      recordedAt: Value(recordedAt),
+    );
+  }
+
+  factory Assertion.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Assertion(
+      id: serializer.fromJson<int>(json['id']),
+      eventId: serializer.fromJson<int?>(json['eventId']),
+      burialId: serializer.fromJson<int?>(json['burialId']),
+      sourceKind: $AssertionsTable.$convertersourceKind.fromJson(
+        serializer.fromJson<String>(json['sourceKind']),
+      ),
+      sourceDetail: serializer.fromJson<String?>(json['sourceDetail']),
+      status: $AssertionsTable.$converterstatus.fromJson(
+        serializer.fromJson<String>(json['status']),
+      ),
+      recordedAt: serializer.fromJson<DateTime>(json['recordedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'eventId': serializer.toJson<int?>(eventId),
+      'burialId': serializer.toJson<int?>(burialId),
+      'sourceKind': serializer.toJson<String>(
+        $AssertionsTable.$convertersourceKind.toJson(sourceKind),
+      ),
+      'sourceDetail': serializer.toJson<String?>(sourceDetail),
+      'status': serializer.toJson<String>(
+        $AssertionsTable.$converterstatus.toJson(status),
+      ),
+      'recordedAt': serializer.toJson<DateTime>(recordedAt),
+    };
+  }
+
+  Assertion copyWith({
+    int? id,
+    Value<int?> eventId = const Value.absent(),
+    Value<int?> burialId = const Value.absent(),
+    SourceKind? sourceKind,
+    Value<String?> sourceDetail = const Value.absent(),
+    AssertionStatus? status,
+    DateTime? recordedAt,
+  }) => Assertion(
+    id: id ?? this.id,
+    eventId: eventId.present ? eventId.value : this.eventId,
+    burialId: burialId.present ? burialId.value : this.burialId,
+    sourceKind: sourceKind ?? this.sourceKind,
+    sourceDetail: sourceDetail.present ? sourceDetail.value : this.sourceDetail,
+    status: status ?? this.status,
+    recordedAt: recordedAt ?? this.recordedAt,
+  );
+  Assertion copyWithCompanion(AssertionsCompanion data) {
+    return Assertion(
+      id: data.id.present ? data.id.value : this.id,
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      burialId: data.burialId.present ? data.burialId.value : this.burialId,
+      sourceKind: data.sourceKind.present
+          ? data.sourceKind.value
+          : this.sourceKind,
+      sourceDetail: data.sourceDetail.present
+          ? data.sourceDetail.value
+          : this.sourceDetail,
+      status: data.status.present ? data.status.value : this.status,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Assertion(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('burialId: $burialId, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceDetail: $sourceDetail, ')
+          ..write('status: $status, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    eventId,
+    burialId,
+    sourceKind,
+    sourceDetail,
+    status,
+    recordedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Assertion &&
+          other.id == this.id &&
+          other.eventId == this.eventId &&
+          other.burialId == this.burialId &&
+          other.sourceKind == this.sourceKind &&
+          other.sourceDetail == this.sourceDetail &&
+          other.status == this.status &&
+          other.recordedAt == this.recordedAt);
+}
+
+class AssertionsCompanion extends UpdateCompanion<Assertion> {
+  final Value<int> id;
+  final Value<int?> eventId;
+  final Value<int?> burialId;
+  final Value<SourceKind> sourceKind;
+  final Value<String?> sourceDetail;
+  final Value<AssertionStatus> status;
+  final Value<DateTime> recordedAt;
+  const AssertionsCompanion({
+    this.id = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.burialId = const Value.absent(),
+    this.sourceKind = const Value.absent(),
+    this.sourceDetail = const Value.absent(),
+    this.status = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+  });
+  AssertionsCompanion.insert({
+    this.id = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.burialId = const Value.absent(),
+    required SourceKind sourceKind,
+    this.sourceDetail = const Value.absent(),
+    required AssertionStatus status,
+    required DateTime recordedAt,
+  }) : sourceKind = Value(sourceKind),
+       status = Value(status),
+       recordedAt = Value(recordedAt);
+  static Insertable<Assertion> custom({
+    Expression<int>? id,
+    Expression<int>? eventId,
+    Expression<int>? burialId,
+    Expression<String>? sourceKind,
+    Expression<String>? sourceDetail,
+    Expression<String>? status,
+    Expression<DateTime>? recordedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (eventId != null) 'event_id': eventId,
+      if (burialId != null) 'burial_id': burialId,
+      if (sourceKind != null) 'source_kind': sourceKind,
+      if (sourceDetail != null) 'source_detail': sourceDetail,
+      if (status != null) 'status': status,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+    });
+  }
+
+  AssertionsCompanion copyWith({
+    Value<int>? id,
+    Value<int?>? eventId,
+    Value<int?>? burialId,
+    Value<SourceKind>? sourceKind,
+    Value<String?>? sourceDetail,
+    Value<AssertionStatus>? status,
+    Value<DateTime>? recordedAt,
+  }) {
+    return AssertionsCompanion(
+      id: id ?? this.id,
+      eventId: eventId ?? this.eventId,
+      burialId: burialId ?? this.burialId,
+      sourceKind: sourceKind ?? this.sourceKind,
+      sourceDetail: sourceDetail ?? this.sourceDetail,
+      status: status ?? this.status,
+      recordedAt: recordedAt ?? this.recordedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (eventId.present) {
+      map['event_id'] = Variable<int>(eventId.value);
+    }
+    if (burialId.present) {
+      map['burial_id'] = Variable<int>(burialId.value);
+    }
+    if (sourceKind.present) {
+      map['source_kind'] = Variable<String>(
+        $AssertionsTable.$convertersourceKind.toSql(sourceKind.value),
+      );
+    }
+    if (sourceDetail.present) {
+      map['source_detail'] = Variable<String>(sourceDetail.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(
+        $AssertionsTable.$converterstatus.toSql(status.value),
+      );
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssertionsCompanion(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('burialId: $burialId, ')
+          ..write('sourceKind: $sourceKind, ')
+          ..write('sourceDetail: $sourceDetail, ')
+          ..write('status: $status, ')
+          ..write('recordedAt: $recordedAt')
           ..write(')'))
         .toString();
   }
@@ -3479,6 +4002,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final $CemeteriesTable cemeteries = $CemeteriesTable(this);
   late final $GravesTable graves = $GravesTable(this);
   late final $BurialsTable burials = $BurialsTable(this);
+  late final $AssertionsTable assertions = $AssertionsTable(this);
   late final $MediaTable media = $MediaTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   @override
@@ -3494,6 +4018,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     cemeteries,
     graves,
     burials,
+    assertions,
     media,
     settings,
   ];
@@ -5499,6 +6024,24 @@ final class $$EventsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$AssertionsTable, List<Assertion>>
+  _assertionsRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.assertions,
+    aliasName: 'events__id__assertions__event_id',
+  );
+
+  $$AssertionsTableProcessedTableManager get assertionsRefs {
+    final manager = $$AssertionsTableTableManager(
+      $_db,
+      $_db.assertions,
+    ).filter((f) => f.eventId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_assertionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$EventsTableFilterComposer
@@ -5606,6 +6149,31 @@ class $$EventsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> assertionsRefs(
+    Expression<bool> Function($$AssertionsTableFilterComposer f) f,
+  ) {
+    final $$AssertionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.eventId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableFilterComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -5799,6 +6367,31 @@ class $$EventsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> assertionsRefs<T extends Object>(
+    Expression<T> Function($$AssertionsTableAnnotationComposer a) f,
+  ) {
+    final $$AssertionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.eventId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$EventsTableTableManager
@@ -5814,7 +6407,11 @@ class $$EventsTableTableManager
           $$EventsTableUpdateCompanionBuilder,
           (Event, $$EventsTableReferences),
           Event,
-          PrefetchHooks Function({bool personId, bool familyId})
+          PrefetchHooks Function({
+            bool personId,
+            bool familyId,
+            bool assertionsRefs,
+          })
         > {
   $$EventsTableTableManager(_$GrobingDatabase db, $EventsTable table)
     : super(
@@ -5889,60 +6486,83 @@ class $$EventsTableTableManager
                     (e.readTable(table), $$EventsTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({personId = false, familyId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (personId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.personId,
-                                referencedTable: $$EventsTableReferences
-                                    ._personIdTable(db),
-                                referencedColumn: $$EventsTableReferences
-                                    ._personIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-                    if (familyId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.familyId,
-                                referencedTable: $$EventsTableReferences
-                                    ._familyIdTable(db),
-                                referencedColumn: $$EventsTableReferences
-                                    ._familyIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({personId = false, familyId = false, assertionsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [if (assertionsRefs) db.assertions],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (personId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.personId,
+                                    referencedTable: $$EventsTableReferences
+                                        ._personIdTable(db),
+                                    referencedColumn: $$EventsTableReferences
+                                        ._personIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (familyId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.familyId,
+                                    referencedTable: $$EventsTableReferences
+                                        ._familyIdTable(db),
+                                    referencedColumn: $$EventsTableReferences
+                                        ._familyIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (assertionsRefs)
+                        await $_getPrefetchedData<
+                          Event,
+                          $EventsTable,
+                          Assertion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$EventsTableReferences
+                              ._assertionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$EventsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).assertionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.eventId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -5959,7 +6579,11 @@ typedef $$EventsTableProcessedTableManager =
       $$EventsTableUpdateCompanionBuilder,
       (Event, $$EventsTableReferences),
       Event,
-      PrefetchHooks Function({bool personId, bool familyId})
+      PrefetchHooks Function({
+        bool personId,
+        bool familyId,
+        bool assertionsRefs,
+      })
     >;
 typedef $$CemeteriesTableCreateCompanionBuilder =
     CemeteriesCompanion Function({
@@ -6852,15 +7476,15 @@ typedef $$GravesTableProcessedTableManager =
     >;
 typedef $$BurialsTableCreateCompanionBuilder =
     BurialsCompanion Function({
+      Value<int> id,
       required int personId,
       required int graveId,
-      Value<int> rowid,
     });
 typedef $$BurialsTableUpdateCompanionBuilder =
     BurialsCompanion Function({
+      Value<int> id,
       Value<int> personId,
       Value<int> graveId,
-      Value<int> rowid,
     });
 
 final class $$BurialsTableReferences
@@ -6900,6 +7524,24 @@ final class $$BurialsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$AssertionsTable, List<Assertion>>
+  _assertionsRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.assertions,
+    aliasName: 'burials__id__assertions__burial_id',
+  );
+
+  $$AssertionsTableProcessedTableManager get assertionsRefs {
+    final manager = $$AssertionsTableTableManager(
+      $_db,
+      $_db.assertions,
+    ).filter((f) => f.burialId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_assertionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$BurialsTableFilterComposer
@@ -6911,6 +7553,11 @@ class $$BurialsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PersonsTableFilterComposer get personId {
     final $$PersonsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -6956,6 +7603,31 @@ class $$BurialsTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> assertionsRefs(
+    Expression<bool> Function($$AssertionsTableFilterComposer f) f,
+  ) {
+    final $$AssertionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.burialId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableFilterComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$BurialsTableOrderingComposer
@@ -6967,6 +7639,11 @@ class $$BurialsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PersonsTableOrderingComposer get personId {
     final $$PersonsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7023,6 +7700,9 @@ class $$BurialsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
   $$PersonsTableAnnotationComposer get personId {
     final $$PersonsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -7068,6 +7748,31 @@ class $$BurialsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> assertionsRefs<T extends Object>(
+    Expression<T> Function($$AssertionsTableAnnotationComposer a) f,
+  ) {
+    final $$AssertionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.burialId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$BurialsTableTableManager
@@ -7083,7 +7788,11 @@ class $$BurialsTableTableManager
           $$BurialsTableUpdateCompanionBuilder,
           (Burial, $$BurialsTableReferences),
           Burial,
-          PrefetchHooks Function({bool personId, bool graveId})
+          PrefetchHooks Function({
+            bool personId,
+            bool graveId,
+            bool assertionsRefs,
+          })
         > {
   $$BurialsTableTableManager(_$GrobingDatabase db, $BurialsTable table)
     : super(
@@ -7098,23 +7807,23 @@ class $$BurialsTableTableManager
               $$BurialsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 Value<int> personId = const Value.absent(),
                 Value<int> graveId = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => BurialsCompanion(
+                id: id,
                 personId: personId,
                 graveId: graveId,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 required int personId,
                 required int graveId,
-                Value<int> rowid = const Value.absent(),
               }) => BurialsCompanion.insert(
+                id: id,
                 personId: personId,
                 graveId: graveId,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -7124,7 +7833,474 @@ class $$BurialsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({personId = false, graveId = false}) {
+          prefetchHooksCallback:
+              ({personId = false, graveId = false, assertionsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [if (assertionsRefs) db.assertions],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (personId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.personId,
+                                    referencedTable: $$BurialsTableReferences
+                                        ._personIdTable(db),
+                                    referencedColumn: $$BurialsTableReferences
+                                        ._personIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (graveId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.graveId,
+                                    referencedTable: $$BurialsTableReferences
+                                        ._graveIdTable(db),
+                                    referencedColumn: $$BurialsTableReferences
+                                        ._graveIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (assertionsRefs)
+                        await $_getPrefetchedData<
+                          Burial,
+                          $BurialsTable,
+                          Assertion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$BurialsTableReferences
+                              ._assertionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BurialsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).assertionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.burialId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$BurialsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $BurialsTable,
+      Burial,
+      $$BurialsTableFilterComposer,
+      $$BurialsTableOrderingComposer,
+      $$BurialsTableAnnotationComposer,
+      $$BurialsTableCreateCompanionBuilder,
+      $$BurialsTableUpdateCompanionBuilder,
+      (Burial, $$BurialsTableReferences),
+      Burial,
+      PrefetchHooks Function({bool personId, bool graveId, bool assertionsRefs})
+    >;
+typedef $$AssertionsTableCreateCompanionBuilder =
+    AssertionsCompanion Function({
+      Value<int> id,
+      Value<int?> eventId,
+      Value<int?> burialId,
+      required SourceKind sourceKind,
+      Value<String?> sourceDetail,
+      required AssertionStatus status,
+      required DateTime recordedAt,
+    });
+typedef $$AssertionsTableUpdateCompanionBuilder =
+    AssertionsCompanion Function({
+      Value<int> id,
+      Value<int?> eventId,
+      Value<int?> burialId,
+      Value<SourceKind> sourceKind,
+      Value<String?> sourceDetail,
+      Value<AssertionStatus> status,
+      Value<DateTime> recordedAt,
+    });
+
+final class $$AssertionsTableReferences
+    extends BaseReferences<_$GrobingDatabase, $AssertionsTable, Assertion> {
+  $$AssertionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $EventsTable _eventIdTable(_$GrobingDatabase db) =>
+      db.events.createAlias('assertions__event_id__events__id');
+
+  $$EventsTableProcessedTableManager? get eventId {
+    final $_column = $_itemColumn<int>('event_id');
+    if ($_column == null) return null;
+    final manager = $$EventsTableTableManager(
+      $_db,
+      $_db.events,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_eventIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $BurialsTable _burialIdTable(_$GrobingDatabase db) =>
+      db.burials.createAlias('assertions__burial_id__burials__id');
+
+  $$BurialsTableProcessedTableManager? get burialId {
+    final $_column = $_itemColumn<int>('burial_id');
+    if ($_column == null) return null;
+    final manager = $$BurialsTableTableManager(
+      $_db,
+      $_db.burials,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_burialIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$AssertionsTableFilterComposer
+    extends Composer<_$GrobingDatabase, $AssertionsTable> {
+  $$AssertionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<SourceKind, SourceKind, String>
+  get sourceKind => $composableBuilder(
+    column: $table.sourceKind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get sourceDetail => $composableBuilder(
+    column: $table.sourceDetail,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AssertionStatus, AssertionStatus, String>
+  get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$EventsTableFilterComposer get eventId {
+    final $$EventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.eventId,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableFilterComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BurialsTableFilterComposer get burialId {
+    final $$BurialsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.burialId,
+      referencedTable: $db.burials,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BurialsTableFilterComposer(
+            $db: $db,
+            $table: $db.burials,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssertionsTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $AssertionsTable> {
+  $$AssertionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceKind => $composableBuilder(
+    column: $table.sourceKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceDetail => $composableBuilder(
+    column: $table.sourceDetail,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$EventsTableOrderingComposer get eventId {
+    final $$EventsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.eventId,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableOrderingComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BurialsTableOrderingComposer get burialId {
+    final $$BurialsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.burialId,
+      referencedTable: $db.burials,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BurialsTableOrderingComposer(
+            $db: $db,
+            $table: $db.burials,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssertionsTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $AssertionsTable> {
+  $$AssertionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<SourceKind, String> get sourceKind =>
+      $composableBuilder(
+        column: $table.sourceKind,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get sourceDetail => $composableBuilder(
+    column: $table.sourceDetail,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<AssertionStatus, String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+    column: $table.recordedAt,
+    builder: (column) => column,
+  );
+
+  $$EventsTableAnnotationComposer get eventId {
+    final $$EventsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.eventId,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BurialsTableAnnotationComposer get burialId {
+    final $$BurialsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.burialId,
+      referencedTable: $db.burials,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BurialsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.burials,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssertionsTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $AssertionsTable,
+          Assertion,
+          $$AssertionsTableFilterComposer,
+          $$AssertionsTableOrderingComposer,
+          $$AssertionsTableAnnotationComposer,
+          $$AssertionsTableCreateCompanionBuilder,
+          $$AssertionsTableUpdateCompanionBuilder,
+          (Assertion, $$AssertionsTableReferences),
+          Assertion,
+          PrefetchHooks Function({bool eventId, bool burialId})
+        > {
+  $$AssertionsTableTableManager(_$GrobingDatabase db, $AssertionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AssertionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AssertionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AssertionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> eventId = const Value.absent(),
+                Value<int?> burialId = const Value.absent(),
+                Value<SourceKind> sourceKind = const Value.absent(),
+                Value<String?> sourceDetail = const Value.absent(),
+                Value<AssertionStatus> status = const Value.absent(),
+                Value<DateTime> recordedAt = const Value.absent(),
+              }) => AssertionsCompanion(
+                id: id,
+                eventId: eventId,
+                burialId: burialId,
+                sourceKind: sourceKind,
+                sourceDetail: sourceDetail,
+                status: status,
+                recordedAt: recordedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int?> eventId = const Value.absent(),
+                Value<int?> burialId = const Value.absent(),
+                required SourceKind sourceKind,
+                Value<String?> sourceDetail = const Value.absent(),
+                required AssertionStatus status,
+                required DateTime recordedAt,
+              }) => AssertionsCompanion.insert(
+                id: id,
+                eventId: eventId,
+                burialId: burialId,
+                sourceKind: sourceKind,
+                sourceDetail: sourceDetail,
+                status: status,
+                recordedAt: recordedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AssertionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({eventId = false, burialId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -7144,28 +8320,28 @@ class $$BurialsTableTableManager
                       dynamic
                     >
                   >(state) {
-                    if (personId) {
+                    if (eventId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.personId,
-                                referencedTable: $$BurialsTableReferences
-                                    ._personIdTable(db),
-                                referencedColumn: $$BurialsTableReferences
-                                    ._personIdTable(db)
+                                currentColumn: table.eventId,
+                                referencedTable: $$AssertionsTableReferences
+                                    ._eventIdTable(db),
+                                referencedColumn: $$AssertionsTableReferences
+                                    ._eventIdTable(db)
                                     .id,
                               )
                               as T;
                     }
-                    if (graveId) {
+                    if (burialId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.graveId,
-                                referencedTable: $$BurialsTableReferences
-                                    ._graveIdTable(db),
-                                referencedColumn: $$BurialsTableReferences
-                                    ._graveIdTable(db)
+                                currentColumn: table.burialId,
+                                referencedTable: $$AssertionsTableReferences
+                                    ._burialIdTable(db),
+                                referencedColumn: $$AssertionsTableReferences
+                                    ._burialIdTable(db)
                                     .id,
                               )
                               as T;
@@ -7182,19 +8358,19 @@ class $$BurialsTableTableManager
       );
 }
 
-typedef $$BurialsTableProcessedTableManager =
+typedef $$AssertionsTableProcessedTableManager =
     ProcessedTableManager<
       _$GrobingDatabase,
-      $BurialsTable,
-      Burial,
-      $$BurialsTableFilterComposer,
-      $$BurialsTableOrderingComposer,
-      $$BurialsTableAnnotationComposer,
-      $$BurialsTableCreateCompanionBuilder,
-      $$BurialsTableUpdateCompanionBuilder,
-      (Burial, $$BurialsTableReferences),
-      Burial,
-      PrefetchHooks Function({bool personId, bool graveId})
+      $AssertionsTable,
+      Assertion,
+      $$AssertionsTableFilterComposer,
+      $$AssertionsTableOrderingComposer,
+      $$AssertionsTableAnnotationComposer,
+      $$AssertionsTableCreateCompanionBuilder,
+      $$AssertionsTableUpdateCompanionBuilder,
+      (Assertion, $$AssertionsTableReferences),
+      Assertion,
+      PrefetchHooks Function({bool eventId, bool burialId})
     >;
 typedef $$MediaTableCreateCompanionBuilder =
     MediaCompanion Function({
@@ -7836,6 +9012,8 @@ class $GrobingDatabaseManager {
       $$GravesTableTableManager(_db, _db.graves);
   $$BurialsTableTableManager get burials =>
       $$BurialsTableTableManager(_db, _db.burials);
+  $$AssertionsTableTableManager get assertions =>
+      $$AssertionsTableTableManager(_db, _db.assertions);
   $$MediaTableTableManager get media =>
       $$MediaTableTableManager(_db, _db.media);
   $$SettingsTableTableManager get settings =>

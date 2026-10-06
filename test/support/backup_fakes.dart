@@ -170,7 +170,7 @@ RestoreService restoreServiceIn(
   Directory dataDir,
   GeneratedDatabase db,
   FakeDocumentStore documents, {
-  int schemaVersion = 1,
+  int schemaVersion = GrobingDatabase.currentSchemaVersion,
   DatabaseOpener? openDatabase,
   DataLock? lock,
 }) => RestoreService(

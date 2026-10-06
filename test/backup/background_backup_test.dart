@@ -368,7 +368,7 @@ void main() {
         bool opened = false;
         expect(
           await runInBackground(
-            schemaVersion: 2,
+            schemaVersion: GrobingDatabase.currentSchemaVersion + 1,
             openDatabase: (file) {
               opened = true;
               return GrobingDatabase.atFile(file);
@@ -384,7 +384,10 @@ void main() {
             .customSelect('PRAGMA user_version')
             .getSingle();
         await db.close();
-        expect(row.read<int>('user_version'), 1);
+        expect(
+          row.read<int>('user_version'),
+          GrobingDatabase.currentSchemaVersion,
+        );
         expect(lock.held, isFalse);
       },
     );

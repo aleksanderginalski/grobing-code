@@ -137,7 +137,7 @@ void main() {
       expect(manifest.toJson(), returned.toJson());
       expect(manifest.formatVersion, 1);
       expect(manifest.createdAt, createdAt);
-      expect(manifest.schemaVersion, 1);
+      expect(manifest.schemaVersion, GrobingDatabase.currentSchemaVersion);
       expect(manifest.recordCounts, liveState.rowCounts);
       expect(manifest.dataFingerprint, liveState.fingerprint);
       expect(

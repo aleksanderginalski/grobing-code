@@ -4,12 +4,14 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:sqlite3/sqlite3.dart' show Database;
 
+import 'database.steps.dart';
+
 part 'database.g.dart';
 
-// Schema v1 — grobing-vault/04_ARCHITECTURE/data-model.md, without Assertion (ISSUE-007 D2: its shape
-// arrives with US-002 as v2), without the grave fee (S4) and the cemetery offline-map status
-// (SPIKE-001). Enums are stored by name, not index: data lives for decades and a reordered enum must
-// not silently change meaning. Renaming an enum value is a schema change and needs a migration.
+// Schema v2 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007) plus Assertion (ISSUE-011,
+// ADR-006), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
+// stored by name, not index: data lives for decades and a reordered enum must not silently change
+// meaning. Renaming an enum value is a schema change and needs a migration.
 
 enum EventType { birth, death, burial, marriage, end }
 
@@ -18,6 +20,12 @@ enum DateQualifier { exact, about, before, after, between }
 
 /// How a grave position was obtained (glossary: pinezka carries its source).
 enum PositionSource { satellite, gps }
+
+/// FR-001: where a claim comes from — nagrobek · notatki · babcia · krewny · akt.
+enum SourceKind { gravestone, notes, grandmother, relative, record }
+
+/// FR-001: how strong a claim is, not whether it is true. `contradicted` is a result, never deleted.
+enum AssertionStatus { claimed, confirmed, contradicted, unknown }
 
 class Persons extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -105,12 +113,39 @@ class Graves extends Table {
   RealColumn get positionAccuracyM => real().nullable()();
 }
 
-/// FR-003: many burials per grave, at most one per person.
+/// FR-003: many burials per grave. A person is buried in one place, but the sources may disagree on
+/// which (FR-001, ADR-006 D2): each grave claimed for a person is its own row, with its own claims.
+/// The same person and grave twice is one value — a second source for it is a second claim, not a row.
 class Burials extends Table {
-  // Unique rather than the primary key: a lone INTEGER PRIMARY KEY would become SQLite's rowid and
-  // could be generated when omitted, instead of always naming a person.
-  IntColumn get personId => integer().unique().references(Persons, #id)();
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get personId => integer().references(Persons, #id)();
   IntColumn get graveId => integer().references(Graves, #id)();
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {personId, graveId},
+  ];
+}
+
+/// FR-001 provenance, shaped like a GEDCOM 7 source citation (ADR-006): the value lives in the event
+/// or burial row, a claim says who stated it and how strong it is. Conflicting values are separate
+/// rows, each with its own claims; the one shown is the first row (lowest id). Every event and burial
+/// row has at least one claim — `claims.dart` writes them together.
+class Assertions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get eventId => integer().nullable().references(Events, #id)();
+  IntColumn get burialId => integer().nullable().references(Burials, #id)();
+  TextColumn get sourceKind => textEnum<SourceKind>()();
+
+  /// Which relative, which record — "kto je podał" (FR-001). Optional.
+  TextColumn get sourceDetail => text().nullable()();
+  TextColumn get status => textEnum<AssertionStatus>()();
+  DateTimeColumn get recordedAt => dateTime()();
+
+  @override
+  List<String> get customConstraints => [
+    'CHECK ((event_id IS NULL) <> (burial_id IS NULL))',
+  ];
 }
 
 /// A photo file in the app's private storage, under [DataLocation.mediaDir].
@@ -174,6 +209,7 @@ class DataLocation {
     Cemeteries,
     Graves,
     Burials,
+    Assertions,
     Media,
     Settings,
   ],
@@ -187,7 +223,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -195,12 +231,57 @@ class GrobingDatabase extends _$GrobingDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
+    // Never "drop and recreate": the data is irreplaceable. Each step is tested from the version before
+    // it (test/drift/grobing/), and a version without a step fails to open instead of losing data.
+    // A restore checks that every table of the backup's version is still there with the same row
+    // count (restore_service.dart), so a step adds and reshapes, but never drops a table or a row.
     onUpgrade: (m, from, to) async {
-      // Never "drop and recreate": the data is irreplaceable. A version without a step is a bug.
-      throw StateError('No migration from schema $from to $to');
+      // One transaction for every step, the version number included (drift writes it only after this
+      // returns): an upgrade interrupted anywhere leaves the old version whole, and the next start
+      // runs it again from the beginning.
+      await transaction(() async {
+        await m.runMigrationSteps(
+          from: from,
+          to: to,
+          steps: migrationSteps(from1To2: _from1To2),
+        );
+        await customStatement('PRAGMA user_version = $to');
+      });
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },
   );
+
+  /// ISSUE-011 (ADR-006): claims arrive. Burials lose "one per person" (D2) and get an id for their
+  /// claims; the old rowid becomes the id, so every v1 row keeps its place.
+  Future<void> _from1To2(Migrator m, Schema2 schema) async {
+    await m.alterTable(
+      TableMigration(
+        schema.burials,
+        columnTransformer: {
+          schema.burials.id: const CustomExpression<int>('rowid'),
+        },
+      ),
+    );
+    await m.createTable(schema.assertions);
+    // D5: the only way planned for a v1 date or burial was transcribing the notes, so each gets one
+    // claim saying so — and that it was carried over, not entered with its source.
+    final int now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await customStatement(
+      'INSERT INTO assertions '
+      '(event_id, source_kind, source_detail, status, recorded_at) '
+      "SELECT id, 'notes', ?, 'claimed', ? FROM events ORDER BY id",
+      [carriedOverFromV1, now],
+    );
+    await customStatement(
+      'INSERT INTO assertions '
+      '(burial_id, source_kind, source_detail, status, recorded_at) '
+      "SELECT id, 'notes', ?, 'claimed', ? FROM burials ORDER BY id",
+      [carriedOverFromV1, now],
+    );
+  }
 }
+
+/// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).
+const String carriedOverFromV1 = 'przeniesione z v1';

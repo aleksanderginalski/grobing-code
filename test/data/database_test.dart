@@ -5,9 +5,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/data/database.dart';
 
-// ISSUE-007 AC-1 and AC-2. All data here is made up (family-data.md).
+// ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
+// All data here is made up (family-data.md).
 
-const List<String> _v1Tables = [
+const List<String> _v2Tables = [
+  'assertions',
   'burials',
   'cemeteries',
   'events',
@@ -32,16 +34,16 @@ void main() {
 
   tearDown(() => tmp.delete(recursive: true));
 
-  group('AC-2 — a fresh database is schema v1', () {
+  group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 1, integrity ok, exactly the v1 tables, foreign keys on',
+      'user_version 2, integrity ok, exactly the v2 tables, foreign keys on',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 1);
+        expect(await _single(db, 'PRAGMA user_version'), 2);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -54,12 +56,13 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v1Tables);
+        expect(tables, _v2Tables);
       },
     );
 
     test(
-      'a grave holds several burials, a person at most one (FR-003)',
+      'a grave holds several burials (FR-003); a second grave for a person is a second claimed '
+      'burial, the same grave twice is refused (ADR-006 D2)',
       () async {
         final GrobingDatabase db = GrobingDatabase(NativeDatabase.memory());
         addTearDown(db.close);
@@ -94,6 +97,16 @@ void main() {
               .insert(BurialsCompanion.insert(personId: first, graveId: grave)),
           throwsA(isA<SqliteException>()),
         );
+
+        final int otherGrave = await db
+            .into(db.graves)
+            .insert(GravesCompanion.insert(cemeteryId: cemetery));
+        await db
+            .into(db.burials)
+            .insert(
+              BurialsCompanion.insert(personId: first, graveId: otherGrave),
+            );
+        expect(await db.select(db.burials).get(), hasLength(3));
       },
     );
 
@@ -204,7 +217,10 @@ void main() {
         final GrobingDatabase copy = GrobingDatabase(NativeDatabase(copyFile));
         addTearDown(copy.close);
         expect(await _single(copy, 'PRAGMA integrity_check'), 'ok');
-        expect(await _single(copy, 'PRAGMA user_version'), 1);
+        expect(
+          await _single(copy, 'PRAGMA user_version'),
+          GrobingDatabase.currentSchemaVersion,
+        );
         expect(await copy.select(copy.persons).get(), hasLength(1));
       },
     );
