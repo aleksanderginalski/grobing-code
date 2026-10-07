@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../data/database.dart';
 import '../../data/graves.dart';
-import '../dates.dart';
+import '../family/family_section.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
 import '../photo/photo_viewer_screen.dart' show PhotoErrorLine;
@@ -12,6 +11,7 @@ import '../photo/profile_circle.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/date_block.dart';
 import 'grave_screen.dart';
 
 /// Where the form was opened from, and so what it writes (05_DESIGN/wpis-osoby.md → Navigation).
@@ -56,7 +56,10 @@ class Correction extends PersonFormMode {
   });
 
   final BuriedPerson person;
-  final String graveTitle;
+
+  /// The grave's name, or its cemetery's; null for a person buried nowhere — opened from a relative's
+  /// chip in "Rodzina" (05_DESIGN/wpis-osoby.md v5, "poprawa osoby bez grobu").
+  final String? graveTitle;
   final int peopleCount;
 
   /// The grave the person was opened from: its people come first in "Kto jest na zdjęciu?".
@@ -83,9 +86,6 @@ class PersonFormScreen extends StatefulWidget {
   @override
   State<PersonFormScreen> createState() => _PersonFormScreenState();
 }
-
-const String _badDate =
-    'Nie rozumiem tej daty — wpisz rok, mm.rrrr albo dd.mm.rrrr.';
 
 class _PersonFormScreenState extends State<PersonFormScreen> {
   late final PersonEntry _initial = switch (widget.mode) {
@@ -116,13 +116,13 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
   final FocusNode _surnameNode = FocusNode();
   final FocusNode _bioSourceNode = FocusNode();
 
-  late final List<_DateInput> _dates = [
-    _DateInput(
+  late final List<DateInput> _dates = [
+    DateInput(
       'Urodzenie',
       _initial.birth,
       readOnly: !_correctable((p) => p.birth),
     ),
-    _DateInput('Zgon', _initial.death, readOnly: !_correctable((p) => p.death)),
+    DateInput('Zgon', _initial.death, readOnly: !_correctable((p) => p.death)),
     // No burial date: the author found it superfluous, and every field counts a hundred times (the author's
     // decision at stop #2, ISSUE-012 D7). The data model keeps it (GEDCOM BURI next to DEAT).
   ];
@@ -194,7 +194,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     for (final FocusNode n in [_givenNode, _surnameNode, _bioSourceNode]) {
       n.dispose();
     }
-    for (final _DateInput d in _dates) {
+    for (final DateInput d in _dates) {
       d.dispose();
     }
     // Drops the photos prepared and not saved; after "Zapisz" they are in the media directory already.
@@ -222,7 +222,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     _birthSurname.text,
     _bio.text,
     _bioSource.text,
-    for (final _DateInput d in _dates) ...[
+    for (final DateInput d in _dates) ...[
       d.qualifier.name,
       d.from.text,
       if (d.between) d.to.text,
@@ -254,9 +254,10 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     NewGrave(:final String cemeteryName) => '$cemeteryName · nowy grób',
     NextPerson(:final String graveTitle, :final int peopleCount) ||
     Correction(
-      :final String graveTitle,
+      graveTitle: final String graveTitle,
       :final int peopleCount,
     ) => '$graveTitle · w grobie: ${peopleLabel(peopleCount)}',
+    Correction(graveTitle: null) => 'bez grobu w aplikacji',
   };
 
   /// Checks every field and marks what is wrong; the first such field gets the focus, which also
@@ -267,8 +268,8 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         _given.text.trim().isNotEmpty || _surname.text.trim().isNotEmpty;
     _nameMissing = !hasName;
     if (!hasName) first = _givenNode;
-    for (final _DateInput d in _dates) {
-      final _DateRead r = d.read();
+    for (final DateInput d in _dates) {
+      final DateRead r = d.read();
       d.showError = r.error != null;
       if (r.error != null) first ??= r.toBad ? d.toNode : d.fromNode;
     }
@@ -519,14 +520,14 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           autofocus: widget.mode is! Correction,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.next,
-          style: _input,
+          style: inputTextStyle,
           onChanged: (_) {
             if (_nameMissing) setState(() => _nameMissing = false);
           },
           decoration: InputDecoration(
             labelText: 'Imiona',
             error: _nameMissing
-                ? const _ErrorLine('Podaj imiona albo nazwisko.')
+                ? const ErrorLine('Podaj imiona albo nazwisko.')
                 : null,
           ),
         ),
@@ -536,7 +537,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           focusNode: _surnameNode,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.next,
-          style: _input,
+          style: inputTextStyle,
           onChanged: (_) {
             if (_nameMissing) setState(() => _nameMissing = false);
           },
@@ -547,15 +548,15 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           controller: _birthSurname,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.next,
-          style: _input,
+          style: inputTextStyle,
           decoration: const InputDecoration(
             labelText: 'Nazwisko rodowe (z domu)',
           ),
         ),
         // Elements 5–7.
-        for (final _DateInput d in _dates) ...[
+        for (final DateInput d in _dates) ...[
           const SizedBox(height: 16),
-          _DateBlock(
+          DateBlock(
             input: d,
             onChanged: () => setState(() => d.showError = false),
           ),
@@ -568,7 +569,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           textCapitalization: TextCapitalization.sentences,
           minLines: 3,
           maxLines: 6,
-          style: _input,
+          style: inputTextStyle,
           onChanged: (_) {
             if (_sourceMissing) setState(() => _sourceMissing = false);
           },
@@ -582,6 +583,21 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           ),
         ),
         _sourceLine(),
+        // Element 9a (v5): the person's families — in a correction only: the family sheet points at
+        // "ta osoba", so the person must be written first (rodzina.md D2). Outside the `next` order.
+        if (widget.mode case Correction(:final BuriedPerson person)) ...[
+          const SizedBox(height: 24),
+          FamilySection(
+            database: widget.database,
+            personId: person.id,
+            personName: () => _nameNow(withBirthSurname: true),
+            graveId: switch (widget.mode) {
+              Correction(:final int? graveId) => graveId,
+              _ => null,
+            },
+            photos: widget.photos,
+          ),
+        ],
         const SizedBox(height: 16),
         // Element 10: the dates' source is shown, not asked (FR-001 cost decision). In a correction a
         // date keeps its claim and the grave does not change (D1), so the line says what is true
@@ -634,14 +650,14 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         focusNode: _bioSourceNode,
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.done,
-        style: _input,
+        style: inputTextStyle,
         onChanged: (_) {
           if (_sourceMissing) setState(() => _sourceMissing = false);
         },
         decoration: InputDecoration(
           labelText: 'Źródło „kim była”',
           error: _sourceMissing
-              ? const _ErrorLine(
+              ? const ErrorLine(
                   'Podaj źródło — kto to powiedział albo skąd to wiesz.',
                 )
               : null,
@@ -658,7 +674,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_saveFailed) ...[
-          const _ErrorLine('Nie udało się zapisać. Spróbuj jeszcze raz.'),
+          const ErrorLine('Nie udało się zapisać. Spróbuj jeszcze raz.'),
           const SizedBox(height: 8),
         ],
         FilledButton(
@@ -677,8 +693,6 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     ),
   );
 }
-
-const TextStyle _input = TextStyle(color: GrobingColors.text, fontSize: 16);
 
 /// Element 1a (05_DESIGN/wpis-osoby.md v4): without photos, an 80 dp circle with an outline, the icon in
 /// amber and "Dodaj zdjęcie" — a button, never a silhouette (style-b.md rules 11, 14); with photos, the
@@ -790,278 +804,4 @@ class _PhotoField extends StatelessWidget {
       ),
     );
   }
-}
-
-/// An error under a field: the error colour with its icon, never colour alone (SC 1.4.1).
-class _ErrorLine extends StatelessWidget {
-  const _ErrorLine(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Icon(Icons.error_outline, size: 16, color: GrobingColors.error),
-      const SizedBox(width: 4),
-      Expanded(
-        child: Text(
-          text,
-          style: const TextStyle(color: GrobingColors.error, fontSize: 13),
-        ),
-      ),
-    ],
-  );
-}
-
-/// What one date block holds: its qualifier, one or two typed dates, and whether its error shows.
-class _DateInput {
-  _DateInput(this.label, QualifiedDate? initial, {required this.readOnly})
-    : original = initial,
-      qualifier = initial?.qualifier ?? DateQualifier.exact,
-      from = TextEditingController(
-        text: initial == null ? '' : formatPartialDate(initial.from),
-      ),
-      to = TextEditingController(
-        text: initial?.to == null ? '' : formatPartialDate(initial!.to!),
-      );
-
-  final String label;
-
-  /// Another source spoke for this date: the correction form leaves it alone (ISSUE-012 D1).
-  final bool readOnly;
-  final QualifiedDate? original;
-  DateQualifier qualifier;
-  final TextEditingController from;
-  final TextEditingController to;
-  final FocusNode fromNode = FocusNode();
-  final FocusNode toNode = FocusNode();
-
-  /// Outside the `next` order, so `next` goes from date to date (05_DESIGN/wpis-osoby.md, element b).
-  final FocusNode qualifierNode = FocusNode(skipTraversal: true);
-  bool showError = false;
-
-  bool get between => qualifier == DateQualifier.between;
-
-  /// The date typed — null when the field is empty: an empty date writes nothing, and a qualifier
-  /// without a date is ignored.
-  _DateRead read() {
-    if (readOnly) return (date: original, error: null, toBad: false);
-    final String f = from.text.trim(), t = to.text.trim();
-    if (f.isEmpty) {
-      return between && t.isNotEmpty
-          ? (date: null, error: 'Podaj pierwszą datę.', toBad: false)
-          : (date: null, error: null, toBad: false);
-    }
-    final PartialDate? start = parsePartialDate(f);
-    if (start == null) return (date: null, error: _badDate, toBad: false);
-    if (!between) {
-      return (date: QualifiedDate(qualifier, start), error: null, toBad: false);
-    }
-    if (t.isEmpty) return (date: null, error: 'Podaj drugą datę.', toBad: true);
-    final PartialDate? end = parsePartialDate(t);
-    if (end == null) return (date: null, error: _badDate, toBad: true);
-    if (!isLater(start, end)) {
-      return (
-        date: null,
-        error: 'Druga data musi być późniejsza od pierwszej.',
-        toBad: true,
-      );
-    }
-    return (
-      date: QualifiedDate(DateQualifier.between, start, end),
-      error: null,
-      toBad: false,
-    );
-  }
-
-  void dispose() {
-    from.dispose();
-    to.dispose();
-    fromNode.dispose();
-    toNode.dispose();
-    qualifierNode.dispose();
-  }
-}
-
-typedef _DateRead = ({QualifiedDate? date, String? error, bool toBad});
-
-const Map<DateQualifier, String> _qualifierLabels = {
-  DateQualifier.exact: 'dokładnie',
-  DateQualifier.about: 'około',
-  DateQualifier.before: 'przed',
-  DateQualifier.after: 'po',
-  DateQualifier.between: 'między',
-};
-
-/// Elements 5–7, the date block: label, qualifier, date (and the second one for "między"), and the
-/// preview — the date exactly as the grave will show it.
-class _DateBlock extends StatelessWidget {
-  const _DateBlock({required this.input, required this.onChanged});
-
-  final _DateInput input;
-  final VoidCallback onChanged;
-
-  _DateInput get d => input;
-
-  static const TextStyle _muted = TextStyle(
-    color: GrobingColors.textMuted,
-    fontSize: 14,
-  );
-
-  void _choose(DateQualifier q) {
-    d.qualifier = q;
-    onChanged();
-    d.fromNode.requestFocus();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (d.readOnly) return _readOnly();
-    final _DateRead r = d.read();
-    final bool fromBad = d.showError && r.error != null && !r.toBad;
-    final bool toBad = d.showError && r.error != null && r.toBad;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(d.label, style: _muted),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _qualifierButton(),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _field(
-                d.from,
-                d.fromNode,
-                fromBad,
-                d.between ? 'od' : 'rok albo dd.mm.rrrr',
-              ),
-            ),
-            if (d.between) ...[
-              const SizedBox(width: 8),
-              Expanded(child: _field(d.to, d.toNode, toBad, 'do')),
-            ],
-          ],
-        ),
-        if (d.showError && r.error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 5),
-            child: _ErrorLine(r.error!),
-          )
-        else if (r.date != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Text('→ ${formatDate(r.date!)}', style: _muted),
-          ),
-      ],
-    );
-  }
-
-  Widget _qualifierButton() => MenuAnchor(
-    style: const MenuStyle(
-      backgroundColor: WidgetStatePropertyAll(GrobingColors.surface),
-    ),
-    menuChildren: [
-      for (final DateQualifier q in DateQualifier.values)
-        MenuItemButton(
-          style: MenuItemButton.styleFrom(
-            foregroundColor: q == d.qualifier
-                ? GrobingColors.amber
-                : GrobingColors.text,
-            iconColor: GrobingColors.amber,
-            minimumSize: const Size(160, 48),
-          ),
-          // The choice is a check and a selected state too, never colour alone (SC 1.4.1; ui review).
-          leadingIcon: q == d.qualifier
-              ? const Icon(Icons.check)
-              : const SizedBox(width: 24),
-          onPressed: () => _choose(q),
-          child: Semantics(
-            selected: q == d.qualifier,
-            child: Text(_qualifierLabels[q]!),
-          ),
-        ),
-    ],
-    // A least size, not a fixed one: with a larger system text the label grows instead of being cut
-    // (SC 1.4.4; ui review).
-    builder: (context, controller, _) => OutlinedButton(
-      focusNode: d.qualifierNode,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: GrobingColors.text,
-        side: const BorderSide(color: GrobingColors.outline),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
-        minimumSize: const Size(116, 56),
-        alignment: Alignment.centerLeft,
-        textStyle: const TextStyle(fontSize: 15),
-      ),
-      onPressed: () {
-        if (controller.isOpen) {
-          controller.close();
-          return;
-        }
-        // The menu does not keep clear of the keyboard, which covered its lower items — "między"
-        // among them (seen on the emulator): the keyboard goes first, and choosing brings the
-        // focus, and the keyboard, back to the date.
-        FocusManager.instance.primaryFocus?.unfocus();
-        controller.open();
-      },
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(_qualifierLabels[d.qualifier]!),
-          const Icon(Icons.arrow_drop_down, color: GrobingColors.textMuted),
-        ],
-      ),
-    ),
-  );
-
-  Widget _field(
-    TextEditingController controller,
-    FocusNode node,
-    bool bad,
-    String hint,
-  ) => TextField(
-    controller: controller,
-    focusNode: node,
-    // Digits and a separator without switching keyboards (05_DESIGN/wpis-osoby.md → Open 2).
-    keyboardType: TextInputType.datetime,
-    inputFormatters: [
-      FilteringTextInputFormatter.allow(RegExp(r'[0-9./-]')),
-      LengthLimitingTextInputFormatter(10),
-    ],
-    textInputAction: TextInputAction.next,
-    style: _input,
-    onChanged: (_) => onChanged(),
-    decoration: InputDecoration(
-      hintText: hint,
-      // The frame turns to the error colour; the message stands under the whole block.
-      error: bad ? const SizedBox.shrink() : null,
-    ),
-  );
-
-  /// A date backed by more than one source: shown, not corrected here (ISSUE-012 D1).
-  Widget _readOnly() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(d.label, style: _muted),
-      const SizedBox(height: 6),
-      InputDecorator(
-        decoration: const InputDecoration(),
-        child: Text(
-          d.original == null ? 'bez daty' : formatDate(d.original!),
-          style: _input,
-        ),
-      ),
-      const Padding(
-        padding: EdgeInsets.only(top: 4, left: 2),
-        child: Text(
-          'Kilka źródeł — tej daty tu nie poprawisz.',
-          style: TextStyle(color: GrobingColors.textMuted, fontSize: 13),
-        ),
-      ),
-    ],
-  );
 }

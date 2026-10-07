@@ -85,6 +85,21 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   czyta ich kadry i zapisuje je z powrotem, chyba że edycja ustawiła nowy. Granicę obrazu pilnuje ekran kadru
   (`lib/app/photo/crop_geometry.dart`), bo wymiarów zdjęcia nie ma w bazie; okrąg i tak przycina kadr do
   obrazu.
+- **Rodzina (schemat v6, ISSUE-019, ADR-011 w vaulcie).** Rodzina to związek (małżeństwo albo nie) z dziećmi:
+  1–2 osoby w parze, ślub i koniec jako zdarzenia rodziny. Osoba w kilku związkach jest w kilku rodzinach. Płci
+  w modelu nie ma (decyzja autora).
+  - **Twierdzenie o relacji stoi przy rodzinie (związek pary) i przy łączu każdego dziecka**, nie przy partnerze.
+    GEDCOM 7 cytuje źródło przy `FAM`, a Gramps przy łączu dziecka (`ChildRef`). `family_children` ma więc `id`, a
+    `assertions` cytuje dokładnie jedno: zdarzenie, pochówek, rodzinę albo łącze dziecka (`CHECK`).
+  - **Zapis i usuwanie rodziny** (`lib/data/families.dart` → `saveFamily`, `deleteFamily`) to jedna transakcja.
+    Te same reguły co na ekranie: 1–2 osoby w parze, co najmniej dwie osoby, nikt dwa razy, dziecko w jednej
+    rodzinie rodziców.
+  - **Migracja v5→v6 nie dopisuje wierszy:** przebudowuje `family_children` (stary `rowid` to `id`) i `assertions`
+    (`TableMigration`). Dopisanie twierdzeń do rodzin sprzed v6 zmieniłoby liczbę wierszy `assertions` i
+    odtworzenie każdej kopii v5 z rodzinami by odmówiło. Rodziny przed v6 pisały tylko wymyślone dane debug, a
+    twierdzenie dostają przy pierwszym zapisie w arkuszu rodziny.
+  - **Dzieci według daty urodzenia** (GEDCOM 7: *„chronological by birth”*), bez daty na końcu; związki osoby
+    według daty ślubu.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.

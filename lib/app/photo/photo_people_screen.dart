@@ -133,7 +133,7 @@ class _PhotoPeopleScreenState extends State<PhotoPeopleScreen> {
                       ),
                     ),
                     if (selfShown || inGrave.isNotEmpty) ...[
-                      const _SectionHeader('W tym grobie'),
+                      const PeopleSectionHeader('W tym grobie'),
                       // D4: the person whose photos these are — ticked, inactive.
                       if (selfShown)
                         _PersonRow(
@@ -145,7 +145,7 @@ class _PhotoPeopleScreenState extends State<PhotoPeopleScreen> {
                       for (final PersonChoice c in inGrave) _row(c),
                     ],
                     if (others.isNotEmpty) ...[
-                      const _SectionHeader('Inne osoby'),
+                      const PeopleSectionHeader('Inne osoby'),
                       for (final PersonChoice c in others)
                         _row(c, withPlace: true),
                     ],
@@ -206,8 +206,10 @@ class _PhotoPeopleScreenState extends State<PhotoPeopleScreen> {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text);
+/// A section header of a list of people — "W tym grobie", "Inne osoby" (05_DESIGN/zdjecie.md D4–D5) and
+/// the family sheet's "Para", "Dzieci" (rodzina.md A2, A7): 14 sp, semi-bold, the muted colour.
+class PeopleSectionHeader extends StatelessWidget {
+  const PeopleSectionHeader(this.text, {super.key});
 
   final String text;
 

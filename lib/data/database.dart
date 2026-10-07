@@ -8,9 +8,10 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v4 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
-// ADR-006), the grave's name (ISSUE-012) and people's photos as links (ISSUE-017), still without the
-// grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
+// Schema v6 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018)
+// and claims on families and children's links (ISSUE-019), still without the grave fee (S4) and the
+// cemetery offline-map status (SPIKE-001). No sex: the author's decision at stop #1 of ISSUE-019. Enums are
 // stored by name, not index: data lives for decades and a reordered enum must not silently change
 // meaning. Renaming an enum value is a schema change and needs a migration.
 
@@ -42,12 +43,16 @@ class Persons extends Table {
   BoolColumn get isLiving => boolean().withDefault(const Constant(false))();
 }
 
-/// FR-002: a family is a record of 1-2 partners and children. The "at most two partners" rule is
-/// enforced where families are entered (US-003), not here.
+/// FR-002: a family is a record of 1-2 partners and children — a union, married or not, with its own
+/// start (marriage) and end events. A person in several unions is in several families. The rules of
+/// who may be in one (1–2 partners, at least two people, a child in one family of parents) are kept
+/// where families are written (`families.dart`, ISSUE-019), not here.
 class Families extends Table {
   IntColumn get id => integer().autoIncrement()();
 }
 
+/// A partner in a family. The source of the union is a claim on the family itself — GEDCOM 7 cites the
+/// `FAM` record, never `HUSB` or `WIFE` (ADR-011): the pair is one fact, not two.
 class FamilyPartners extends Table {
   IntColumn get familyId => integer().references(Families, #id)();
   IntColumn get personId => integer().references(Persons, #id)();
@@ -56,12 +61,19 @@ class FamilyPartners extends Table {
   Set<Column<Object>> get primaryKey => {familyId, personId};
 }
 
+/// A child's link to their family of parents. It has an id for its own claims (ISSUE-019, ADR-011):
+/// "this was not their child" is about one child, not the whole family — as Gramps cites a `ChildRef`
+/// and GEDCOM 7 gives `FAMC` a status. The same child twice in a family means nothing (GEDCOM 7: "should
+/// not have multiple CHIL substructures pointing to the same INDI").
 class FamilyChildren extends Table {
+  IntColumn get id => integer().autoIncrement()();
   IntColumn get familyId => integer().references(Families, #id)();
   IntColumn get personId => integer().references(Persons, #id)();
 
   @override
-  Set<Column<Object>> get primaryKey => {familyId, personId};
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {familyId, personId},
+  ];
 }
 
 class Events extends Table {
@@ -133,14 +145,19 @@ class Burials extends Table {
   ];
 }
 
-/// FR-001 provenance, shaped like a GEDCOM 7 source citation (ADR-006): the value lives in the event
-/// or burial row, a claim says who stated it and how strong it is. Conflicting values are separate
-/// rows, each with its own claims; the one shown is the first row (lowest id). Every event and burial
-/// row has at least one claim — `claims.dart` writes them together.
+/// FR-001 provenance, shaped like a GEDCOM 7 source citation (ADR-006): the value lives in the row it
+/// cites, a claim says who stated it and how strong it is. Conflicting values are separate rows, each
+/// with its own claims; the one shown is the first row (lowest id). A claim cites exactly one row: an
+/// event, a burial, a family (the union) or a child's link (ISSUE-019, ADR-011). Every event, burial,
+/// family and child's link written since v6 has at least one claim — `claims.dart` and `families.dart`
+/// write them together; families from before v6 have none (ADR-011: a migration adds no rows).
 class Assertions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get eventId => integer().nullable().references(Events, #id)();
   IntColumn get burialId => integer().nullable().references(Burials, #id)();
+  IntColumn get familyId => integer().nullable().references(Families, #id)();
+  IntColumn get familyChildId =>
+      integer().nullable().references(FamilyChildren, #id)();
   TextColumn get sourceKind => textEnum<SourceKind>()();
 
   /// Which relative, which record — "kto je podał" (FR-001). Optional.
@@ -150,7 +167,8 @@ class Assertions extends Table {
 
   @override
   List<String> get customConstraints => [
-    'CHECK ((event_id IS NULL) <> (burial_id IS NULL))',
+    'CHECK ((event_id IS NOT NULL) + (burial_id IS NOT NULL) + '
+        '(family_id IS NOT NULL) + (family_child_id IS NOT NULL) = 1)',
   ];
 }
 
@@ -252,7 +270,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 5;
+  static const int currentSchemaVersion = 6;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -277,6 +295,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from2To3: _from2To3,
             from3To4: _from3To4,
             from4To5: _from4To5,
+            from5To6: _from5To6,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -352,6 +371,41 @@ class GrobingDatabase extends _$GrobingDatabase {
     await m.addColumn(schema.personMedia, schema.personMedia.cropTop);
     await m.addColumn(schema.personMedia, schema.personMedia.cropWidth);
     await m.addColumn(schema.personMedia, schema.personMedia.cropHeight);
+  }
+
+  /// ISSUE-019 (ADR-011): claims on families and on children's links. A child's link gets an id — its
+  /// old rowid, so every link keeps its place — and claims may cite a family or a link: SQLite changes a
+  /// CHECK only by rebuilding the table, rows and ids copied as they are. Foreign keys are off here, as in
+  /// `_from3To4`; the check at the end makes up for it.
+  ///
+  /// **No rows are added**: a restore of a v5 backup counts the rows of every table after migrating it
+  /// (restore_service.dart), so claims for the families already there would refuse every such backup.
+  /// Before v6 only the made-up debug data wrote families (`fictional_data.dart`); a family without a
+  /// claim gets one when it is next saved on the family sheet (`families.dart` → saveFamily).
+  Future<void> _from5To6(Migrator m, Schema6 schema) async {
+    await m.alterTable(
+      TableMigration(
+        schema.familyChildren,
+        columnTransformer: {
+          schema.familyChildren.id: const CustomExpression<int>('rowid'),
+        },
+      ),
+    );
+    await m.alterTable(
+      TableMigration(
+        schema.assertions,
+        newColumns: [
+          schema.assertions.familyId,
+          schema.assertions.familyChildId,
+        ],
+      ),
+    );
+    final List<QueryRow> broken = await customSelect(
+      'PRAGMA foreign_key_check',
+    ).get();
+    if (broken.isNotEmpty) {
+      throw StateError('Schema v6: ${broken.length} broken references');
+    }
   }
 }
 

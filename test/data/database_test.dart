@@ -8,8 +8,9 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-// v5 (ISSUE-018) has the tables of v4; person_media got the crop columns.
-const List<String> _v5Tables = [
+// v6 (ISSUE-019) has the tables of v5; family_children got an id and assertions may cite a family or a
+// child's link (ADR-011).
+const List<String> _v6Tables = [
   'assertions',
   'burials',
   'cemeteries',
@@ -38,14 +39,15 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 5, integrity ok, exactly the v5 tables, foreign keys on, the crop on the photo link',
+      'user_version 6, integrity ok, exactly the v6 tables, foreign keys on, the crop on the photo link, '
+      'claims on families and on children\'s links',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 5);
+        expect(await _single(db, 'PRAGMA user_version'), 6);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -58,7 +60,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v5Tables);
+        expect(tables, _v6Tables);
         final List<String> linkColumns =
             (await db.customSelect('PRAGMA table_info(person_media)').get())
                 .map((r) => r.read<String>('name'))
@@ -66,6 +68,19 @@ void main() {
         expect(
           linkColumns,
           containsAll(['crop_left', 'crop_top', 'crop_width', 'crop_height']),
+        );
+        Future<List<String>> columns(String table) async => [
+          for (final QueryRow r
+              in await db.customSelect('PRAGMA table_info($table)').get())
+            r.read<String>('name'),
+        ];
+        expect(
+          await columns('family_children'),
+          containsAll(['id', 'family_id', 'person_id']),
+        );
+        expect(
+          await columns('assertions'),
+          containsAll(['family_id', 'family_child_id']),
         );
       },
     );

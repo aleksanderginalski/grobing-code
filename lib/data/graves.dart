@@ -234,12 +234,18 @@ class GraveDetail {
 
 /// A new value after every write to a table the view reads. drift re-runs a watched query when any
 /// table in its `readsFrom` changes; the view itself is loaded with typed queries.
-Stream<T> _watch<T>(
+///
+/// [view] names the query: drift shares one stream between watchers of the same SQL and variables, and
+/// that stream keeps the `readsFrom` of whoever opened it first — the grave view opened from the
+/// cemetery's list missed writes to dates, claims and photo links (found in ISSUE-019, where the family
+/// section missed a family's write the same way).
+Stream<T> watchTables<T>(
   GrobingDatabase db,
+  String view,
   Set<ResultSetImplementation<dynamic, dynamic>> tables,
   Future<T> Function() load,
 ) => db
-    .customSelect('SELECT 1', readsFrom: tables)
+    .customSelect('SELECT 1 AS $view', readsFrom: tables)
     .watch()
     .asyncMap((_) => load());
 
@@ -247,7 +253,7 @@ Stream<T> _watch<T>(
 Stream<CemeteryGraves?> watchCemeteryGraves(
   GrobingDatabase db,
   int cemeteryId,
-) => _watch(db, {
+) => watchTables(db, 'cemetery_graves', {
   db.cemeteries,
   db.graves,
   db.burials,
@@ -325,16 +331,17 @@ Future<CemeteryGraves?> loadCemeteryGraves(
 }
 
 /// The grave with its cemetery and people; null when there is no such grave.
-Stream<GraveDetail?> watchGrave(GrobingDatabase db, int graveId) => _watch(db, {
-  db.cemeteries,
-  db.graves,
-  db.burials,
-  db.persons,
-  db.events,
-  db.assertions,
-  db.media,
-  db.personMedia,
-}, () => loadGrave(db, graveId));
+Stream<GraveDetail?> watchGrave(GrobingDatabase db, int graveId) =>
+    watchTables(db, 'grave', {
+      db.cemeteries,
+      db.graves,
+      db.burials,
+      db.persons,
+      db.events,
+      db.assertions,
+      db.media,
+      db.personMedia,
+    }, () => loadGrave(db, graveId));
 
 Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
   final TypedResult? row = await (db.select(db.graves).join([
@@ -368,22 +375,61 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
     plot: grave.plot,
     hasPin: grave.lat != null && grave.lon != null,
     people: [
-      for (final Person p in persons)
-        BuriedPerson(
-          id: p.id,
-          givenNames: p.givenNames,
-          surname: p.surname,
-          birthSurname: p.birthSurname,
-          bio: p.bio,
-          bioSource: p.bioSource,
-          birth: await _fact(db, p.id, EventType.birth),
-          death: await _fact(db, p.id, EventType.death),
-          burial: await _fact(db, p.id, EventType.burial),
-          profilePhotoPath: profiles[p.id]?.relativePath,
-          profileCrop: profiles[p.id]?.crop,
-        ),
+      for (final Person p in persons) await _buried(db, p, profiles[p.id]),
     ],
     photoPath: await gravePhotoPath(db, graveId),
+  );
+}
+
+Future<BuriedPerson> _buried(
+  GrobingDatabase db,
+  Person p,
+  ProfilePhoto? profile,
+) async => BuriedPerson(
+  id: p.id,
+  givenNames: p.givenNames,
+  surname: p.surname,
+  birthSurname: p.birthSurname,
+  bio: p.bio,
+  bioSource: p.bioSource,
+  birth: await _fact(db, p.id, EventType.birth),
+  death: await _fact(db, p.id, EventType.death),
+  burial: await _fact(db, p.id, EventType.burial),
+  profilePhotoPath: profile?.relativePath,
+  profileCrop: profile?.crop,
+);
+
+/// A person to correct from outside the grave view — a relative's chip in "Rodzina"
+/// (05_DESIGN/wpis-osoby.md v5): the person as the grave view would show them, and their first grave
+/// (ADR-006 D3) with its title — the grave's name, or its cemetery's — and how many lie in it. The grave
+/// is null for a person buried nowhere, e.g. a child added on the family sheet. Null when there is no
+/// such person.
+Future<
+  ({BuriedPerson person, int? graveId, String? graveTitle, int peopleCount})?
+>
+loadPersonForCorrection(GrobingDatabase db, int personId) async {
+  final Person? p = await (db.select(
+    db.persons,
+  )..where((p) => p.id.equals(personId))).getSingleOrNull();
+  if (p == null) return null;
+  final Map<int, ProfilePhoto> profiles = await profilePhotos(db, [p.id]);
+  final BuriedPerson person = await _buried(db, p, profiles[p.id]);
+  final Burial? burial = await firstBurial(db, personId);
+  if (burial == null) {
+    return (person: person, graveId: null, graveTitle: null, peopleCount: 0);
+  }
+  final TypedResult grave = await (db.select(db.graves).join([
+    innerJoin(db.cemeteries, db.cemeteries.id.equalsExp(db.graves.cemeteryId)),
+  ])..where(db.graves.id.equals(burial.graveId))).getSingle();
+  final int peopleCount = (await (db.select(
+    db.burials,
+  )..where((b) => b.graveId.equals(burial.graveId))).get()).length;
+  return (
+    person: person,
+    graveId: burial.graveId,
+    graveTitle:
+        grave.readTable(db.graves).name ?? grave.readTable(db.cemeteries).name,
+    peopleCount: peopleCount,
   );
 }
 
@@ -463,10 +509,10 @@ Future<int> _addPerson(
       .into(db.persons)
       .insert(
         PersonsCompanion.insert(
-          givenNames: Value(_text(entry.givenNames)),
-          surname: Value(_text(entry.surname)),
-          birthSurname: Value(_text(entry.birthSurname)),
-          bio: Value(_text(entry.bio)),
+          givenNames: Value(blankToNull(entry.givenNames)),
+          surname: Value(blankToNull(entry.surname)),
+          birthSurname: Value(blankToNull(entry.birthSurname)),
+          bio: Value(blankToNull(entry.bio)),
           bioSource: Value(_bioSource(entry)),
         ),
       );
@@ -500,10 +546,10 @@ Future<void> updatePersonEntry(
   final int updated =
       await (db.update(db.persons)..where((p) => p.id.equals(personId))).write(
         PersonsCompanion(
-          givenNames: Value(_text(entry.givenNames)),
-          surname: Value(_text(entry.surname)),
-          birthSurname: Value(_text(entry.birthSurname)),
-          bio: Value(_text(entry.bio)),
+          givenNames: Value(blankToNull(entry.givenNames)),
+          surname: Value(blankToNull(entry.surname)),
+          birthSurname: Value(blankToNull(entry.birthSurname)),
+          bio: Value(blankToNull(entry.bio)),
           bioSource: Value(_bioSource(entry)),
         ),
       );
@@ -525,9 +571,8 @@ Future<void> updatePersonEntry(
       )..where((a) => a.eventId.equals(existing.id))).go();
       await (db.delete(db.events)..where((e) => e.id.equals(existing.id))).go();
     } else if (QualifiedDate.ofEvent(existing) != date) {
-      await (db.update(
-        db.events,
-      )..where((e) => e.id.equals(existing.id))).write(_dateValues(date));
+      await (db.update(db.events)..where((e) => e.id.equals(existing.id)))
+          .write(qualifiedDateValues(date));
     }
   }
   await alsoWrite?.call(personId);
@@ -619,7 +664,7 @@ Future<QualifiedDate?> _firstDate(
 Future<void> setGraveName(GrobingDatabase db, int graveId, String? name) async {
   final int updated =
       await (db.update(db.graves)..where((g) => g.id.equals(graveId))).write(
-        GravesCompanion(name: Value(_text(name))),
+        GravesCompanion(name: Value(blankToNull(name))),
       );
   if (updated != 1) throw StateError('No grave with id $graveId');
 }
@@ -631,9 +676,12 @@ List<(EventType, QualifiedDate?)> _dates(PersonEntry entry) => [
 ];
 
 EventsCompanion _event(EventType type, int personId, QualifiedDate date) =>
-    _dateValues(date).copyWith(type: Value(type), personId: Value(personId));
+    qualifiedDateValues(
+      date,
+    ).copyWith(type: Value(type), personId: Value(personId));
 
-EventsCompanion _dateValues(QualifiedDate date) {
+/// The date columns of an event row for [date] — a person's or a family's (`families.dart`).
+EventsCompanion qualifiedDateValues(QualifiedDate date) {
   final bool between = date.qualifier == DateQualifier.between;
   if (between != (date.to != null)) {
     throw ArgumentError.value(
@@ -654,18 +702,20 @@ EventsCompanion _dateValues(QualifiedDate date) {
 }
 
 void _requireName(PersonEntry entry) {
-  if (_text(entry.givenNames) == null && _text(entry.surname) == null) {
+  if (blankToNull(entry.givenNames) == null &&
+      blankToNull(entry.surname) == null) {
     throw ArgumentError('A person needs given names or a surname');
   }
 }
 
 /// The source line of "kim była": none without a text, the notes unless said otherwise (FR-001).
 String? _bioSource(PersonEntry entry) {
-  if (_text(entry.bio) == null) return null;
-  return _text(entry.bioSource) ?? defaultBioSource;
+  if (blankToNull(entry.bio) == null) return null;
+  return blankToNull(entry.bioSource) ?? defaultBioSource;
 }
 
-String? _text(String? s) {
+/// A typed text as stored: trimmed, and none when blank.
+String? blankToNull(String? s) {
   final String? trimmed = s?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }

@@ -833,6 +833,19 @@ class $FamilyChildrenTable extends FamilyChildren
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $FamilyChildrenTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
   static const VerificationMeta _familyIdMeta = const VerificationMeta(
     'familyId',
   );
@@ -862,7 +875,7 @@ class $FamilyChildrenTable extends FamilyChildren
     ),
   );
   @override
-  List<GeneratedColumn> get $columns => [familyId, personId];
+  List<GeneratedColumn> get $columns => [id, familyId, personId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -875,6 +888,9 @@ class $FamilyChildrenTable extends FamilyChildren
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
     if (data.containsKey('family_id')) {
       context.handle(
         _familyIdMeta,
@@ -895,11 +911,19 @@ class $FamilyChildrenTable extends FamilyChildren
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {familyId, personId};
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {familyId, personId},
+  ];
   @override
   FamilyChildrenData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return FamilyChildrenData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
       familyId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}family_id'],
@@ -919,12 +943,18 @@ class $FamilyChildrenTable extends FamilyChildren
 
 class FamilyChildrenData extends DataClass
     implements Insertable<FamilyChildrenData> {
+  final int id;
   final int familyId;
   final int personId;
-  const FamilyChildrenData({required this.familyId, required this.personId});
+  const FamilyChildrenData({
+    required this.id,
+    required this.familyId,
+    required this.personId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
     map['family_id'] = Variable<int>(familyId);
     map['person_id'] = Variable<int>(personId);
     return map;
@@ -932,6 +962,7 @@ class FamilyChildrenData extends DataClass
 
   FamilyChildrenCompanion toCompanion(bool nullToAbsent) {
     return FamilyChildrenCompanion(
+      id: Value(id),
       familyId: Value(familyId),
       personId: Value(personId),
     );
@@ -943,6 +974,7 @@ class FamilyChildrenData extends DataClass
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return FamilyChildrenData(
+      id: serializer.fromJson<int>(json['id']),
       familyId: serializer.fromJson<int>(json['familyId']),
       personId: serializer.fromJson<int>(json['personId']),
     );
@@ -951,18 +983,21 @@ class FamilyChildrenData extends DataClass
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
       'familyId': serializer.toJson<int>(familyId),
       'personId': serializer.toJson<int>(personId),
     };
   }
 
-  FamilyChildrenData copyWith({int? familyId, int? personId}) =>
+  FamilyChildrenData copyWith({int? id, int? familyId, int? personId}) =>
       FamilyChildrenData(
+        id: id ?? this.id,
         familyId: familyId ?? this.familyId,
         personId: personId ?? this.personId,
       );
   FamilyChildrenData copyWithCompanion(FamilyChildrenCompanion data) {
     return FamilyChildrenData(
+      id: data.id.present ? data.id.value : this.id,
       familyId: data.familyId.present ? data.familyId.value : this.familyId,
       personId: data.personId.present ? data.personId.value : this.personId,
     );
@@ -971,6 +1006,7 @@ class FamilyChildrenData extends DataClass
   @override
   String toString() {
     return (StringBuffer('FamilyChildrenData(')
+          ..write('id: $id, ')
           ..write('familyId: $familyId, ')
           ..write('personId: $personId')
           ..write(')'))
@@ -978,65 +1014,66 @@ class FamilyChildrenData extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(familyId, personId);
+  int get hashCode => Object.hash(id, familyId, personId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is FamilyChildrenData &&
+          other.id == this.id &&
           other.familyId == this.familyId &&
           other.personId == this.personId);
 }
 
 class FamilyChildrenCompanion extends UpdateCompanion<FamilyChildrenData> {
+  final Value<int> id;
   final Value<int> familyId;
   final Value<int> personId;
-  final Value<int> rowid;
   const FamilyChildrenCompanion({
+    this.id = const Value.absent(),
     this.familyId = const Value.absent(),
     this.personId = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   FamilyChildrenCompanion.insert({
+    this.id = const Value.absent(),
     required int familyId,
     required int personId,
-    this.rowid = const Value.absent(),
   }) : familyId = Value(familyId),
        personId = Value(personId);
   static Insertable<FamilyChildrenData> custom({
+    Expression<int>? id,
     Expression<int>? familyId,
     Expression<int>? personId,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (id != null) 'id': id,
       if (familyId != null) 'family_id': familyId,
       if (personId != null) 'person_id': personId,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   FamilyChildrenCompanion copyWith({
+    Value<int>? id,
     Value<int>? familyId,
     Value<int>? personId,
-    Value<int>? rowid,
   }) {
     return FamilyChildrenCompanion(
+      id: id ?? this.id,
       familyId: familyId ?? this.familyId,
       personId: personId ?? this.personId,
-      rowid: rowid ?? this.rowid,
     );
   }
 
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
     if (familyId.present) {
       map['family_id'] = Variable<int>(familyId.value);
     }
     if (personId.present) {
       map['person_id'] = Variable<int>(personId.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
     }
     return map;
   }
@@ -1044,9 +1081,9 @@ class FamilyChildrenCompanion extends UpdateCompanion<FamilyChildrenData> {
   @override
   String toString() {
     return (StringBuffer('FamilyChildrenCompanion(')
+          ..write('id: $id, ')
           ..write('familyId: $familyId, ')
-          ..write('personId: $personId, ')
-          ..write('rowid: $rowid')
+          ..write('personId: $personId')
           ..write(')'))
         .toString();
   }
@@ -3086,6 +3123,34 @@ class $AssertionsTable extends Assertions
       'REFERENCES burials (id)',
     ),
   );
+  static const VerificationMeta _familyIdMeta = const VerificationMeta(
+    'familyId',
+  );
+  @override
+  late final GeneratedColumn<int> familyId = GeneratedColumn<int>(
+    'family_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES families (id)',
+    ),
+  );
+  static const VerificationMeta _familyChildIdMeta = const VerificationMeta(
+    'familyChildId',
+  );
+  @override
+  late final GeneratedColumn<int> familyChildId = GeneratedColumn<int>(
+    'family_child_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES family_children (id)',
+    ),
+  );
   @override
   late final GeneratedColumnWithTypeConverter<SourceKind, String> sourceKind =
       GeneratedColumn<String>(
@@ -3131,6 +3196,8 @@ class $AssertionsTable extends Assertions
     id,
     eventId,
     burialId,
+    familyId,
+    familyChildId,
     sourceKind,
     sourceDetail,
     status,
@@ -3161,6 +3228,21 @@ class $AssertionsTable extends Assertions
       context.handle(
         _burialIdMeta,
         burialId.isAcceptableOrUnknown(data['burial_id']!, _burialIdMeta),
+      );
+    }
+    if (data.containsKey('family_id')) {
+      context.handle(
+        _familyIdMeta,
+        familyId.isAcceptableOrUnknown(data['family_id']!, _familyIdMeta),
+      );
+    }
+    if (data.containsKey('family_child_id')) {
+      context.handle(
+        _familyChildIdMeta,
+        familyChildId.isAcceptableOrUnknown(
+          data['family_child_id']!,
+          _familyChildIdMeta,
+        ),
       );
     }
     if (data.containsKey('source_detail')) {
@@ -3201,6 +3283,14 @@ class $AssertionsTable extends Assertions
         DriftSqlType.int,
         data['${effectivePrefix}burial_id'],
       ),
+      familyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}family_id'],
+      ),
+      familyChildId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}family_child_id'],
+      ),
       sourceKind: $AssertionsTable.$convertersourceKind.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -3239,6 +3329,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
   final int id;
   final int? eventId;
   final int? burialId;
+  final int? familyId;
+  final int? familyChildId;
   final SourceKind sourceKind;
 
   /// Which relative, which record — "kto je podał" (FR-001). Optional.
@@ -3249,6 +3341,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
     required this.id,
     this.eventId,
     this.burialId,
+    this.familyId,
+    this.familyChildId,
     required this.sourceKind,
     this.sourceDetail,
     required this.status,
@@ -3263,6 +3357,12 @@ class Assertion extends DataClass implements Insertable<Assertion> {
     }
     if (!nullToAbsent || burialId != null) {
       map['burial_id'] = Variable<int>(burialId);
+    }
+    if (!nullToAbsent || familyId != null) {
+      map['family_id'] = Variable<int>(familyId);
+    }
+    if (!nullToAbsent || familyChildId != null) {
+      map['family_child_id'] = Variable<int>(familyChildId);
     }
     {
       map['source_kind'] = Variable<String>(
@@ -3290,6 +3390,12 @@ class Assertion extends DataClass implements Insertable<Assertion> {
       burialId: burialId == null && nullToAbsent
           ? const Value.absent()
           : Value(burialId),
+      familyId: familyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(familyId),
+      familyChildId: familyChildId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(familyChildId),
       sourceKind: Value(sourceKind),
       sourceDetail: sourceDetail == null && nullToAbsent
           ? const Value.absent()
@@ -3308,6 +3414,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
       id: serializer.fromJson<int>(json['id']),
       eventId: serializer.fromJson<int?>(json['eventId']),
       burialId: serializer.fromJson<int?>(json['burialId']),
+      familyId: serializer.fromJson<int?>(json['familyId']),
+      familyChildId: serializer.fromJson<int?>(json['familyChildId']),
       sourceKind: $AssertionsTable.$convertersourceKind.fromJson(
         serializer.fromJson<String>(json['sourceKind']),
       ),
@@ -3325,6 +3433,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
       'id': serializer.toJson<int>(id),
       'eventId': serializer.toJson<int?>(eventId),
       'burialId': serializer.toJson<int?>(burialId),
+      'familyId': serializer.toJson<int?>(familyId),
+      'familyChildId': serializer.toJson<int?>(familyChildId),
       'sourceKind': serializer.toJson<String>(
         $AssertionsTable.$convertersourceKind.toJson(sourceKind),
       ),
@@ -3340,6 +3450,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
     int? id,
     Value<int?> eventId = const Value.absent(),
     Value<int?> burialId = const Value.absent(),
+    Value<int?> familyId = const Value.absent(),
+    Value<int?> familyChildId = const Value.absent(),
     SourceKind? sourceKind,
     Value<String?> sourceDetail = const Value.absent(),
     AssertionStatus? status,
@@ -3348,6 +3460,10 @@ class Assertion extends DataClass implements Insertable<Assertion> {
     id: id ?? this.id,
     eventId: eventId.present ? eventId.value : this.eventId,
     burialId: burialId.present ? burialId.value : this.burialId,
+    familyId: familyId.present ? familyId.value : this.familyId,
+    familyChildId: familyChildId.present
+        ? familyChildId.value
+        : this.familyChildId,
     sourceKind: sourceKind ?? this.sourceKind,
     sourceDetail: sourceDetail.present ? sourceDetail.value : this.sourceDetail,
     status: status ?? this.status,
@@ -3358,6 +3474,10 @@ class Assertion extends DataClass implements Insertable<Assertion> {
       id: data.id.present ? data.id.value : this.id,
       eventId: data.eventId.present ? data.eventId.value : this.eventId,
       burialId: data.burialId.present ? data.burialId.value : this.burialId,
+      familyId: data.familyId.present ? data.familyId.value : this.familyId,
+      familyChildId: data.familyChildId.present
+          ? data.familyChildId.value
+          : this.familyChildId,
       sourceKind: data.sourceKind.present
           ? data.sourceKind.value
           : this.sourceKind,
@@ -3377,6 +3497,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
           ..write('id: $id, ')
           ..write('eventId: $eventId, ')
           ..write('burialId: $burialId, ')
+          ..write('familyId: $familyId, ')
+          ..write('familyChildId: $familyChildId, ')
           ..write('sourceKind: $sourceKind, ')
           ..write('sourceDetail: $sourceDetail, ')
           ..write('status: $status, ')
@@ -3390,6 +3512,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
     id,
     eventId,
     burialId,
+    familyId,
+    familyChildId,
     sourceKind,
     sourceDetail,
     status,
@@ -3402,6 +3526,8 @@ class Assertion extends DataClass implements Insertable<Assertion> {
           other.id == this.id &&
           other.eventId == this.eventId &&
           other.burialId == this.burialId &&
+          other.familyId == this.familyId &&
+          other.familyChildId == this.familyChildId &&
           other.sourceKind == this.sourceKind &&
           other.sourceDetail == this.sourceDetail &&
           other.status == this.status &&
@@ -3412,6 +3538,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
   final Value<int> id;
   final Value<int?> eventId;
   final Value<int?> burialId;
+  final Value<int?> familyId;
+  final Value<int?> familyChildId;
   final Value<SourceKind> sourceKind;
   final Value<String?> sourceDetail;
   final Value<AssertionStatus> status;
@@ -3420,6 +3548,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
     this.id = const Value.absent(),
     this.eventId = const Value.absent(),
     this.burialId = const Value.absent(),
+    this.familyId = const Value.absent(),
+    this.familyChildId = const Value.absent(),
     this.sourceKind = const Value.absent(),
     this.sourceDetail = const Value.absent(),
     this.status = const Value.absent(),
@@ -3429,6 +3559,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
     this.id = const Value.absent(),
     this.eventId = const Value.absent(),
     this.burialId = const Value.absent(),
+    this.familyId = const Value.absent(),
+    this.familyChildId = const Value.absent(),
     required SourceKind sourceKind,
     this.sourceDetail = const Value.absent(),
     required AssertionStatus status,
@@ -3440,6 +3572,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
     Expression<int>? id,
     Expression<int>? eventId,
     Expression<int>? burialId,
+    Expression<int>? familyId,
+    Expression<int>? familyChildId,
     Expression<String>? sourceKind,
     Expression<String>? sourceDetail,
     Expression<String>? status,
@@ -3449,6 +3583,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
       if (id != null) 'id': id,
       if (eventId != null) 'event_id': eventId,
       if (burialId != null) 'burial_id': burialId,
+      if (familyId != null) 'family_id': familyId,
+      if (familyChildId != null) 'family_child_id': familyChildId,
       if (sourceKind != null) 'source_kind': sourceKind,
       if (sourceDetail != null) 'source_detail': sourceDetail,
       if (status != null) 'status': status,
@@ -3460,6 +3596,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
     Value<int>? id,
     Value<int?>? eventId,
     Value<int?>? burialId,
+    Value<int?>? familyId,
+    Value<int?>? familyChildId,
     Value<SourceKind>? sourceKind,
     Value<String?>? sourceDetail,
     Value<AssertionStatus>? status,
@@ -3469,6 +3607,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
       id: id ?? this.id,
       eventId: eventId ?? this.eventId,
       burialId: burialId ?? this.burialId,
+      familyId: familyId ?? this.familyId,
+      familyChildId: familyChildId ?? this.familyChildId,
       sourceKind: sourceKind ?? this.sourceKind,
       sourceDetail: sourceDetail ?? this.sourceDetail,
       status: status ?? this.status,
@@ -3487,6 +3627,12 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
     }
     if (burialId.present) {
       map['burial_id'] = Variable<int>(burialId.value);
+    }
+    if (familyId.present) {
+      map['family_id'] = Variable<int>(familyId.value);
+    }
+    if (familyChildId.present) {
+      map['family_child_id'] = Variable<int>(familyChildId.value);
     }
     if (sourceKind.present) {
       map['source_kind'] = Variable<String>(
@@ -3513,6 +3659,8 @@ class AssertionsCompanion extends UpdateCompanion<Assertion> {
           ..write('id: $id, ')
           ..write('eventId: $eventId, ')
           ..write('burialId: $burialId, ')
+          ..write('familyId: $familyId, ')
+          ..write('familyChildId: $familyChildId, ')
           ..write('sourceKind: $sourceKind, ')
           ..write('sourceDetail: $sourceDetail, ')
           ..write('status: $status, ')
@@ -5386,6 +5534,24 @@ final class $$FamiliesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$AssertionsTable, List<Assertion>>
+  _assertionsRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.assertions,
+    aliasName: 'families__id__assertions__family_id',
+  );
+
+  $$AssertionsTableProcessedTableManager get assertionsRefs {
+    final manager = $$AssertionsTableTableManager(
+      $_db,
+      $_db.assertions,
+    ).filter((f) => f.familyId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_assertionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$FamiliesTableFilterComposer
@@ -5468,6 +5634,31 @@ class $$FamiliesTableFilterComposer
           }) => $$EventsTableFilterComposer(
             $db: $db,
             $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> assertionsRefs(
+    Expression<bool> Function($$AssertionsTableFilterComposer f) f,
+  ) {
+    final $$AssertionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.familyId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableFilterComposer(
+            $db: $db,
+            $table: $db.assertions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -5579,6 +5770,31 @@ class $$FamiliesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> assertionsRefs<T extends Object>(
+    Expression<T> Function($$AssertionsTableAnnotationComposer a) f,
+  ) {
+    final $$AssertionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.familyId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FamiliesTableTableManager
@@ -5598,6 +5814,7 @@ class $$FamiliesTableTableManager
             bool familyPartnersRefs,
             bool familyChildrenRefs,
             bool eventsRefs,
+            bool assertionsRefs,
           })
         > {
   $$FamiliesTableTableManager(_$GrobingDatabase db, $FamiliesTable table)
@@ -5628,6 +5845,7 @@ class $$FamiliesTableTableManager
                 familyPartnersRefs = false,
                 familyChildrenRefs = false,
                 eventsRefs = false,
+                assertionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -5635,6 +5853,7 @@ class $$FamiliesTableTableManager
                     if (familyPartnersRefs) db.familyPartners,
                     if (familyChildrenRefs) db.familyChildren,
                     if (eventsRefs) db.events,
+                    if (assertionsRefs) db.assertions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -5702,6 +5921,27 @@ class $$FamiliesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (assertionsRefs)
+                        await $_getPrefetchedData<
+                          Family,
+                          $FamiliesTable,
+                          Assertion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$FamiliesTableReferences
+                              ._assertionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$FamiliesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).assertionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.familyId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -5726,6 +5966,7 @@ typedef $$FamiliesTableProcessedTableManager =
         bool familyPartnersRefs,
         bool familyChildrenRefs,
         bool eventsRefs,
+        bool assertionsRefs,
       })
     >;
 typedef $$FamilyPartnersTableCreateCompanionBuilder =
@@ -6085,15 +6326,15 @@ typedef $$FamilyPartnersTableProcessedTableManager =
     >;
 typedef $$FamilyChildrenTableCreateCompanionBuilder =
     FamilyChildrenCompanion Function({
+      Value<int> id,
       required int familyId,
       required int personId,
-      Value<int> rowid,
     });
 typedef $$FamilyChildrenTableUpdateCompanionBuilder =
     FamilyChildrenCompanion Function({
+      Value<int> id,
       Value<int> familyId,
       Value<int> personId,
-      Value<int> rowid,
     });
 
 final class $$FamilyChildrenTableReferences
@@ -6142,6 +6383,24 @@ final class $$FamilyChildrenTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$AssertionsTable, List<Assertion>>
+  _assertionsRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.assertions,
+    aliasName: 'family_children__id__assertions__family_child_id',
+  );
+
+  $$AssertionsTableProcessedTableManager get assertionsRefs {
+    final manager = $$AssertionsTableTableManager(
+      $_db,
+      $_db.assertions,
+    ).filter((f) => f.familyChildId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_assertionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$FamilyChildrenTableFilterComposer
@@ -6153,6 +6412,11 @@ class $$FamilyChildrenTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$FamiliesTableFilterComposer get familyId {
     final $$FamiliesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -6198,6 +6462,31 @@ class $$FamilyChildrenTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> assertionsRefs(
+    Expression<bool> Function($$AssertionsTableFilterComposer f) f,
+  ) {
+    final $$AssertionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.familyChildId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableFilterComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FamilyChildrenTableOrderingComposer
@@ -6209,6 +6498,11 @@ class $$FamilyChildrenTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FamiliesTableOrderingComposer get familyId {
     final $$FamiliesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -6265,6 +6559,9 @@ class $$FamilyChildrenTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
   $$FamiliesTableAnnotationComposer get familyId {
     final $$FamiliesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -6310,6 +6607,31 @@ class $$FamilyChildrenTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> assertionsRefs<T extends Object>(
+    Expression<T> Function($$AssertionsTableAnnotationComposer a) f,
+  ) {
+    final $$AssertionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assertions,
+      getReferencedColumn: (t) => t.familyChildId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssertionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assertions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FamilyChildrenTableTableManager
@@ -6325,7 +6647,11 @@ class $$FamilyChildrenTableTableManager
           $$FamilyChildrenTableUpdateCompanionBuilder,
           (FamilyChildrenData, $$FamilyChildrenTableReferences),
           FamilyChildrenData,
-          PrefetchHooks Function({bool familyId, bool personId})
+          PrefetchHooks Function({
+            bool familyId,
+            bool personId,
+            bool assertionsRefs,
+          })
         > {
   $$FamilyChildrenTableTableManager(
     _$GrobingDatabase db,
@@ -6342,23 +6668,23 @@ class $$FamilyChildrenTableTableManager
               $$FamilyChildrenTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 Value<int> familyId = const Value.absent(),
                 Value<int> personId = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => FamilyChildrenCompanion(
+                id: id,
                 familyId: familyId,
                 personId: personId,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 required int familyId,
                 required int personId,
-                Value<int> rowid = const Value.absent(),
               }) => FamilyChildrenCompanion.insert(
+                id: id,
                 familyId: familyId,
                 personId: personId,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -6368,62 +6694,87 @@ class $$FamilyChildrenTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({familyId = false, personId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (familyId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.familyId,
-                                referencedTable: $$FamilyChildrenTableReferences
-                                    ._familyIdTable(db),
-                                referencedColumn:
-                                    $$FamilyChildrenTableReferences
-                                        ._familyIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
-                    if (personId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.personId,
-                                referencedTable: $$FamilyChildrenTableReferences
-                                    ._personIdTable(db),
-                                referencedColumn:
-                                    $$FamilyChildrenTableReferences
-                                        ._personIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({familyId = false, personId = false, assertionsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [if (assertionsRefs) db.assertions],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (familyId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.familyId,
+                                    referencedTable:
+                                        $$FamilyChildrenTableReferences
+                                            ._familyIdTable(db),
+                                    referencedColumn:
+                                        $$FamilyChildrenTableReferences
+                                            ._familyIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (personId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.personId,
+                                    referencedTable:
+                                        $$FamilyChildrenTableReferences
+                                            ._personIdTable(db),
+                                    referencedColumn:
+                                        $$FamilyChildrenTableReferences
+                                            ._personIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (assertionsRefs)
+                        await $_getPrefetchedData<
+                          FamilyChildrenData,
+                          $FamilyChildrenTable,
+                          Assertion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$FamilyChildrenTableReferences
+                              ._assertionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$FamilyChildrenTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).assertionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.familyChildId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -6440,7 +6791,11 @@ typedef $$FamilyChildrenTableProcessedTableManager =
       $$FamilyChildrenTableUpdateCompanionBuilder,
       (FamilyChildrenData, $$FamilyChildrenTableReferences),
       FamilyChildrenData,
-      PrefetchHooks Function({bool familyId, bool personId})
+      PrefetchHooks Function({
+        bool familyId,
+        bool personId,
+        bool assertionsRefs,
+      })
     >;
 typedef $$EventsTableCreateCompanionBuilder =
     EventsCompanion Function({
@@ -8438,6 +8793,8 @@ typedef $$AssertionsTableCreateCompanionBuilder =
       Value<int> id,
       Value<int?> eventId,
       Value<int?> burialId,
+      Value<int?> familyId,
+      Value<int?> familyChildId,
       required SourceKind sourceKind,
       Value<String?> sourceDetail,
       required AssertionStatus status,
@@ -8448,6 +8805,8 @@ typedef $$AssertionsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int?> eventId,
       Value<int?> burialId,
+      Value<int?> familyId,
+      Value<int?> familyChildId,
       Value<SourceKind> sourceKind,
       Value<String?> sourceDetail,
       Value<AssertionStatus> status,
@@ -8486,6 +8845,41 @@ final class $$AssertionsTableReferences
       $_db.burials,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_burialIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $FamiliesTable _familyIdTable(_$GrobingDatabase db) =>
+      db.families.createAlias('assertions__family_id__families__id');
+
+  $$FamiliesTableProcessedTableManager? get familyId {
+    final $_column = $_itemColumn<int>('family_id');
+    if ($_column == null) return null;
+    final manager = $$FamiliesTableTableManager(
+      $_db,
+      $_db.families,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_familyIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $FamilyChildrenTable _familyChildIdTable(_$GrobingDatabase db) => db
+      .familyChildren
+      .createAlias('assertions__family_child_id__family_children__id');
+
+  $$FamilyChildrenTableProcessedTableManager? get familyChildId {
+    final $_column = $_itemColumn<int>('family_child_id');
+    if ($_column == null) return null;
+    final manager = $$FamilyChildrenTableTableManager(
+      $_db,
+      $_db.familyChildren,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_familyChildIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -8566,6 +8960,52 @@ class $$AssertionsTableFilterComposer
           }) => $$BurialsTableFilterComposer(
             $db: $db,
             $table: $db.burials,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FamiliesTableFilterComposer get familyId {
+    final $$FamiliesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyId,
+      referencedTable: $db.families,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamiliesTableFilterComposer(
+            $db: $db,
+            $table: $db.families,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FamilyChildrenTableFilterComposer get familyChildId {
+    final $$FamilyChildrenTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyChildId,
+      referencedTable: $db.familyChildren,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamilyChildrenTableFilterComposer(
+            $db: $db,
+            $table: $db.familyChildren,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8655,6 +9095,52 @@ class $$AssertionsTableOrderingComposer
     );
     return composer;
   }
+
+  $$FamiliesTableOrderingComposer get familyId {
+    final $$FamiliesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyId,
+      referencedTable: $db.families,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamiliesTableOrderingComposer(
+            $db: $db,
+            $table: $db.families,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FamilyChildrenTableOrderingComposer get familyChildId {
+    final $$FamilyChildrenTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyChildId,
+      referencedTable: $db.familyChildren,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamilyChildrenTableOrderingComposer(
+            $db: $db,
+            $table: $db.familyChildren,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AssertionsTableAnnotationComposer
@@ -8733,6 +9219,52 @@ class $$AssertionsTableAnnotationComposer
     );
     return composer;
   }
+
+  $$FamiliesTableAnnotationComposer get familyId {
+    final $$FamiliesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyId,
+      referencedTable: $db.families,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamiliesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.families,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FamilyChildrenTableAnnotationComposer get familyChildId {
+    final $$FamilyChildrenTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.familyChildId,
+      referencedTable: $db.familyChildren,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FamilyChildrenTableAnnotationComposer(
+            $db: $db,
+            $table: $db.familyChildren,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AssertionsTableTableManager
@@ -8748,7 +9280,12 @@ class $$AssertionsTableTableManager
           $$AssertionsTableUpdateCompanionBuilder,
           (Assertion, $$AssertionsTableReferences),
           Assertion,
-          PrefetchHooks Function({bool eventId, bool burialId})
+          PrefetchHooks Function({
+            bool eventId,
+            bool burialId,
+            bool familyId,
+            bool familyChildId,
+          })
         > {
   $$AssertionsTableTableManager(_$GrobingDatabase db, $AssertionsTable table)
     : super(
@@ -8766,6 +9303,8 @@ class $$AssertionsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int?> eventId = const Value.absent(),
                 Value<int?> burialId = const Value.absent(),
+                Value<int?> familyId = const Value.absent(),
+                Value<int?> familyChildId = const Value.absent(),
                 Value<SourceKind> sourceKind = const Value.absent(),
                 Value<String?> sourceDetail = const Value.absent(),
                 Value<AssertionStatus> status = const Value.absent(),
@@ -8774,6 +9313,8 @@ class $$AssertionsTableTableManager
                 id: id,
                 eventId: eventId,
                 burialId: burialId,
+                familyId: familyId,
+                familyChildId: familyChildId,
                 sourceKind: sourceKind,
                 sourceDetail: sourceDetail,
                 status: status,
@@ -8784,6 +9325,8 @@ class $$AssertionsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int?> eventId = const Value.absent(),
                 Value<int?> burialId = const Value.absent(),
+                Value<int?> familyId = const Value.absent(),
+                Value<int?> familyChildId = const Value.absent(),
                 required SourceKind sourceKind,
                 Value<String?> sourceDetail = const Value.absent(),
                 required AssertionStatus status,
@@ -8792,6 +9335,8 @@ class $$AssertionsTableTableManager
                 id: id,
                 eventId: eventId,
                 burialId: burialId,
+                familyId: familyId,
+                familyChildId: familyChildId,
                 sourceKind: sourceKind,
                 sourceDetail: sourceDetail,
                 status: status,
@@ -8805,60 +9350,96 @@ class $$AssertionsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({eventId = false, burialId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (eventId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.eventId,
-                                referencedTable: $$AssertionsTableReferences
-                                    ._eventIdTable(db),
-                                referencedColumn: $$AssertionsTableReferences
-                                    ._eventIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-                    if (burialId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.burialId,
-                                referencedTable: $$AssertionsTableReferences
-                                    ._burialIdTable(db),
-                                referencedColumn: $$AssertionsTableReferences
-                                    ._burialIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                eventId = false,
+                burialId = false,
+                familyId = false,
+                familyChildId = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (eventId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.eventId,
+                                    referencedTable: $$AssertionsTableReferences
+                                        ._eventIdTable(db),
+                                    referencedColumn:
+                                        $$AssertionsTableReferences
+                                            ._eventIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (burialId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.burialId,
+                                    referencedTable: $$AssertionsTableReferences
+                                        ._burialIdTable(db),
+                                    referencedColumn:
+                                        $$AssertionsTableReferences
+                                            ._burialIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (familyId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.familyId,
+                                    referencedTable: $$AssertionsTableReferences
+                                        ._familyIdTable(db),
+                                    referencedColumn:
+                                        $$AssertionsTableReferences
+                                            ._familyIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (familyChildId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.familyChildId,
+                                    referencedTable: $$AssertionsTableReferences
+                                        ._familyChildIdTable(db),
+                                    referencedColumn:
+                                        $$AssertionsTableReferences
+                                            ._familyChildIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -8875,7 +9456,12 @@ typedef $$AssertionsTableProcessedTableManager =
       $$AssertionsTableUpdateCompanionBuilder,
       (Assertion, $$AssertionsTableReferences),
       Assertion,
-      PrefetchHooks Function({bool eventId, bool burialId})
+      PrefetchHooks Function({
+        bool eventId,
+        bool burialId,
+        bool familyId,
+        bool familyChildId,
+      })
     >;
 typedef $$MediaTableCreateCompanionBuilder =
     MediaCompanion Function({

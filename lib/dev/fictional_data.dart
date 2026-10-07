@@ -4,6 +4,8 @@ import 'package:drift/drift.dart';
 
 import '../data/claims.dart';
 import '../data/database.dart';
+import '../data/families.dart';
+import '../data/graves.dart';
 import 'fictional_photo.dart';
 
 /// Adds one batch of **made-up** people, families and graves (family-data.md: never real data in the
@@ -96,21 +98,30 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
     final int mother = await person('Matka', birthSurname: 'Zmyślona');
     final int child = await person('Dziecko');
 
-    final int family = await db
-        .into(db.families)
-        .insert(FamiliesCompanion.insert());
-    for (final int partner in [father, mother]) {
-      await db
-          .into(db.familyPartners)
-          .insert(
-            FamilyPartnersCompanion.insert(familyId: family, personId: partner),
-          );
-    }
-    await db
-        .into(db.familyChildren)
-        .insert(
-          FamilyChildrenCompanion.insert(familyId: family, personId: child),
-        );
+    // Two unions of the father, each a family with its claims (ISSUE-019, ADR-011): the first with the
+    // mother, ended by a parting; the second with a partner and a child buried nowhere — the author's
+    // case at stop #1 ("rozstali się lub owdowieli i mieli nowe związki i dzieci").
+    await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [ExistingMember(father), ExistingMember(mother)],
+        children: [ExistingMember(child)],
+        marriage: const QualifiedDate(DateQualifier.before, PartialDate(1920)),
+        end: const QualifiedDate(DateQualifier.before, PartialDate(1924)),
+      ),
+    );
+    final int second = await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [
+          ExistingMember(father),
+          NewMember(givenNames: 'Partnerka $batch', surname: 'Zmyślona'),
+        ],
+        children: [NewMember(givenNames: 'Dziecko z drugiego związku $batch')],
+        marriage: const QualifiedDate(DateQualifier.exact, PartialDate(1925)),
+      ),
+    );
+    final FamilyDetail secondFamily = (await loadFamily(db, second))!;
 
     // A made-up dispute (US-004 AC-1): the notes and the grandmother give the father different birth
     // years. Both claims stay, both contradicted; the notes' row, written first, is the one shown.
@@ -161,12 +172,13 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
         ),
         const ClaimSource(),
       ),
+      // The second union's child has a birth year, so the children sort by birth (ISSUE-019 D4).
       (
         EventsCompanion.insert(
-          type: EventType.marriage,
-          familyId: Value(family),
-          qualifier: const Value(DateQualifier.before),
-          year: const Value(1920),
+          type: EventType.birth,
+          personId: Value(secondFamily.children.single.id),
+          qualifier: const Value(DateQualifier.exact),
+          year: const Value(1927),
         ),
         const ClaimSource(),
       ),

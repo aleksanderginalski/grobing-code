@@ -232,7 +232,7 @@ void main() {
 
       expect(find.text('Zastąpić dane w telefonie?'), findsOneWidget);
       expect(
-        find.textContaining('osoby 6, groby 4, cmentarze 2'),
+        find.textContaining('osoby 10, groby 4, cmentarze 2'),
         findsOneWidget,
       );
       await tester.tap(find.text('Anuluj'));

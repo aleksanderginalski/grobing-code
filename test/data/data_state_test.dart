@@ -26,10 +26,10 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 5, zero rows in every table, no photos', () async {
+  test('empty database: schema 6, zero rows in every table, no photos', () async {
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 5);
+    expect(state.schemaVersion, 6);
     // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
     expect(state.rowCounts, hasLength(12));
     expect(state.rowCounts, contains('person_media'));
@@ -43,12 +43,18 @@ void main() {
 
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.rowCounts['persons'], 3);
-    expect(state.rowCounts['families'], 1);
+    // ISSUE-019: the father's two unions — with the mother (and their child), and after a parting with a
+    // partner and a child buried nowhere: two more people, two families, four partners, two children.
+    expect(state.rowCounts['persons'], 5);
+    expect(state.rowCounts['families'], 2);
+    expect(state.rowCounts['family_partners'], 4);
+    expect(state.rowCounts['family_children'], 2);
     expect(state.rowCounts['burials'], 3);
-    // One made-up dispute: the father's birth from the notes and from the grandmother (ISSUE-011).
-    expect(state.rowCounts['events'], 5);
-    expect(state.rowCounts['assertions'], 8);
+    // One made-up dispute: the father's birth from the notes and from the grandmother (ISSUE-011); the
+    // first union's marriage and end, the second's marriage, the second child's birth (ISSUE-019).
+    expect(state.rowCounts['events'], 8);
+    // A claim on each event and burial, on each family and on each child's link (ADR-011).
+    expect(state.rowCounts['assertions'], 15);
     // The gravestone, a portrait and a shared "wedding photo" (ISSUE-017): three rows, three files, and
     // three person links — the shared photo is one row and one file with two links.
     expect(state.rowCounts['media'], 3);
@@ -118,6 +124,23 @@ void main() {
       final DataState fromCopy = await readDataState(copy, mediaDir: media);
       expect(fromCopy.fingerprint, original.fingerprint);
       expect(fromCopy.schemaVersion, GrobingDatabase.currentSchemaVersion);
+    },
+  );
+
+  test(
+    'ISSUE-019 — a claim on a family or a child\'s link is in the fingerprint: changing one changes it',
+    () async {
+      await addFictionalData(db, media);
+      final DataState before = await readDataState(db, mediaDir: media);
+
+      await db.customStatement(
+        "UPDATE assertions SET status = 'confirmed' WHERE family_child_id IS NOT NULL "
+        'AND id = (SELECT min(id) FROM assertions WHERE family_child_id IS NOT NULL)',
+      );
+      final DataState after = await readDataState(db, mediaDir: media);
+
+      expect(after.fingerprint, isNot(before.fingerprint));
+      expect(after.rowCounts, before.rowCounts);
     },
   );
 }

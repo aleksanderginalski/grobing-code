@@ -16,6 +16,7 @@ import 'package:grobing/backup/tar_writer.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
+import 'package:grobing/data/families.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_data.dart';
@@ -25,6 +26,7 @@ import '../drift/grobing/generated/schema_v1.dart' as v1;
 import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../drift/grobing/generated/schema_v3.dart' as v3;
 import '../drift/grobing/generated/schema_v4.dart' as v4;
+import '../drift/grobing/generated/schema_v5.dart' as v5;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -188,6 +190,21 @@ const List<String> _v2Rows = [
 
 /// Made-up rows of a phone at schema v3 (ISSUE-017 F3): a grave's photo and three people's photos, still
 /// with one owner each — Anna has two, Jan one.
+/// Made-up rows of a phone at schema v5 (ISSUE-019 F2): a father in two unions, each with a child and the
+/// first with its marriage — families without claims, as v5 kept them.
+const List<String> _v5Rows = [
+  'INSERT INTO persons (id, given_names, surname) VALUES '
+      "(1, 'Ojciec', 'Wymyślony'), (2, 'Matka', 'Wymyślona'), (3, 'Dziecko', 'Wymyślone'), "
+      "(4, 'Partnerka', 'Zmyślona'), (5, 'Drugie dziecko', 'Wymyślone')",
+  'INSERT INTO families (id) VALUES (1), (2)',
+  'INSERT INTO family_partners (family_id, person_id) VALUES (1, 1), (1, 2), (2, 1), (2, 4)',
+  'INSERT INTO family_children (family_id, person_id) VALUES (1, 3), (2, 5)',
+  'INSERT INTO events (id, type, family_id, qualifier, year) VALUES '
+      "(1, 'marriage', 1, 'before', 1920)",
+  'INSERT INTO assertions (event_id, burial_id, source_kind, status, recorded_at) VALUES '
+      "(1, NULL, 'notes', 'claimed', 1791273600)",
+];
+
 /// Made-up rows of a phone at schema v4 (ISSUE-018 F3): a gravestone, a photo Jan and Anna share (Jan's
 /// profile, Anna's second) and Anna's own profile — links without crops, as every v4 link is.
 const List<String> _v4Rows = [
@@ -386,7 +403,29 @@ void main() {
           back,
           idOf('Ojciec 1'),
         );
+        // ISSUE-019 F3: the father's two unions come back, each with its child and its claims (ADR-011).
+        final PersonRelations fatherFamilies = await loadRelations(
+          back,
+          idOf('Ojciec 1'),
+        );
+        final int familyClaims =
+            (await back
+                    .customSelect(
+                      'SELECT count(*) AS c FROM assertions '
+                      'WHERE family_id IS NOT NULL OR family_child_id IS NOT NULL',
+                    )
+                    .getSingle())
+                .read<int>('c');
         await back.close();
+        expect(fatherFamilies.unions.map((u) => u.partner!.givenNames), [
+          'Matka 1',
+          'Partnerka 1',
+        ]);
+        expect(fatherFamilies.unions.map((u) => u.children.single.givenNames), [
+          'Dziecko 1',
+          'Dziecko z drugiego związku 1',
+        ]);
+        expect(familyClaims, 4); // two unions and two children's links
         expect(mother.map((p) => p.relativePath), [
           'wymyslone/portret-1.png',
           'wymyslone/slub-1.png',
@@ -1396,6 +1435,82 @@ void main() {
       expect(anna, ['osoby/anna-1.png', 'osoby/anna-2.png']);
       expect(jan, ['osoby/jan-1.png']);
       expect(gravestone, 'groby/1/nagrobek.png');
+      expect(broken, isEmpty);
+    },
+  );
+
+  test(
+    'ISSUE-019 F2 — a v5 backup with families restores into the v6 app: every v5 table and count kept '
+    '(the migration adds no claims — D3), each child link gets an id, the families read as before',
+    () async {
+      final File v5File = File('${tmp.path}/v5.db');
+      final v5.DatabaseAtV5 old = v5.DatabaseAtV5(NativeDatabase(v5File));
+      for (final String row in _v5Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 5');
+      final DataState v5State = await readDataState(
+        old,
+        mediaDir: Directory('${tmp.path}/v5-media'),
+      );
+      expect(v5State.schemaVersion, 5);
+      expect(v5State.rowCounts['family_children'], 2);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v5-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v5-snapshot.db').readAsBytesSync(),
+        ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v5.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 5,
+              'record_counts': v5State.rowCounts,
+              'data_fingerprint': v5State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v6');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (5, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(after.rowCounts, v5State.rowCounts);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final PersonRelations father = await loadRelations(reopened, 1);
+      final List<FamilyChildrenData> links = await reopened
+          .select(reopened.familyChildren)
+          .get();
+      final List<Object?> broken = [
+        for (final r
+            in await reopened.customSelect('PRAGMA foreign_key_check').get())
+          r.data,
+      ];
+      await reopened.close();
+      expect(father.unions.map((u) => u.partner!.id), [2, 4]);
+      expect(father.unions.map((u) => u.children.single.id), [3, 5]);
+      expect(links.map((l) => l.id), [1, 2]);
       expect(broken, isEmpty);
     },
   );
