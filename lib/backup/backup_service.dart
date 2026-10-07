@@ -237,6 +237,19 @@ class BackupService {
     }
   }
 
+  /// The start trigger (ISSUE-010, D2), asked once the database is open. Opening runs the schema
+  /// migrations, which change the file but notify no table — asked before it, the start saw the stamp
+  /// of the old version and the migrated data waited for the first write (retro 1, R6). A database that
+  /// fails to open asks nothing: the screens show that error.
+  Future<void> requestBackgroundOnStart() async {
+    try {
+      await database.customSelect('SELECT 1').get();
+    } on Object {
+      return;
+    }
+    await requestBackgroundIfChanged();
+  }
+
   Future<void> _acquire() async {
     if (!await lock.tryAcquire()) {
       throw const BackupException(dataBusyMessage);

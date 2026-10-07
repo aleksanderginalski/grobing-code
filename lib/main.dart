@@ -55,9 +55,10 @@ Future<AppData> _open(Directory support, Directory cache) async {
     lock: background,
     background: background,
   );
-  // The start is a trigger too (ISSUE-010, D2): it catches the data a restore just brought, and any
-  // change made outside drift that no write notified.
-  unawaited(backup.requestBackgroundIfChanged());
+  // The start is a trigger too (ISSUE-010, D2): it catches the data a restore just brought, a schema
+  // migration (retro 1, R6), and any change made outside drift that no write notified. In the
+  // background, so the first screen does not wait for the database to open.
+  unawaited(backup.requestBackgroundOnStart());
   return (
     database: database,
     location: location,

@@ -67,6 +67,12 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   - **każdy wiersz `events` i `burials` ma co najmniej jedno twierdzenie.** Dlatego zapisuje się je
     przez `lib/data/claims.dart`, w jednej transakcji z twierdzeniem. Wiersze z v1 dostały przy migracji
     twierdzenie „notatki, przeniesione z v1”.
+- **Nazwa grobu (schemat v3, ISSUE-012).** Opcjonalna kolumna `graves.name`: tytuł, który nadaje autor
+  („Grób rodzinny Nowaków”). Aplikacja nigdy nie wylicza jej z nazwisk. Migracja v2→v3 tylko dodaje
+  kolumnę (`addColumn`). Start aplikacji pyta o kopię w tle dopiero **po otwarciu bazy**, czyli po
+  migracji (`lib/main.dart`, retro 1 R6): migracja zmienia plik, a nie zgłasza zmian do `tableUpdates()`.
+- **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
+  pochówek i daty, każde z twierdzeniem „notatki”. Błąd w środku nie zostawia „pół osoby”.
 - **Odcisk danych** (ekran „Stan danych”, `lib/data/data_state.dart`) jest miarą dla kopii i
   odtworzenia (NFR-002). Liczy się z **treści**, nie z pliku: tabele po nazwie, wiersze po wszystkich
   kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.

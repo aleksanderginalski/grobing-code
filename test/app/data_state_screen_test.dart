@@ -78,7 +78,7 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('2'),
+        find.text('3'),
         findsOneWidget,
       ); // the schema version; every count is 0
       expect(find.text('Osoby'), findsOneWidget);
@@ -96,7 +96,8 @@ void main() {
         () => find.text(empty.shortFingerprint).evaluate().isEmpty,
       );
 
-      expect(find.text('3'), findsNWidgets(2)); // persons, burials
+      // persons, burials — and the schema version, which is 3 since ISSUE-012
+      expect(find.text('3'), findsNWidgets(3));
 
       await cleanUp(tester);
     },

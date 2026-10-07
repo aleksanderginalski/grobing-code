@@ -27,11 +27,11 @@ void main() {
   });
 
   test(
-    'empty database: schema 2, zero rows in every table, no photos',
+    'empty database: schema 3, zero rows in every table, no photos',
     () async {
       final DataState state = await readDataState(db, mediaDir: media);
 
-      expect(state.schemaVersion, 2);
+      expect(state.schemaVersion, 3);
       expect(state.rowCounts, hasLength(11));
       expect(state.rowCounts.values, everyElement(0));
       expect(state.mediaFileCount, 0);

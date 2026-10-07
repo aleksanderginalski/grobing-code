@@ -16,9 +16,11 @@ import 'package:grobing/backup/tar_writer.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
+import 'package:grobing/data/graves.dart';
 import 'package:grobing/dev/fictional_data.dart';
 
 import '../drift/grobing/generated/schema_v1.dart' as v1;
+import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -164,6 +166,21 @@ class _SchemaNext extends GrobingDatabase {
     },
   );
 }
+
+/// Made-up rows of a phone at schema v2 (ISSUE-012): a date and two burials, each with its claim.
+const List<String> _v2Rows = [
+  'INSERT INTO persons (id, given_names, surname) VALUES '
+      "(1, 'Jan', 'Wymyślony'), (2, 'Anna', 'Wymyślona')",
+  "INSERT INTO cemeteries (id, name) VALUES (1, 'Cmentarz Wymyślony')",
+  'INSERT INTO graves (id, cemetery_id) VALUES (1, 1)',
+  "INSERT INTO graves (id, cemetery_id, sector) VALUES (2, 1, 'B')",
+  "INSERT INTO events (id, type, person_id, qualifier, year) VALUES (1, 'birth', 1, 'about', 1890)",
+  'INSERT INTO burials (id, person_id, grave_id) VALUES (1, 1, 1), (2, 2, 2)',
+  'INSERT INTO assertions (event_id, burial_id, source_kind, status, recorded_at) VALUES '
+      "(1, NULL, 'notes', 'claimed', 1791273600), "
+      "(NULL, 1, 'notes', 'claimed', 1791273600), "
+      "(NULL, 2, 'notes', 'claimed', 1791273600)",
+];
 
 /// Made-up rows of a phone still at schema v1 (ISSUE-011 AC-4): two dates, two burials.
 const List<String> _v1Rows = [
@@ -921,7 +938,7 @@ void main() {
     );
   });
 
-  test('ISSUE-011 AC-4 — a real v1 backup restores into the v2 app: v1 tables and counts kept, every '
+  test('ISSUE-011 AC-4 — a real v1 backup restores into the current app: v1 tables and counts kept, every '
       'date and burial carried over with one claim', () async {
     // The v1 phone's snapshot, made by the v1 schema itself (drift's export of v1). The backup
     // writer reads snapshots at the app's own version, so the v1 archive is assembled here.
@@ -966,9 +983,12 @@ void main() {
           passphrase: _passphrase,
         );
 
-    expect((result.schemaFrom, result.schemaTo), (1, 2));
+    expect(
+      (result.schemaFrom, result.schemaTo),
+      (1, GrobingDatabase.currentSchemaVersion),
+    );
     final DataState after = await stateOnDisk(fresh.dir);
-    expect(after.schemaVersion, 2);
+    expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
     for (final MapEntry<String, int> table in v1State.rowCounts.entries) {
       expect(after.rowCounts[table.key], table.value, reason: table.key);
     }
@@ -986,6 +1006,143 @@ void main() {
       {(SourceKind.notes, carriedOverFromV1, AssertionStatus.claimed)},
     );
   });
+
+  test(
+    'ISSUE-012 DoD — a grave entered through the transcription screens comes back from the backup: '
+    'the same fingerprint, its name, both people with their dates',
+    () async {
+      final ({Directory dir, GrobingDatabase db}) entered = await phone(
+        'entered',
+      );
+      final int cemetery = await addCemetery(
+        entered.db,
+        name: 'Cmentarz Wymyślony',
+      );
+      final int grave = await addPersonToNewGrave(
+        entered.db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(
+          givenNames: 'Jan',
+          surname: 'Wymyślony',
+          bio: 'Kowal, wymyślony do testów.',
+          birth: QualifiedDate(DateQualifier.about, PartialDate(1890)),
+        ),
+      );
+      await addPersonToGrave(
+        entered.db,
+        graveId: grave,
+        entry: const PersonEntry(
+          givenNames: 'Anna',
+          surname: 'Wymyślona',
+          birthSurname: 'Zmyślona',
+          birth: QualifiedDate(
+            DateQualifier.between,
+            PartialDate(1893),
+            PartialDate(1895),
+          ),
+        ),
+      );
+      await setGraveName(entered.db, grave, 'Grób rodzinny Wymyślonych');
+      final DataState before = await readDataState(
+        entered.db,
+        mediaDir: Directory('${entered.dir.path}/media'),
+      );
+      await entered.db.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/entered.db',
+      ]);
+      await entered.db.close();
+      final String uri = FakeDocumentStore.uriOf('kopia-wpisy.age');
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/entered.db'),
+        mediaDir: Directory('${entered.dir.path}/media'),
+        recipient: identity.recipient,
+        output: drive.fileFor(uri)..createSync(recursive: true),
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+      await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+        backupUri: uri,
+        keyUri: FakeDocumentStore.uriOf('klucz.age'),
+        passphrase: _passphrase,
+      );
+
+      expect((await stateOnDisk(fresh.dir)).fingerprint, before.fingerprint);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final GraveDetail restored = (await loadGrave(reopened, grave))!;
+      await reopened.close();
+      expect(restored.name, 'Grób rodzinny Wymyślonych');
+      expect(restored.people.map((p) => p.givenNames), ['Jan', 'Anna']);
+      expect(restored.people.last.birth.date!.qualifier, DateQualifier.between);
+      expect(restored.people.first.bioSource, defaultBioSource);
+    },
+  );
+
+  test(
+    'ISSUE-012 — a v2 backup restores into the v3 app: every v2 table and count kept, graves '
+    'without a name',
+    () async {
+      final File v2File = File('${tmp.path}/v2.db');
+      final v2.DatabaseAtV2 old = v2.DatabaseAtV2(NativeDatabase(v2File));
+      for (final String row in _v2Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 2');
+      final DataState v2State = await readDataState(
+        old,
+        mediaDir: Directory('${tmp.path}/v2-media'),
+      );
+      expect(v2State.schemaVersion, 2);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v2-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v2-snapshot.db').readAsBytesSync(),
+        ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v2.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 2,
+              'record_counts': v2State.rowCounts,
+              'data_fingerprint': v2State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect((result.schemaFrom, result.schemaTo), (2, 3));
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, 3);
+      expect(after.rowCounts, v2State.rowCounts);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<Grave> graves = await reopened.select(reopened.graves).get();
+      await reopened.close();
+      expect(graves.map((g) => (g.id, g.name, g.sector)), [
+        (1, null, null),
+        (2, null, 'B'),
+      ]);
+    },
+  );
 
   test(
     'AC-3 — a backup from the previous schema restores into a newer app through its own migration',

@@ -2195,6 +2195,15 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
       'REFERENCES cemeteries (id)',
     ),
   );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _sectorMeta = const VerificationMeta('sector');
   @override
   late final GeneratedColumn<String> sector = GeneratedColumn<String>(
@@ -2265,6 +2274,7 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
   List<GeneratedColumn> get $columns => [
     id,
     cemeteryId,
+    name,
     sector,
     row,
     plot,
@@ -2295,6 +2305,12 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
       );
     } else if (isInserting) {
       context.missing(_cemeteryIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
     }
     if (data.containsKey('sector')) {
       context.handle(
@@ -2352,6 +2368,10 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         DriftSqlType.int,
         data['${effectivePrefix}cemetery_id'],
       )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
       sector: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}sector'],
@@ -2403,6 +2423,11 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
 class Grave extends DataClass implements Insertable<Grave> {
   final int id;
   final int cemeteryId;
+
+  /// "Grób rodzinny Nowaków" — a title the author gives, optional (ISSUE-012). Never derived from the
+  /// surnames of the people buried: a wrong Polish genitive plural on a family grave jars
+  /// (05_DESIGN/grob.md D1).
+  final String? name;
   final String? sector;
   final String? row;
   final String? plot;
@@ -2413,6 +2438,7 @@ class Grave extends DataClass implements Insertable<Grave> {
   const Grave({
     required this.id,
     required this.cemeteryId,
+    this.name,
     this.sector,
     this.row,
     this.plot,
@@ -2426,6 +2452,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['cemetery_id'] = Variable<int>(cemeteryId);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
     if (!nullToAbsent || sector != null) {
       map['sector'] = Variable<String>(sector);
     }
@@ -2456,6 +2485,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     return GravesCompanion(
       id: Value(id),
       cemeteryId: Value(cemeteryId),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
       sector: sector == null && nullToAbsent
           ? const Value.absent()
           : Value(sector),
@@ -2480,6 +2510,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     return Grave(
       id: serializer.fromJson<int>(json['id']),
       cemeteryId: serializer.fromJson<int>(json['cemeteryId']),
+      name: serializer.fromJson<String?>(json['name']),
       sector: serializer.fromJson<String?>(json['sector']),
       row: serializer.fromJson<String?>(json['row']),
       plot: serializer.fromJson<String?>(json['plot']),
@@ -2499,6 +2530,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'cemeteryId': serializer.toJson<int>(cemeteryId),
+      'name': serializer.toJson<String?>(name),
       'sector': serializer.toJson<String?>(sector),
       'row': serializer.toJson<String?>(row),
       'plot': serializer.toJson<String?>(plot),
@@ -2514,6 +2546,7 @@ class Grave extends DataClass implements Insertable<Grave> {
   Grave copyWith({
     int? id,
     int? cemeteryId,
+    Value<String?> name = const Value.absent(),
     Value<String?> sector = const Value.absent(),
     Value<String?> row = const Value.absent(),
     Value<String?> plot = const Value.absent(),
@@ -2524,6 +2557,7 @@ class Grave extends DataClass implements Insertable<Grave> {
   }) => Grave(
     id: id ?? this.id,
     cemeteryId: cemeteryId ?? this.cemeteryId,
+    name: name.present ? name.value : this.name,
     sector: sector.present ? sector.value : this.sector,
     row: row.present ? row.value : this.row,
     plot: plot.present ? plot.value : this.plot,
@@ -2542,6 +2576,7 @@ class Grave extends DataClass implements Insertable<Grave> {
       cemeteryId: data.cemeteryId.present
           ? data.cemeteryId.value
           : this.cemeteryId,
+      name: data.name.present ? data.name.value : this.name,
       sector: data.sector.present ? data.sector.value : this.sector,
       row: data.row.present ? data.row.value : this.row,
       plot: data.plot.present ? data.plot.value : this.plot,
@@ -2561,6 +2596,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     return (StringBuffer('Grave(')
           ..write('id: $id, ')
           ..write('cemeteryId: $cemeteryId, ')
+          ..write('name: $name, ')
           ..write('sector: $sector, ')
           ..write('row: $row, ')
           ..write('plot: $plot, ')
@@ -2576,6 +2612,7 @@ class Grave extends DataClass implements Insertable<Grave> {
   int get hashCode => Object.hash(
     id,
     cemeteryId,
+    name,
     sector,
     row,
     plot,
@@ -2590,6 +2627,7 @@ class Grave extends DataClass implements Insertable<Grave> {
       (other is Grave &&
           other.id == this.id &&
           other.cemeteryId == this.cemeteryId &&
+          other.name == this.name &&
           other.sector == this.sector &&
           other.row == this.row &&
           other.plot == this.plot &&
@@ -2602,6 +2640,7 @@ class Grave extends DataClass implements Insertable<Grave> {
 class GravesCompanion extends UpdateCompanion<Grave> {
   final Value<int> id;
   final Value<int> cemeteryId;
+  final Value<String?> name;
   final Value<String?> sector;
   final Value<String?> row;
   final Value<String?> plot;
@@ -2612,6 +2651,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   const GravesCompanion({
     this.id = const Value.absent(),
     this.cemeteryId = const Value.absent(),
+    this.name = const Value.absent(),
     this.sector = const Value.absent(),
     this.row = const Value.absent(),
     this.plot = const Value.absent(),
@@ -2623,6 +2663,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   GravesCompanion.insert({
     this.id = const Value.absent(),
     required int cemeteryId,
+    this.name = const Value.absent(),
     this.sector = const Value.absent(),
     this.row = const Value.absent(),
     this.plot = const Value.absent(),
@@ -2634,6 +2675,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   static Insertable<Grave> custom({
     Expression<int>? id,
     Expression<int>? cemeteryId,
+    Expression<String>? name,
     Expression<String>? sector,
     Expression<String>? row,
     Expression<String>? plot,
@@ -2645,6 +2687,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (cemeteryId != null) 'cemetery_id': cemeteryId,
+      if (name != null) 'name': name,
       if (sector != null) 'sector': sector,
       if (row != null) 'row': row,
       if (plot != null) 'plot': plot,
@@ -2658,6 +2701,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   GravesCompanion copyWith({
     Value<int>? id,
     Value<int>? cemeteryId,
+    Value<String?>? name,
     Value<String?>? sector,
     Value<String?>? row,
     Value<String?>? plot,
@@ -2669,6 +2713,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     return GravesCompanion(
       id: id ?? this.id,
       cemeteryId: cemeteryId ?? this.cemeteryId,
+      name: name ?? this.name,
       sector: sector ?? this.sector,
       row: row ?? this.row,
       plot: plot ?? this.plot,
@@ -2687,6 +2732,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     }
     if (cemeteryId.present) {
       map['cemetery_id'] = Variable<int>(cemeteryId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
     }
     if (sector.present) {
       map['sector'] = Variable<String>(sector.value);
@@ -2719,6 +2767,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     return (StringBuffer('GravesCompanion(')
           ..write('id: $id, ')
           ..write('cemeteryId: $cemeteryId, ')
+          ..write('name: $name, ')
           ..write('sector: $sector, ')
           ..write('row: $row, ')
           ..write('plot: $plot, ')
@@ -6902,6 +6951,7 @@ typedef $$GravesTableCreateCompanionBuilder =
     GravesCompanion Function({
       Value<int> id,
       required int cemeteryId,
+      Value<String?> name,
       Value<String?> sector,
       Value<String?> row,
       Value<String?> plot,
@@ -6914,6 +6964,7 @@ typedef $$GravesTableUpdateCompanionBuilder =
     GravesCompanion Function({
       Value<int> id,
       Value<int> cemeteryId,
+      Value<String?> name,
       Value<String?> sector,
       Value<String?> row,
       Value<String?> plot,
@@ -6994,6 +7045,11 @@ class $$GravesTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7121,6 +7177,11 @@ class $$GravesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get sector => $composableBuilder(
     column: $table.sector,
     builder: (column) => ColumnOrderings(column),
@@ -7191,6 +7252,9 @@ class $$GravesTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
 
   GeneratedColumn<String> get sector =>
       $composableBuilder(column: $table.sector, builder: (column) => column);
@@ -7326,6 +7390,7 @@ class $$GravesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> cemeteryId = const Value.absent(),
+                Value<String?> name = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
                 Value<String?> row = const Value.absent(),
                 Value<String?> plot = const Value.absent(),
@@ -7336,6 +7401,7 @@ class $$GravesTableTableManager
               }) => GravesCompanion(
                 id: id,
                 cemeteryId: cemeteryId,
+                name: name,
                 sector: sector,
                 row: row,
                 plot: plot,
@@ -7348,6 +7414,7 @@ class $$GravesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required int cemeteryId,
+                Value<String?> name = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
                 Value<String?> row = const Value.absent(),
                 Value<String?> plot = const Value.absent(),
@@ -7358,6 +7425,7 @@ class $$GravesTableTableManager
               }) => GravesCompanion.insert(
                 id: id,
                 cemeteryId: cemeteryId,
+                name: name,
                 sector: sector,
                 row: row,
                 plot: plot,

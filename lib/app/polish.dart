@@ -17,6 +17,30 @@ String peopleLabel(int n) => '$n ${plural(n, 'osoba', 'osoby', 'osób')}';
 String cemeteriesLabel(int n) =>
     '$n ${plural(n, 'cmentarz', 'cmentarze', 'cmentarzy')}';
 
+/// "Imiona Nazwisko", with " z d. Rodowe" when [birthSurname] is given (style-b.md rule 6); what there
+/// is when a part is missing.
+String personName(String? givenNames, String? surname, {String? birthSurname}) {
+  final String name = [?givenNames, ?surname].join(' ');
+  final String shown = name.isEmpty ? 'Osoba bez imienia' : name;
+  return birthSurname == null ? shown : '$shown z d. $birthSurname';
+}
+
+/// The manager's address in full words: "Kwatera B · Rząd 4 · Miejsce 12" (style-b.md rule 6); null
+/// when the grave has none.
+String? graveAddress(String? sector, String? row, String? plot) {
+  final List<String> parts = [
+    if (sector != null) 'Kwatera $sector',
+    if (row != null) 'Rząd $row',
+    if (plot != null) 'Miejsce $plot',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+/// The address with what is missing said as a fact (style-b.md rule 7; 05_DESIGN/cmentarz.md,
+/// element 3c): "Kwatera B · Rząd 3 · Miejsce 12 · bez pinezki", "Bez adresu kwatery · bez pinezki".
+String addressLine(String? address, {required bool hasPin}) =>
+    [address ?? 'Bez adresu kwatery', if (!hasPin) 'bez pinezki'].join(' · ');
+
 /// Polish lower-case letters → their plain letter, by UTF-16 code unit (all in one unit).
 const Map<int, int> _plain = {
   0x0105: 0x61, // ą → a

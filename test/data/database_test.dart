@@ -36,14 +36,14 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 2, integrity ok, exactly the v2 tables, foreign keys on',
+      'user_version 3, integrity ok, exactly the v3 tables, foreign keys on',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 2);
+        expect(await _single(db, 'PRAGMA user_version'), 3);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 

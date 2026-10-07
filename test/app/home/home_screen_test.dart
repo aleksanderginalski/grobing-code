@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/data_state_screen.dart';
+import 'package:grobing/app/grave/cemetery_screen.dart';
 import 'package:grobing/app/grobing_app.dart';
 import 'package:grobing/app/home/base_preview_screen.dart';
 import 'package:grobing/app/home/cemetery_base.dart';
@@ -297,6 +298,55 @@ void main() {
     expect(pins(tester).single.look, PinLook.selected);
     await cleanUp(tester);
   });
+
+  testWidgets(
+    'ISSUE-012: "Otwórz cmentarz" in the sheet opens the cemetery screen; back returns to the map with '
+    'the sheet still open',
+    (tester) async {
+      await tester.runAsync(() async {
+        await addCemetery(
+          db,
+          name: 'Cmentarz Wymyślony',
+          locality: 'Miejscowość Testowa',
+          point: const GeoPoint(51.0, 20.0),
+        );
+      });
+      await pumpHome(tester);
+      await _pumpUntil(tester, () => pins(tester).isNotEmpty);
+      await tester.tap(find.byType(CandlePin));
+      await tester.pumpAndSettle();
+
+      final Finder open = find.widgetWithText(FilledButton, 'Otwórz cmentarz');
+      expect(open, findsOneWidget);
+      // The candle leads to a place of memory (style-b.md rule 8).
+      expect(
+        find.descendant(of: open, matching: find.byType(CandleIcon)),
+        findsOneWidget,
+      );
+      await tester.tap(open);
+      await _pumpUntil(
+        tester,
+        () => find
+            .text('Na tym cmentarzu nie ma jeszcze grobów.')
+            .evaluate()
+            .isNotEmpty,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(CemeteryScreen),
+          matching: find.text('Cmentarz Wymyślony'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(CemeteryScreen), findsNothing);
+      expect(find.text('0 grobów · 0 osób'), findsOneWidget);
+      expect(open, findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
 
   testWidgets(
     'adding by hand: window → pick mode → tap → "Zapisz" → the candle and its sheet',

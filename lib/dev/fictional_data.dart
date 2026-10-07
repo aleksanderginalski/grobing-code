@@ -33,9 +33,15 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
             centerLon: Value(point?.lon),
           ),
         );
+    // One grave with a name and one without, so the grave screens show both (ISSUE-012).
     final int grave = await db
         .into(db.graves)
-        .insert(GravesCompanion.insert(cemeteryId: cemetery));
+        .insert(
+          GravesCompanion.insert(
+            cemeteryId: cemetery,
+            name: const Value('Grób rodzinny Wymyślonych'),
+          ),
+        );
     final int graveWithAddress = await db
         .into(db.graves)
         .insert(

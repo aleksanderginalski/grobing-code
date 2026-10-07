@@ -11,6 +11,7 @@ import '../../data/cemeteries.dart';
 import '../../data/database.dart';
 import '../data_state_screen.dart';
 import '../external_link.dart';
+import '../grave/cemetery_screen.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
@@ -465,7 +466,16 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
-  /// Elements 6 and 8. "Otwórz cmentarz" (element 7) comes with the cemetery screen, ISSUE-012.
+  /// Element 7 (ISSUE-012): the cemetery's graves. The sheet stays open underneath, so back returns to
+  /// it with the new counts (05_DESIGN/cmentarz.md D7).
+  Future<void> _openCemetery(CemeterySummary c) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) =>
+          CemeteryScreen(database: widget.database, cemeteryId: c.id),
+    ),
+  );
+
+  /// Elements 6–8.
   Widget _cemeterySheet(CemeterySummary c) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -509,6 +519,14 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 4),
         _iconLine(Icons.location_off_outlined, 'Bez punktu na mapie'),
       ],
+      const SizedBox(height: 16),
+      // The candle leads to a place of memory (style-b.md rule 8), in the colour of the label.
+      FilledButton.icon(
+        style: primaryButtonStyle,
+        onPressed: () => _openCemetery(c),
+        icon: const CandleIcon(size: 22, color: GrobingColors.background),
+        label: const Text('Otwórz cmentarz'),
+      ),
     ],
   );
 

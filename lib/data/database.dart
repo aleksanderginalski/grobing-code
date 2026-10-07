@@ -8,8 +8,9 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v2 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007) plus Assertion (ISSUE-011,
-// ADR-006), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
+// Schema v3 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// ADR-006) and the grave's name (ISSUE-012), still without the grave fee (S4) and the cemetery
+// offline-map status (SPIKE-001). Enums are
 // stored by name, not index: data lives for decades and a reordered enum must not silently change
 // meaning. Renaming an enum value is a schema change and needs a migration.
 
@@ -104,6 +105,11 @@ class Cemeteries extends Table {
 class Graves extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get cemeteryId => integer().references(Cemeteries, #id)();
+
+  /// "Grób rodzinny Nowaków" — a title the author gives, optional (ISSUE-012). Never derived from the
+  /// surnames of the people buried: a wrong Polish genitive plural on a family grave jars
+  /// (05_DESIGN/grob.md D1).
+  TextColumn get name => text().nullable()();
   TextColumn get sector => text().nullable()();
   TextColumn get row => text().nullable()();
   TextColumn get plot => text().nullable()();
@@ -223,7 +229,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 2;
+  static const int currentSchemaVersion = 3;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -243,7 +249,7 @@ class GrobingDatabase extends _$GrobingDatabase {
         await m.runMigrationSteps(
           from: from,
           to: to,
-          steps: migrationSteps(from1To2: _from1To2),
+          steps: migrationSteps(from1To2: _from1To2, from2To3: _from2To3),
         );
         await customStatement('PRAGMA user_version = $to');
       });
@@ -281,6 +287,10 @@ class GrobingDatabase extends _$GrobingDatabase {
       [carriedOverFromV1, now],
     );
   }
+
+  /// ISSUE-012: graves get an optional name. A new nullable column: no row changes, nothing dropped.
+  Future<void> _from2To3(Migrator m, Schema3 schema) =>
+      m.addColumn(schema.graves, schema.graves.name);
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

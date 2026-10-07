@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:drift/drift.dart' show QueryRow, driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show QueryRow, TableUpdate, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,8 +19,10 @@ import 'package:grobing/backup/restore_service.dart';
 import 'package:grobing/backup/restore_swap.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
+import 'package:grobing/data/graves.dart';
 import 'package:grobing/dev/fictional_data.dart';
 
+import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../support/backup_fakes.dart';
 
 // ISSUE-010: the background backup.
@@ -874,6 +877,160 @@ void main() {
           await check.close();
           expect(rows.single.data.values.single, 'ok', reason: path);
         }
+      },
+    );
+  });
+
+  test(
+    'ISSUE-012 — a person written by the transcription screens asks for a background backup, as '
+    'every write does',
+    () async {
+      final GrobingDatabase db = _open(location.databaseFile);
+      addTearDown(db.close);
+      final FakeBackgroundBackups background = FakeBackgroundBackups();
+      final BackupService service = BackupService(
+        database: db,
+        location: location,
+        workDir: workDir(),
+        settings: settings,
+        documents: drive,
+        lock: lock,
+        background: background,
+        clock: () => _now,
+      );
+      await service.backUpNow();
+      final StreamSubscription<Set<TableUpdate>> changes = service
+          .watchChanges();
+      addTearDown(changes.cancel);
+      final int cemetery = (await db.select(db.cemeteries).get()).first.id;
+
+      await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      for (int i = 0; i < 50 && background.requests == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(background.requests, greaterThanOrEqualTo(1));
+    },
+  );
+
+  group('retro 1 R6 — the start asks for a backup once the schema migration ran', () {
+    // A phone at schema v2, backed up right before the update: the stamp in the settings is the v2
+    // file's. Made-up rows only.
+    setUp(() async {
+      location.databaseFile.deleteSync();
+      final v2.DatabaseAtV2 old = v2.DatabaseAtV2(
+        NativeDatabase(location.databaseFile),
+      );
+      await old.customStatement(
+        "INSERT INTO cemeteries (id, name) VALUES (1, 'Cmentarz Wymyślony')",
+      );
+      await old.customStatement(
+        'INSERT INTO graves (id, cemetery_id) VALUES (1, 1)',
+      );
+      await old.customStatement('PRAGMA user_version = 2');
+      await old.close();
+      await settings.write(
+        BackupSettings(
+          recipient: identity.recipient.encode(),
+          documentUri: backupUri,
+          lastSuccessAt: _now,
+          lastSuccessStamp: await dataStamp(location),
+        ),
+      );
+    });
+
+    test(
+      'asked before the database opens, the start sees the v2 stamp and asks nothing — the gap; '
+      'asked after it opened, the migrated file differs and one backup is asked for',
+      () async {
+        final GrobingDatabase db = _open(location.databaseFile);
+        addTearDown(db.close);
+        final FakeBackgroundBackups background = FakeBackgroundBackups();
+        final BackupService service = BackupService(
+          database: db,
+          location: location,
+          workDir: workDir(),
+          settings: settings,
+          documents: drive,
+          lock: lock,
+          background: background,
+          clock: () => _now,
+        );
+
+        await service.requestBackgroundIfChanged();
+        expect(background.requests, 0);
+
+        await service.requestBackgroundOnStart();
+        expect(background.requests, 1);
+        final QueryRow version = await db
+            .customSelect('PRAGMA user_version')
+            .getSingle();
+        expect(
+          version.data.values.single,
+          GrobingDatabase.currentSchemaVersion,
+        );
+      },
+    );
+
+    test('a start without a migration or a change asks nothing', () async {
+      // Migrate once and back up the migrated file, as the background backup would.
+      final GrobingDatabase first = _open(location.databaseFile);
+      await first.customSelect('SELECT 1').get();
+      await first.close();
+      await settings.write(
+        (await settings.read())!.succeeded(
+          _now,
+          stamp: await dataStamp(location),
+          inBackground: true,
+        ),
+      );
+
+      final GrobingDatabase db = _open(location.databaseFile);
+      addTearDown(db.close);
+      final FakeBackgroundBackups background = FakeBackgroundBackups();
+      await BackupService(
+        database: db,
+        location: location,
+        workDir: workDir(),
+        settings: settings,
+        documents: drive,
+        lock: lock,
+        background: background,
+        clock: () => _now,
+      ).requestBackgroundOnStart();
+      expect(background.requests, 0);
+    });
+
+    test(
+      'a database that fails to open asks nothing and does not throw',
+      () async {
+        location.databaseFile.writeAsStringSync('to nie jest baza SQLite');
+        final GrobingDatabase db = _open(location.databaseFile);
+        addTearDown(() async {
+          try {
+            await db.close();
+          } on Object {
+            // never opened
+          }
+        });
+        final FakeBackgroundBackups background = FakeBackgroundBackups();
+        await expectLater(
+          BackupService(
+            database: db,
+            location: location,
+            workDir: workDir(),
+            settings: settings,
+            documents: drive,
+            lock: lock,
+            background: background,
+            clock: () => _now,
+          ).requestBackgroundOnStart(),
+          completes,
+        );
+        expect(background.requests, 0);
       },
     );
   });
