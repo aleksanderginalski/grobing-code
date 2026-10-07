@@ -120,13 +120,18 @@ Future<BackupManifest> writeEncryptedBackup({
   required File output,
   required DateTime createdAt,
 }) async {
+  // One list of photo files for the fingerprint and the archive (ISSUE-016, D3): a photo added between
+  // two listings would be archived but not counted, and no restore would accept the backup. Listed after
+  // the snapshot, and a photo's file is written before its row, so every row in the snapshot has its file.
+  final List<File> media = listMediaFiles(mediaDir);
+
   // Counts and fingerprint from the snapshot, read-only: the backup never writes to what it copies.
   final GrobingDatabase db = GrobingDatabase(
     NativeDatabase.opened(sqlite3.open(snapshot.path, mode: OpenMode.readOnly)),
   );
   final DataState state;
   try {
-    state = await readDataState(db, mediaDir: mediaDir);
+    state = await readDataState(db, mediaDir: mediaDir, mediaFiles: media);
   } finally {
     await db.close();
   }
@@ -140,7 +145,7 @@ Future<BackupManifest> writeEncryptedBackup({
         _archive(
           sources: [
             (path: backupDatabaseName, file: snapshot),
-            for (final File f in listMediaFiles(mediaDir))
+            for (final File f in media)
               (
                 path: '$backupMediaPrefix${mediaRelativePath(mediaDir, f)}',
                 file: f,

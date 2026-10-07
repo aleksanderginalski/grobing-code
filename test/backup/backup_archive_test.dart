@@ -8,14 +8,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/backup/age/age.dart';
 import 'package:grobing/backup/backup_archive.dart';
 import 'package:grobing/backup/tar_writer.dart';
+import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
+import 'package:grobing/data/graves.dart';
+import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_data.dart';
+import 'package:grobing/dev/fictional_photo.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 // ISSUE-008 AC-1 (the backup's content) and D2 (format v1): made-up data → `VACUUM INTO` snapshot →
 // encrypted backup → opened again: the archive holds the database, the photos and the manifest last,
-// and every number in the manifest matches the files and the live data.
+// and every number in the manifest matches the files and the live data. ISSUE-016 D3 (F4): a photo
+// added or deleted while the backup runs cannot make a backup that no restore accepts.
+
+/// The media directory with a hook after each listing, so "a photo added while the backup runs" happens
+/// at a known moment instead of by chance (ISSUE-016, F4). Only what the backup uses is implemented; any
+/// other member fails loudly.
+class _HookedDirectory implements Directory {
+  _HookedDirectory(this._inner, this._afterListing);
+
+  final Directory _inner;
+  final void Function(int listing) _afterListing;
+  int listings = 0;
+
+  @override
+  String get path => _inner.path;
+
+  @override
+  bool existsSync() => _inner.existsSync();
+
+  @override
+  List<FileSystemEntity> listSync({
+    bool recursive = false,
+    bool followLinks = true,
+  }) {
+    final List<FileSystemEntity> found = _inner.listSync(
+      recursive: recursive,
+      followLinks: followLinks,
+    );
+    _afterListing(++listings);
+    return found;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnsupportedError(
+    'not used by the backup: ${invocation.memberName}',
+  );
+}
 
 /// One regular file of a ustar archive, read back for checking.
 typedef _Entry = ({
@@ -118,8 +158,8 @@ void main() {
 
       expect(entries.map((e) => e.path), [
         'grobing.db',
-        'media/wymyslone/nota-1.txt',
-        'media/wymyslone/nota-2.txt',
+        'media/wymyslone/nagrobek-1.png',
+        'media/wymyslone/nagrobek-2.png',
         'manifest.json',
       ]);
       for (final _Entry e in entries) {
@@ -154,7 +194,9 @@ void main() {
       }
       expect(
         entries[1].data,
-        File('${live.mediaDir.path}/wymyslone/nota-1.txt').readAsBytesSync(),
+        File(
+          '${live.mediaDir.path}/wymyslone/nagrobek-1.png',
+        ).readAsBytesSync(),
       );
 
       // The archived database is intact and has the live data's fingerprint.
@@ -195,6 +237,131 @@ void main() {
     expect(manifest.files.map((f) => f.path), ['grobing.db']);
     expect(manifest.recordCounts.values, everyElement(0));
   });
+
+  /// What every restore checks (ISSUE-009): the fingerprint over the archived database and photos equals
+  /// the manifest's. Unpacks [entries] under [dir] and reads the state there.
+  Future<String> fingerprintOfArchive(
+    List<_Entry> entries,
+    Directory dir,
+  ) async {
+    for (final _Entry e in entries.where((e) => e.path != 'manifest.json')) {
+      File('${dir.path}/${e.path}')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(e.data);
+    }
+    final GrobingDatabase opened = GrobingDatabase(
+      NativeDatabase.opened(
+        sqlite3.open('${dir.path}/grobing.db', mode: OpenMode.readOnly),
+      ),
+    );
+    try {
+      return (await readDataState(
+        opened,
+        mediaDir: Directory('${dir.path}/media'),
+      )).fingerprint;
+    } finally {
+      await opened.close();
+    }
+  }
+
+  Future<List<_Entry>> openBackup(File output, X25519Identity identity) async {
+    final BytesBuilder tar = BytesBuilder();
+    await for (final List<int> c in ageDecrypt(output.openRead(), [identity])) {
+      tar.add(c);
+    }
+    return _readTar(tar.takeBytes());
+  }
+
+  test(
+    'ISSUE-016 F4 — a photo added while the backup runs cannot break it: the media directory is '
+    'listed once, and the fingerprint covers exactly the archived files, so a restore accepts it',
+    () async {
+      await addFictionalData(db, live.mediaDir);
+      final File snapshot = File('${tmp.path}/work/grobing.db');
+      snapshot.parent.createSync();
+      await db.customStatement('VACUUM INTO ?', [snapshot.path]);
+      final File late = File(
+        '${live.mediaDir.path}/groby/1/dodane-w-trakcie.jpg',
+      );
+      final _HookedDirectory media = _HookedDirectory(live.mediaDir, (n) {
+        if (n == 1) {
+          late
+            ..createSync(recursive: true)
+            ..writeAsBytesSync(fictionalGravestonePng(9));
+        }
+      });
+      final X25519Identity identity = X25519Identity.generate();
+      final File output = File('${tmp.path}/kopia.age');
+
+      final BackupManifest manifest = await writeEncryptedBackup(
+        snapshot: snapshot,
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: output,
+        createdAt: DateTime.utc(2026, 10, 7),
+      );
+
+      expect(media.listings, 1);
+      expect(late.existsSync(), isTrue, reason: 'the photo arrived mid-backup');
+      final List<_Entry> entries = await openBackup(output, identity);
+      expect(
+        entries.map((e) => e.path),
+        isNot(contains('media/groby/1/dodane-w-trakcie.jpg')),
+      );
+      expect(
+        await fingerprintOfArchive(entries, Directory('${tmp.path}/check')),
+        manifest.dataFingerprint,
+      );
+    },
+  );
+
+  test(
+    'ISSUE-016 D3 — a photo deleted while the backup runs: the row goes, the file stays for the sweep, '
+    'so the backup holds every file its snapshot names and a restore accepts it',
+    () async {
+      final int cemetery = await addCemetery(db, name: 'Cmentarz Wymyślony');
+      final int grave = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      final File prepared = File('${tmp.path}/photo-work/gotowe.jpg')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fictionalGravestonePng(3));
+      final String path = await setGravePhoto(
+        db,
+        live.mediaDir,
+        grave,
+        prepared,
+      );
+      final File snapshot = File('${tmp.path}/work/grobing.db');
+      snapshot.parent.createSync();
+      await db.customStatement('VACUUM INTO ?', [snapshot.path]);
+      Future<void>? deleting;
+      final _HookedDirectory media = _HookedDirectory(live.mediaDir, (n) {
+        if (n == 1) deleting = deleteGravePhoto(db, grave);
+      });
+      final X25519Identity identity = X25519Identity.generate();
+      final File output = File('${tmp.path}/kopia.age');
+
+      final BackupManifest manifest = await writeEncryptedBackup(
+        snapshot: snapshot,
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: output,
+        createdAt: DateTime.utc(2026, 10, 7),
+      );
+      await deleting;
+
+      expect(await gravePhotoPath(db, grave), isNull);
+      final List<_Entry> entries = await openBackup(output, identity);
+      expect(entries.map((e) => e.path), contains('media/$path'));
+      expect(
+        await fingerprintOfArchive(entries, Directory('${tmp.path}/check')),
+        manifest.dataFingerprint,
+      );
+    },
+  );
 
   group('ustar header', () {
     test('a path longer than 100 characters is split into prefix and name', () {

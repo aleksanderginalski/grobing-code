@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../data/database.dart';
 import '../../data/graves.dart';
 import '../dates.dart';
+import '../photo/photos.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
@@ -61,10 +62,14 @@ class PersonFormScreen extends StatefulWidget {
     super.key,
     required this.database,
     required this.mode,
+    this.photos,
   });
 
   final GrobingDatabase database;
   final PersonFormMode mode;
+
+  /// Passed on to the grave view that replaces the form after a new grave (ISSUE-016).
+  final Photos? photos;
 
   @override
   State<PersonFormScreen> createState() => _PersonFormScreenState();
@@ -263,8 +268,11 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           // The grave replaces the form: back from it returns to the cemetery (style-b.md rule 10).
           await navigator.pushReplacement(
             MaterialPageRoute<void>(
-              builder: (_) =>
-                  GraveScreen(database: widget.database, graveId: grave),
+              builder: (_) => GraveScreen(
+                database: widget.database,
+                graveId: grave,
+                photos: widget.photos,
+              ),
             ),
           );
         case NextPerson(:final int graveId):

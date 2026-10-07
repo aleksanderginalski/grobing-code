@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'claims.dart';
 import 'database.dart';
+import 'photos.dart';
 
 // Graves and the people buried in them, as the transcription screens show and write them
 // (ISSUE-012; 05_DESIGN/cmentarz.md, grob.md, wpis-osoby.md). Writes go through drift's own API, so
@@ -103,6 +104,7 @@ class GraveSummary {
     this.plot,
     required this.hasPin,
     required this.people,
+    this.photoPath,
   });
 
   final int id;
@@ -111,6 +113,9 @@ class GraveSummary {
   final String? row;
   final String? plot;
   final bool hasPin;
+
+  /// The grave's photo, relative to the media directory (05_DESIGN/cmentarz.md, element 3 (d)).
+  final String? photoPath;
 
   /// The people buried here, in the order they were entered.
   final List<({int id, String? givenNames, String? surname})> people;
@@ -200,6 +205,7 @@ class GraveDetail {
     this.plot,
     required this.hasPin,
     required this.people,
+    this.photoPath,
   });
 
   final int id;
@@ -212,6 +218,9 @@ class GraveDetail {
   final String? plot;
   final bool hasPin;
   final List<BuriedPerson> people;
+
+  /// The grave's only photo, relative to the media directory (05_DESIGN/grob.md, element 1a).
+  final String? photoPath;
 }
 
 /// A new value after every write to a table the view reads. drift re-runs a watched query when any
@@ -234,6 +243,7 @@ Stream<CemeteryGraves?> watchCemeteryGraves(
   db.graves,
   db.burials,
   db.persons,
+  db.media,
 }, () => loadCemeteryGraves(db, cemeteryId));
 
 Future<CemeteryGraves?> loadCemeteryGraves(
@@ -260,6 +270,21 @@ Future<CemeteryGraves?> loadCemeteryGraves(
             ..where(db.graves.cemeteryId.equals(cemeteryId))
             ..orderBy([OrderingTerm.asc(db.burials.id)]))
           .get();
+  // The first photo of each grave — the lowest id (photos.dart → gravePhotoPath).
+  final Map<int, String> photos = {};
+  for (final MediaFile m
+      in await (db.select(db.media)
+            ..where(
+              (m) => m.graveId.isInQuery(
+                db.selectOnly(db.graves)
+                  ..addColumns([db.graves.id])
+                  ..where(db.graves.cemeteryId.equals(cemeteryId)),
+              ),
+            )
+            ..orderBy([(m) => OrderingTerm.asc(m.id)]))
+          .get()) {
+    photos.putIfAbsent(m.graveId!, () => m.relativePath);
+  }
   final Map<int, List<({int id, String? givenNames, String? surname})>> people =
       {};
   for (final TypedResult r in buried) {
@@ -284,6 +309,7 @@ Future<CemeteryGraves?> loadCemeteryGraves(
           plot: g.plot,
           hasPin: g.lat != null && g.lon != null,
           people: people[g.id] ?? const [],
+          photoPath: photos[g.id],
         ),
     ],
   );
@@ -297,6 +323,7 @@ Stream<GraveDetail?> watchGrave(GrobingDatabase db, int graveId) => _watch(db, {
   db.persons,
   db.events,
   db.assertions,
+  db.media,
 }, () => loadGrave(db, graveId));
 
 Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
@@ -341,6 +368,7 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
           burial: await _fact(db, p.id, EventType.burial),
         ),
     ],
+    photoPath: await gravePhotoPath(db, graveId),
   );
 }
 

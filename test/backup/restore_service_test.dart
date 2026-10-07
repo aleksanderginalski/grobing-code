@@ -17,7 +17,9 @@ import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
+import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_data.dart';
+import 'package:grobing/dev/fictional_photo.dart';
 
 import '../drift/grobing/generated/schema_v1.dart' as v1;
 import '../drift/grobing/generated/schema_v2.dart' as v2;
@@ -1077,6 +1079,66 @@ void main() {
       expect(restored.people.map((p) => p.givenNames), ['Jan', 'Anna']);
       expect(restored.people.last.birth.date!.qualifier, DateQualifier.between);
       expect(restored.people.first.bioSource, defaultBioSource);
+    },
+  );
+
+  test(
+    'ISSUE-016 AC-3 — a gravestone photo comes back from the backup: the same file, the same row, the '
+    'same fingerprint',
+    () async {
+      final ({Directory dir, GrobingDatabase db}) entered = await phone(
+        'zdjecie',
+      );
+      final Directory media = Directory('${entered.dir.path}/media');
+      final int cemetery = await addCemetery(
+        entered.db,
+        name: 'Cmentarz Wymyślony',
+      );
+      final int grave = await addPersonToNewGrave(
+        entered.db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      final File prepared = File('${tmp.path}/photo-work/gotowe.jpg')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fictionalGravestonePng(5));
+      final List<int> bytes = prepared.readAsBytesSync();
+      final String path = await setGravePhoto(
+        entered.db,
+        media,
+        grave,
+        prepared,
+      );
+      final DataState before = await readDataState(entered.db, mediaDir: media);
+      expect(before.mediaFileCount, 1);
+      await entered.db.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/zdjecie.db',
+      ]);
+      await entered.db.close();
+      final String uri = FakeDocumentStore.uriOf('kopia-zdjecie.age');
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/zdjecie.db'),
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: drive.fileFor(uri)..createSync(recursive: true),
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('nowy');
+      await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+        backupUri: uri,
+        keyUri: FakeDocumentStore.uriOf('klucz.age'),
+        passphrase: _passphrase,
+      );
+
+      expect((await stateOnDisk(fresh.dir)).fingerprint, before.fingerprint);
+      expect(File('${fresh.dir.path}/media/$path').readAsBytesSync(), bytes);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final String? restored = await gravePhotoPath(reopened, grave);
+      await reopened.close();
+      expect(restored, path);
     },
   );
 

@@ -150,6 +150,51 @@ void main() {
     });
   }
 
+  /// A photo file no `media` row names, last modified [age] ago (ISSUE-016, D3).
+  File orphan(String name, Duration age) =>
+      File('${location.mediaDir.path}/groby/9/$name')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync([1, 2, 3])
+        ..setLastModifiedSync(DateTime.now().subtract(age));
+
+  group('ISSUE-016 D3 — the sweep at start', () {
+    test(
+      'takes the lock, removes a file without a row older than an hour, keeps a fresh one',
+      () async {
+        final FakeDataLock lock = FakeDataLock();
+        final File old = orphan('stare.jpg', const Duration(hours: 2));
+        final File fresh = orphan('swieze.jpg', Duration.zero);
+
+        await backupServiceIn(
+          tmp,
+          db,
+          FakeDocumentStore(Directory('${tmp.path}/drive')),
+          lock: lock,
+        ).requestBackgroundOnStart();
+
+        expect(old.existsSync(), isFalse);
+        expect(fresh.existsSync(), isTrue);
+        expect(lock.acquired, 1);
+        expect(lock.held, isFalse);
+      },
+    );
+
+    test('leaves the files alone while a backup holds the lock', () async {
+      final FakeDataLock lock = FakeDataLock()..held = true;
+      final File old = orphan('stare.jpg', const Duration(hours: 2));
+
+      await backupServiceIn(
+        tmp,
+        db,
+        FakeDocumentStore(Directory('${tmp.path}/drive')),
+        lock: lock,
+      ).requestBackgroundOnStart();
+
+      expect(old.existsSync(), isTrue);
+      expect(lock.held, isTrue, reason: 'the backup\'s lock is not released');
+    });
+  });
+
   group('"Zrób kopię teraz"', () {
     late FakeDocumentStore drive;
     late BackupService backup;
@@ -161,6 +206,23 @@ void main() {
       backup = backupServiceIn(tmp, db, drive, clock: () => now);
       await backup.setUp(_passphrase);
     });
+
+    test(
+      'ISSUE-016 D3 — sweeps photo files without a row before its stamp: the old one goes, the '
+      'fresh one is backed up, and nothing looks changed afterwards',
+      () async {
+        final File old = orphan('stare.jpg', const Duration(hours: 2));
+        final File fresh = orphan('swieze.jpg', Duration.zero);
+        now = DateTime.utc(2026, 10, 6, 13);
+
+        final BackupSettings settings = await backup.backUpNow();
+
+        expect(settings.lastAttemptFailed, isFalse);
+        expect(old.existsSync(), isFalse);
+        expect(fresh.existsSync(), isTrue);
+        expect(await backup.changedSinceLastBackup(), isFalse);
+      },
+    );
 
     test(
       'overwrites the file with the current data and records the time',

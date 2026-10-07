@@ -8,6 +8,7 @@ import '../backup/restore_service.dart';
 import '../data/database.dart';
 import 'data_state_screen.dart';
 import 'home/home_screen.dart';
+import 'photo/photos.dart';
 import 'theme.dart';
 
 /// Everything the screens work on, opened together — and replaced together after a restore.
@@ -27,6 +28,7 @@ class GrobingApp extends StatefulWidget {
     required this.backup,
     this.restore,
     this.reopen,
+    this.photos,
   });
 
   final GrobingDatabase database;
@@ -39,6 +41,9 @@ class GrobingApp extends StatefulWidget {
   /// Opens the data again after a restore replaced it (`main.dart`).
   final Future<AppData> Function()? reopen;
 
+  /// The photos' picker and preparer (tests replace them); by default the system ones, on [location].
+  final Photos? photos;
+
   @override
   State<GrobingApp> createState() => _GrobingAppState();
 }
@@ -48,6 +53,7 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
   late DataLocation _location = widget.location;
   late BackupService _backup = widget.backup;
   late RestoreService? _restore = widget.restore;
+  late Photos _photos = widget.photos ?? Photos.platform(_location);
 
   /// A new generation rebuilds every screen on the new data; nothing keeps the closed database.
   int _generation = 0;
@@ -94,6 +100,7 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       _location = data.location;
       _backup = data.backup;
       _restore = data.restore;
+      _photos = widget.photos ?? Photos.platform(data.location);
       _generation++;
       _notice = notice;
     });
@@ -109,6 +116,7 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       backup: _backup,
       restore: _restore,
       onRestored: onRestored,
+      photos: _photos,
     );
     return MaterialApp(
       key: ValueKey<int>(_generation),

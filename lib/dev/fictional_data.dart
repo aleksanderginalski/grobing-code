@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../data/claims.dart';
 import '../data/database.dart';
+import 'fictional_photo.dart';
 
 /// Adds one batch of **made-up** people, families and graves (family-data.md: never real data in the
 /// repo). Called only behind `kDebugMode` (ISSUE-007 D3), so the release build that one day runs on
@@ -155,11 +156,12 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
       await addBurialWithClaim(db, personId: person, graveId: inGrave);
     }
 
-    // A placeholder file instead of a photo, so the media part of the fingerprint is exercised.
-    final String relativePath = 'wymyslone/nota-$batch.txt';
+    // A made-up gravestone picture drawn in code (ISSUE-016): the grave view shows it, and the media part
+    // of the fingerprint is exercised. The file is written before its row, as photos.dart does (D3).
+    final String relativePath = 'wymyslone/nagrobek-$batch.png';
     final File file = File('${mediaDir.path}/$relativePath');
     await file.parent.create(recursive: true);
-    await file.writeAsString('Plik wymyślony do testów, partia $batch.');
+    await file.writeAsBytes(fictionalGravestonePng(batch), flush: true);
     await db
         .into(db.media)
         .insert(

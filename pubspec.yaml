@@ -36,6 +36,16 @@ dependencies:
   # exactly, like the backup crypto: a new version is a reviewed change, not a `pub upgrade`.
   flutter_map: 8.3.2
   latlong2: 0.10.1
+  # Photos (ISSUE-016): the system photo picker (Android Photo Picker from Android 13) and the system
+  # camera — no storage or camera permission, nothing fetched. Called without maxWidth/imageQuality: the
+  # app makes its own 2048 px JPEG (PhotoPreparation.kt, D2'), which the package cannot do for HEIF.
+  # Pinned exactly, like the backup crypto and the map: it handles the family's photos.
+  image_picker: 1.2.4
+  # Imported only to switch on the Android Photo Picker (photo_picker.dart): with its default (off)
+  # 0.8.13+17 asks with ACTION_GET_CONTENT, whose window needs "Done" even for one photo (ui review).
+  # Pinned to the versions image_picker 1.2.4 resolved, so nothing moves.
+  image_picker_android: 0.8.13+17
+  image_picker_platform_interface: 2.11.2
 
 dev_dependencies:
   flutter_test:

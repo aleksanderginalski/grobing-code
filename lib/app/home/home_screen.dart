@@ -12,6 +12,7 @@ import '../../data/database.dart';
 import '../data_state_screen.dart';
 import '../external_link.dart';
 import '../grave/cemetery_screen.dart';
+import '../photo/photos.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
@@ -38,6 +39,7 @@ class HomeScreen extends StatefulWidget {
     this.mapData,
     this.base,
     this.openUrl = openExternalUrl,
+    this.photos,
   });
 
   final GrobingDatabase database;
@@ -55,6 +57,9 @@ class HomeScreen extends StatefulWidget {
 
   /// Opens the satellite photo in another app (tests replace it).
   final Future<bool> Function(String url) openUrl;
+
+  /// Photos for the cemetery and grave screens (ISSUE-016); null only in tests of other features.
+  final Photos? photos;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -470,8 +475,11 @@ class _HomeScreenState extends State<HomeScreen> {
   /// it with the new counts (05_DESIGN/cmentarz.md D7).
   Future<void> _openCemetery(CemeterySummary c) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) =>
-          CemeteryScreen(database: widget.database, cemeteryId: c.id),
+      builder: (_) => CemeteryScreen(
+        database: widget.database,
+        cemeteryId: c.id,
+        photos: widget.photos,
+      ),
     ),
   );
 

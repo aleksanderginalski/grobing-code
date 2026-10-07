@@ -1,20 +1,36 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/graves.dart';
+import '../../data/photos.dart' show gravePhotoPath;
 import '../dates.dart';
+import '../photo/photo_picker.dart';
+import '../photo/photo_source_sheet.dart';
+import '../photo/photo_viewer_screen.dart';
+import '../photo/photos.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import 'person_form_screen.dart';
 
-/// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v2): R4 without the photos,
-/// which come with US-005. The grave's name is set from the pencil next to the title.
+/// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
+/// above the title (ISSUE-016); the people's photos come with ISSUE-017. The grave's name is set from
+/// the pencil next to the title.
 class GraveScreen extends StatefulWidget {
-  const GraveScreen({super.key, required this.database, required this.graveId});
+  const GraveScreen({
+    super.key,
+    required this.database,
+    required this.graveId,
+    this.photos,
+  });
 
   final GrobingDatabase database;
   final int graveId;
+
+  /// Null only in tests of other features: then the screen has no photo and no "Dodaj zdjęcie".
+  final Photos? photos;
 
   @override
   State<GraveScreen> createState() => _GraveScreenState();
@@ -22,6 +38,10 @@ class GraveScreen extends StatefulWidget {
 
 class _GraveScreenState extends State<GraveScreen> {
   late Stream<GraveDetail?> _grave = _watch();
+
+  /// "Zapisywanie zdjęcia" and "nieudany zapis zdjęcia" (grob.md → States).
+  bool _savingPhoto = false;
+  bool _photoFailed = false;
 
   Stream<GraveDetail?> _watch() => watchGrave(widget.database, widget.graveId);
 
@@ -47,9 +67,57 @@ class _GraveScreenState extends State<GraveScreen> {
 
   Future<void> _openForm(PersonFormMode mode) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => PersonFormScreen(database: widget.database, mode: mode),
+      builder: (_) => PersonFormScreen(
+        database: widget.database,
+        mode: mode,
+        photos: widget.photos,
+      ),
     ),
   );
+
+  /// The source sheet, then the system picker or camera; null when the user cancels either.
+  Future<File?> _pickPhoto(Photos photos) async {
+    final PhotoSource? source = await showPhotoSourceSheet(context);
+    if (source == null) return null;
+    return photos.pick(source);
+  }
+
+  /// "Dodaj zdjęcie" (element 6): the photo is kept at once, without a form; the view shows it.
+  Future<void> _addPhoto(GraveDetail g) async {
+    final Photos? photos = widget.photos;
+    if (photos == null || _savingPhoto) return;
+    setState(() => _photoFailed = false);
+    try {
+      final File? picked = await _pickPhoto(photos);
+      if (picked == null || !mounted) return;
+      setState(() => _savingPhoto = true);
+      await photos.setGravePhoto(widget.database, g.id, picked);
+    } on Object {
+      if (mounted) setState(() => _photoFailed = true);
+    } finally {
+      if (mounted) setState(() => _savingPhoto = false);
+    }
+  }
+
+  /// The photo on the whole screen (zdjecie.md, B), where it can be changed or deleted (D1').
+  Future<void> _openPhoto(GraveDetail g, Photos photos, String path) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PhotoViewerScreen(
+            title: g.name ?? 'Grób',
+            subtitle: 'Zdjęcie nagrobka',
+            file: photos.fileOf(path),
+            pickReplacement: () => _pickPhoto(photos),
+            replace: (picked) async {
+              await photos.setGravePhoto(widget.database, g.id, picked);
+              return photos.fileOf(
+                (await gravePhotoPath(widget.database, g.id))!,
+              );
+            },
+            onDelete: () => photos.deleteGravePhoto(widget.database, g.id),
+          ),
+        ),
+      );
 
   Future<void> _editName(GraveDetail g) => showDialog<void>(
     context: context,
@@ -110,6 +178,27 @@ class _GraveScreenState extends State<GraveScreen> {
   Widget _content(GraveDetail grave) => ListView(
     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
     children: [
+      // Element 1a: the gravestone photo; without one, the field "Dodaj zdjęcie nagrobka" in its place —
+      // the action stands where its result will (grob.md v3.2, D12, the author's decision at stop #2).
+      if (widget.photos case final Photos photos?) ...[
+        if (grave.photoPath case final String path?)
+          _GravePhoto(
+            file: photos.fileOf(path),
+            onTap: () => _openPhoto(grave, photos, path),
+          )
+        else if (_savingPhoto)
+          const _SavingPhoto()
+        else
+          _AddPhotoField(onTap: () => _addPhoto(grave)),
+        if (_photoFailed)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: PhotoErrorLine(
+              'Nie udało się zapisać zdjęcia. Spróbuj jeszcze raz.',
+            ),
+          ),
+        const SizedBox(height: 10),
+      ],
       _title(grave),
       const SizedBox(height: 6),
       _address(grave),
@@ -127,13 +216,11 @@ class _GraveScreenState extends State<GraveScreen> {
       for (final BuriedPerson p in grave.people)
         _PersonCard(person: p, onTap: () => _correct(grave, p)),
       const SizedBox(height: 8),
-      // Element 6: the row of actions; "Dodaj zdjęcie" joins it with US-005.
+      // Element 6: "Dodaj osobę" only — adding the photo is the field 1a (D10, D12).
       Row(
         children: [
           OutlinedButton.icon(
-            style: secondaryButtonStyle.copyWith(
-              minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
-            ),
+            style: _rowButton,
             onPressed: () => _addPerson(grave),
             icon: const Icon(Icons.person_add_alt_outlined),
             label: const Text('Dodaj osobę'),
@@ -141,6 +228,10 @@ class _GraveScreenState extends State<GraveScreen> {
         ],
       ),
     ],
+  );
+
+  static final ButtonStyle _rowButton = secondaryButtonStyle.copyWith(
+    minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
   );
 
   /// Elements 2 and 3: the name — "Grób" without one — centred, and the pencil to set it. The same
@@ -235,6 +326,161 @@ class _GraveScreenState extends State<GraveScreen> {
           child: const Text('Spróbuj ponownie'),
         ),
       ],
+    ),
+  );
+}
+
+/// Element 1a: the gravestone photo, the width of the content and the photo's own proportions, but
+/// never taller than wide — a portrait photo is cut to a square from the middle (D8). All of it is one tap
+/// away, in the viewer. Decoded at the size it is shown, not the stored 2048 px.
+class _GravePhoto extends StatelessWidget {
+  const _GravePhoto({required this.file, required this.onTap});
+
+  final File file;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final double width = constraints.maxWidth;
+      return Semantics(
+        button: true,
+        label: 'Zdjęcie nagrobka — otwórz',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Material(
+            color: GrobingColors.surface,
+            child: InkWell(
+              onTap: onTap,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: width),
+                child: Image.file(
+                  file,
+                  width: width,
+                  fit: BoxFit.cover,
+                  cacheWidth: (width * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+                  excludeFromSemantics: true,
+                  // Until the file is read: the field at 4:3, so the title and the people do not jump down
+                  // by the photo's height when it appears (ui review; grob.md → States).
+                  frameBuilder: (_, child, frame, wasSynchronouslyLoaded) =>
+                      frame == null && !wasSynchronouslyLoaded
+                      ? const AspectRatio(aspectRatio: 4 / 3)
+                      : child,
+                  errorBuilder: (_, _, _) => const _UnreadablePhoto(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Element 1a without a photo (grob.md v3.2, D12): the place of the photo as one button — an outline, the
+/// icon in amber, the caption — never a placeholder picture (style-b.md rules 11, 14). 120 dp, not the
+/// photo's 4:3: about 50 graves start without one, and a photo-sized field would push the people down on
+/// every one of them.
+class _AddPhotoField extends StatelessWidget {
+  const _AddPhotoField({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: 'Dodaj zdjęcie nagrobka',
+    excludeSemantics: true,
+    child: Material(
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: GrobingColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 120),
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.add_a_photo_outlined,
+                  size: 32,
+                  color: GrobingColors.amber,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Dodaj zdjęcie nagrobka',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: GrobingColors.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// "Brak pliku zdjęcia" (grob.md → States): the row is there, the file cannot be read. A tap still
+/// opens the viewer, where the photo can be changed or deleted.
+class _UnreadablePhoto extends StatelessWidget {
+  const _UnreadablePhoto();
+
+  @override
+  Widget build(BuildContext context) => const AspectRatio(
+    aspectRatio: 4 / 3,
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.broken_image_outlined, color: GrobingColors.textMuted),
+          SizedBox(height: 8),
+          Text(
+            'Nie udało się otworzyć zdjęcia.',
+            style: TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// "Zapisywanie zdjęcia" (grob.md → States): a 4:3 field on the surface where the photo will be.
+class _SavingPhoto extends StatelessWidget {
+  const _SavingPhoto();
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(16),
+    child: const ColoredBox(
+      color: GrobingColors.surface,
+      child: AspectRatio(
+        aspectRatio: 4 / 3,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text(
+                'Zapisuję zdjęcie…',
+                style: TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
     ),
   );
 }

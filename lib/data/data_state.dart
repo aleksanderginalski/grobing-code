@@ -36,9 +36,14 @@ class DataState {
 /// and rowid renumbering therefore do not change it, but any changed value or file does. Tables are
 /// discovered from `sqlite_master`, so a table added by a later schema counts without code changes.
 /// Changing this definition invalidates every fingerprint recorded before (README → Baza danych).
+///
+/// [mediaFiles] is the list to count, from [listMediaFiles]; the backup passes the very list it archives,
+/// so a photo added or removed between counting and archiving cannot make the two disagree — a backup
+/// whose fingerprint misses a file it holds would be refused by every restore (ISSUE-016, D3).
 Future<DataState> readDataState(
   GeneratedDatabase db, {
   required Directory mediaDir,
+  List<File>? mediaFiles,
 }) async {
   final _Sha256Stream hash = _Sha256Stream();
   final Map<String, int> counts = {};
@@ -86,7 +91,7 @@ Future<DataState> readDataState(
     }
   }
 
-  final List<File> media = listMediaFiles(mediaDir);
+  final List<File> media = mediaFiles ?? listMediaFiles(mediaDir);
   hash
     ..addTag('M')
     ..addInt(media.length);

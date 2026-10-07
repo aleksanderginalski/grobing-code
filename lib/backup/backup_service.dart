@@ -8,6 +8,7 @@ import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/services.dart';
 
 import '../data/database.dart';
+import '../data/photos.dart';
 import 'age/age.dart';
 import 'background.dart';
 import 'backup_archive.dart';
@@ -148,6 +149,9 @@ class BackupService {
     _running = true;
     try {
       final DateTime createdAt = _clock().toUtc();
+      // Under the lock and before the stamp: photo files no row names any more go now (ISSUE-016, D3),
+      // so their deletion is not a change the stamp sees after this backup.
+      await _sweepMedia();
       // Before the snapshot: a change after this point makes the stamps differ, so the next trigger
       // backs it up (ISSUE-010, D2) — at worst once too often, never once too few.
       final String stamp = await dataStamp(location);
@@ -247,7 +251,25 @@ class BackupService {
     } on Object {
       return;
     }
+    // Photo files left without a row (ISSUE-016, D3) go at start too — when no backup holds the lock;
+    // otherwise that backup sweeps them.
+    if (await lock.tryAcquire()) {
+      try {
+        await _sweepMedia();
+      } finally {
+        await lock.release();
+      }
+    }
     await requestBackgroundIfChanged();
+  }
+
+  /// [sweepOrphanMedia], never failing the caller: a file that stays goes with the next sweep.
+  Future<void> _sweepMedia() async {
+    try {
+      await sweepOrphanMedia(database, location.mediaDir);
+    } on Object {
+      // Nothing to show; the next backup or start tries again.
+    }
   }
 
   Future<void> _acquire() async {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/grobing_app.dart';
+import 'app/photo/photos.dart';
 import 'backup/background.dart';
 import 'backup/background_backup.dart';
 import 'backup/backup_service.dart';
@@ -59,6 +60,8 @@ Future<AppData> _open(Directory support, Directory cache) async {
   // migration (retro 1, R6), and any change made outside drift that no write notified. In the
   // background, so the first screen does not wait for the database to open.
   unawaited(backup.requestBackgroundOnStart());
+  // An interrupted photo preparation (ISSUE-016) leaves a scratch file — never a kept photo.
+  unawaited(Photos.platform(location).clearWork());
   return (
     database: database,
     location: location,

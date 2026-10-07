@@ -134,6 +134,27 @@ Cmentarz dodaje się z wbudowanej bazy cmentarzy Polski (ISSUE-015): `assets/cem
   `basemap=satellite`, tylko po dotknięciu (`lib/app/external_link.dart`, kanał `grobing/external` w
   `ExternalLinks.kt`). `geo:` nie umie wybrać warstwy satelitarnej.
 
+## Zdjęcia
+
+Zdjęcie nagrobka: jedno na grób, do dodania, zmiany i usunięcia (ISSUE-016 w vaulcie; zdjęcia osób —
+ISSUE-017).
+
+- **Wybór:** paczka `image_picker` — systemowe okno wyboru zdjęć (Android Photo Picker od Androida 13) albo
+  systemowy aparat, bez uprawnień do pamięci i aparatu (`lib/app/photo/photo_picker.dart`).
+- **Co aplikacja trzyma:** własną kopię dostępową, nie oryginał (decyzja autora D2'): JPEG jakość 85, dłuższy
+  bok najwyżej 2048 px (mniejsze zdjęcie bez zmiany rozmiaru), obrócona według EXIF, **bez EXIF** (także bez
+  lokalizacji). Robi ją kanał `com.grobing.app/photos` w `PhotoPreparation.kt`: Android 9+ `ImageDecoder`, Android
+  7–8 `BitmapFactory` + `ExifInterface`. Oryginał zostaje w galerii albo na papierze.
+- **Pliki:** `media/groby/<id grobu>/<czas>-<losowe>.jpg` — nazwa nigdy z tego, co na zdjęciu. Przygotowanie
+  idzie do `photo-work/` obok `media/` (poza kopią), a dopiero gotowy plik przechodzi do `media/`.
+- **Kolejność kroków chroni kopię** (D3, `lib/data/photos.dart`): plik powstaje przed wierszem `media`, usunięcie
+  kasuje tylko wiersz, a plik bez wiersza usuwa `sweepOrphanMedia` — pod zamkiem danych, przed znacznikiem i
+  migawką każdej kopii oraz przy starcie, i tylko starszy niż 1 h. Odcisk danych i archiwum kopii liczą **tę
+  samą** listę plików (`backup_archive.dart`): zdjęcie dodane w trakcie kopii nie może jej zepsuć.
+- **Testy i dane debug:** obrazy tylko generowane w kodzie (`lib/dev/fictional_photo.dart`) — strażnik danych
+  rodziny nie wpuszcza plików graficznych do repo. Kod natywny zmniejszania nie ma testu automatycznego;
+  sprawdza się go na emulatorze.
+
 ## Kopia
 
 Jeden zaszyfrowany plik w Dysku autora, nadpisywany przy każdej kopii (ADR-004 i ISSUE-008 w vaulcie).

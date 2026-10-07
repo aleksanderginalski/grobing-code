@@ -1,24 +1,32 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/graves.dart';
+import '../photo/photos.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import 'grave_screen.dart';
 import 'person_form_screen.dart';
 
-/// The graves of one cemetery (ISSUE-012; 05_DESIGN/cmentarz.md v2): R2 without the satellite photo —
-/// the sheet of graves over the whole screen (D1), and "Dodaj grób" to transcribe the next one.
+/// The graves of one cemetery (ISSUE-012; 05_DESIGN/cmentarz.md v3): R2 without the satellite photo —
+/// the sheet of graves over the whole screen (D1), each with its gravestone thumbnail when it has a
+/// photo (D9, ISSUE-016), and "Dodaj grób" to transcribe the next one.
 class CemeteryScreen extends StatefulWidget {
   const CemeteryScreen({
     super.key,
     required this.database,
     required this.cemeteryId,
+    this.photos,
   });
 
   final GrobingDatabase database;
   final int cemeteryId;
+
+  /// Null only in tests of other features: then the cards have no thumbnails.
+  final Photos? photos;
 
   @override
   State<CemeteryScreen> createState() => _CemeteryScreenState();
@@ -32,7 +40,11 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
 
   Future<void> _openGrave(int id) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => GraveScreen(database: widget.database, graveId: id),
+      builder: (_) => GraveScreen(
+        database: widget.database,
+        graveId: id,
+        photos: widget.photos,
+      ),
     ),
   );
 
@@ -43,6 +55,7 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
       builder: (_) => PersonFormScreen(
         database: widget.database,
         mode: NewGrave(cemeteryId: cemetery.id, cemeteryName: cemetery.name),
+        photos: widget.photos,
       ),
     ),
   );
@@ -131,7 +144,14 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
       ),
       const SizedBox(height: 8),
       for (final GraveSummary g in cemetery.graves)
-        _GraveCard(grave: g, onTap: () => _openGrave(g.id)),
+        _GraveCard(
+          grave: g,
+          photo: switch ((widget.photos, g.photoPath)) {
+            (final Photos photos?, final String path?) => photos.fileOf(path),
+            _ => null,
+          },
+          onTap: () => _openGrave(g.id),
+        ),
     ],
   );
 
@@ -179,10 +199,13 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
 /// Element 3: a grave on the surface with a chevron (style-b.md rule 11). Its title is the grave's
 /// name; without one, the people buried in it (D5).
 class _GraveCard extends StatelessWidget {
-  const _GraveCard({required this.grave, required this.onTap});
+  const _GraveCard({required this.grave, required this.onTap, this.photo});
 
   final GraveSummary grave;
   final VoidCallback onTap;
+
+  /// Element 3 (d): the gravestone photo, when the grave has one.
+  final File? photo;
 
   static const TextStyle _title = TextStyle(
     color: GrobingColors.text,
@@ -223,6 +246,7 @@ class _GraveCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
               child: Row(
                 children: [
+                  if (photo case final File file?) _Thumbnail(file: file),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,6 +280,31 @@ class _GraveCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Element 3 (d): a 56 dp square, corners 8 dp, cut from the middle, 12 dp before the text (cmentarz.md
+/// v3). The card's text tells a screen reader what it is, so the picture stays out of it. A photo that
+/// cannot be read leaves no thumbnail and no gap (cmentarz.md → States).
+class _Thumbnail extends StatelessWidget {
+  const _Thumbnail({required this.file});
+
+  final File file;
+  static const double _size = 56;
+
+  @override
+  Widget build(BuildContext context) => Image.file(
+    file,
+    width: _size,
+    height: _size,
+    fit: BoxFit.cover,
+    cacheWidth: (_size * MediaQuery.devicePixelRatioOf(context)).round(),
+    excludeFromSemantics: true,
+    frameBuilder: (_, child, _, _) => Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: child),
+    ),
+    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+  );
 }
 
 /// Names after commas in at most [maxLines] lines; those that do not fit become "i jeszcze 2"
