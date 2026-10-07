@@ -57,6 +57,7 @@ class _DataStateScreenState extends State<DataStateScreen> {
     'burials': 'Pochówki',
     'assertions': 'Twierdzenia (źródła)',
     'media': 'Zdjęcia (wpisy)',
+    'person_media': 'Zdjęcia osób (łącza)',
     'settings': 'Ustawienia',
   };
 

@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import '../../data/database.dart';
 import '../../data/graves.dart';
 import '../dates.dart';
+import '../photo/person_photos_draft.dart';
+import '../photo/person_photos_screen.dart';
+import '../photo/photo_viewer_screen.dart'
+    show PhotoErrorLine, coverDecodeWidth;
 import '../photo/photos.dart';
 import '../polish.dart';
 import '../theme.dart';
@@ -48,11 +52,15 @@ class Correction extends PersonFormMode {
     required this.person,
     required this.graveTitle,
     required this.peopleCount,
+    this.graveId,
   });
 
   final BuriedPerson person;
   final String graveTitle;
   final int peopleCount;
+
+  /// The grave the person was opened from: its people come first in "Kto jest na zdjęciu?".
+  final int? graveId;
 }
 
 /// One person buried in a grave, as the notes give them (ISSUE-012; 05_DESIGN/wpis-osoby.md v2). The
@@ -68,7 +76,8 @@ class PersonFormScreen extends StatefulWidget {
   final GrobingDatabase database;
   final PersonFormMode mode;
 
-  /// Passed on to the grave view that replaces the form after a new grave (ISSUE-016).
+  /// The person's photos (element 1a, ISSUE-017), and passed on to the grave view that replaces the form
+  /// after a new grave (ISSUE-016). Null only in tests of other features: then the form has no photos.
   final Photos? photos;
 
   @override
@@ -129,6 +138,24 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 
   late final String _initialSnapshot = _snapshot();
 
+  /// The person's photos while the form is open; written with "Zapisz" (wpis-osoby.md D-zdjęcie-2).
+  late final PersonPhotosDraft? _photos = switch (widget.photos) {
+    final Photos photos => PersonPhotosDraft(
+      database: widget.database,
+      photos: photos,
+      personId: switch (widget.mode) {
+        Correction(:final BuriedPerson person) => person.id,
+        _ => null,
+      },
+      graveId: switch (widget.mode) {
+        NewGrave() => null,
+        NextPerson(:final int graveId) => graveId,
+        Correction(:final int? graveId) => graveId,
+      },
+    ),
+    null => null,
+  };
+
   bool _correctable(DatedFact Function(BuriedPerson) fact) =>
       switch (widget.mode) {
         Correction(:final BuriedPerson person) => fact(person).correctable,
@@ -145,6 +172,12 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         _surnameTouched = true;
       }
     });
+    _photos?.addListener(_photosChanged);
+    _photos?.load();
+  }
+
+  void _photosChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -164,6 +197,10 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     for (final _DateInput d in _dates) {
       d.dispose();
     }
+    // Drops the photos prepared and not saved; after "Zapisz" they are in the media directory already.
+    _photos
+      ?..removeListener(_photosChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -192,7 +229,21 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     ],
   ].join('\u0000');
 
-  bool get _dirty => _snapshot() != _initialSnapshot;
+  /// A photo picked or changed is entered data too (wpis-osoby.md → Navigation).
+  bool get _dirty =>
+      _snapshot() != _initialSnapshot || (_photos?.hasChanges ?? false);
+
+  /// The person as typed now, for the photo screens: "Nowa osoba" before a name is typed.
+  String _nameNow({bool withBirthSurname = false}) {
+    String? t(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    if (t(_given) == null && t(_surname) == null) return 'Nowa osoba';
+    return personName(
+      t(_given),
+      t(_surname),
+      birthSurname: withBirthSurname ? t(_birthSurname) : null,
+    );
+  }
 
   String get _title => switch (widget.mode) {
     Correction() => 'Poprawa wpisu',
@@ -255,14 +306,27 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       _saveFailed = false;
     });
     final NavigatorState navigator = Navigator.of(context);
+    // The photos go in the person's transaction (D-zdjęcie-2); without photos it is the write alone.
+    Future<T> write<T>(Future<T> Function(AlsoWrite? alsoWrite) w) =>
+        switch (widget.photos) {
+          final Photos photos => photos.writeWithPersonPhotos(
+            widget.database,
+            _photos?.edits(),
+            w,
+          ),
+          null => w(null),
+        };
     try {
       final PersonEntry entry = _entry();
       switch (widget.mode) {
         case NewGrave(:final int cemeteryId):
-          final int grave = await addPersonToNewGrave(
-            widget.database,
-            cemeteryId: cemeteryId,
-            entry: entry,
+          final int grave = await write(
+            (alsoWrite) => addPersonToNewGrave(
+              widget.database,
+              cemeteryId: cemeteryId,
+              entry: entry,
+              alsoWrite: alsoWrite,
+            ),
           );
           _done = true;
           // The grave replaces the form: back from it returns to the cemetery (style-b.md rule 10).
@@ -276,15 +340,25 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             ),
           );
         case NextPerson(:final int graveId):
-          await addPersonToGrave(
-            widget.database,
-            graveId: graveId,
-            entry: entry,
+          await write(
+            (alsoWrite) => addPersonToGrave(
+              widget.database,
+              graveId: graveId,
+              entry: entry,
+              alsoWrite: alsoWrite,
+            ),
           );
           _done = true;
           navigator.pop();
         case Correction(:final BuriedPerson person):
-          await updatePersonEntry(widget.database, person.id, entry);
+          await write(
+            (alsoWrite) => updatePersonEntry(
+              widget.database,
+              person.id,
+              entry,
+              alsoWrite: alsoWrite,
+            ),
+          );
           _done = true;
           navigator.pop();
       }
@@ -314,9 +388,11 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: const Text(
-          'Wpisane dane nie zostaną zapisane.',
-          style: TextStyle(color: GrobingColors.text, fontSize: 16),
+        content: Text(
+          (_photos?.hasChanges ?? false)
+              ? 'Wpisane dane i zmiany zdjęć nie zostaną zapisane.'
+              : 'Wpisane dane nie zostaną zapisane.',
+          style: const TextStyle(color: GrobingColors.text, fontSize: 16),
         ),
         actions: [
           TextButton(
@@ -418,6 +494,23 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Element 1a (v4): the person's photos — outside the `next` order, it takes no focus.
+        if (_photos case final PersonPhotosDraft photos) ...[
+          _PhotoField(
+            draft: photos,
+            onAdd: () => addPersonPhotos(context, photos),
+            onOpen: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => PersonPhotosScreen(
+                  draft: photos,
+                  personName: _nameNow(withBirthSurname: true),
+                  shortName: _nameNow(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         // Elements 2–4.
         TextField(
           controller: _given,
@@ -571,7 +664,14 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         FilledButton(
           style: primaryButtonStyle,
           onPressed: _saving ? null : _save,
-          child: const Text('Zapisz'),
+          // With new photos the write takes longer (their files move first): the progress replaces the
+          // label (wpis-osoby.md → States, "zapisywanie").
+          child: _saving && (_photos?.hasChanges ?? false)
+              ? const SizedBox.square(
+                  dimension: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                )
+              : const Text('Zapisz'),
         ),
       ],
     ),
@@ -579,6 +679,122 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 }
 
 const TextStyle _input = TextStyle(color: GrobingColors.text, fontSize: 16);
+
+/// Element 1a (05_DESIGN/wpis-osoby.md v4): without photos, an 80 dp circle with an outline, the icon in
+/// amber and "Dodaj zdjęcie" — a button, never a silhouette (style-b.md rules 11, 14); with photos, the
+/// profile photo cut to the circle and how many photos there are, which opens the person's photos. The
+/// circle with its caption is one button.
+class _PhotoField extends StatelessWidget {
+  const _PhotoField({
+    required this.draft,
+    required this.onAdd,
+    required this.onOpen,
+  });
+
+  final PersonPhotosDraft draft;
+  final VoidCallback onAdd;
+  final VoidCallback onOpen;
+
+  static const double _size = 80;
+
+  @override
+  Widget build(BuildContext context) {
+    final DraftPhoto? profile = draft.profile;
+    final int count = draft.count;
+    final ({int failed, int of})? failure = draft.failure;
+    final VoidCallback? action = draft.preparing > 0
+        ? null
+        : (count == 0 ? onAdd : onOpen);
+    final Widget circle = switch (profile) {
+      final DraftPhoto p => ClipOval(
+        child: SizedBox.square(
+          dimension: _size,
+          child: Image.file(
+            p.file,
+            fit: BoxFit.cover,
+            cacheWidth: coverDecodeWidth(context, _size),
+            errorBuilder: (_, _, _) => const ColoredBox(
+              color: GrobingColors.surface,
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: GrobingColors.textMuted,
+              ),
+            ),
+          ),
+        ),
+      ),
+      null => Container(
+        width: _size,
+        height: _size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.fromBorderSide(
+            BorderSide(color: GrobingColors.outline),
+          ),
+        ),
+        child: Center(
+          child: draft.preparing > 0
+              ? const SizedBox.square(
+                  dimension: 28,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                )
+              : const Icon(
+                  Icons.add_a_photo_outlined,
+                  size: 28,
+                  color: GrobingColors.amber,
+                ),
+        ),
+      ),
+    };
+    final Widget caption = failure != null
+        ? PhotoErrorLine(
+            failure.of == 1
+                ? 'Nie udało się wczytać zdjęcia. Spróbuj jeszcze raz.'
+                : 'Nie udało się wczytać ${failure.failed} '
+                      '${plural(failure.failed, 'zdjęcia', 'zdjęć', 'zdjęć')} '
+                      'z ${failure.of}. Spróbuj jeszcze raz.',
+          )
+        : Text(
+            count == 0
+                ? 'Dodaj zdjęcie'
+                : '$count ${plural(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}',
+            style: TextStyle(
+              color: count == 0 ? GrobingColors.text : GrobingColors.textMuted,
+              fontSize: 14,
+            ),
+          );
+    return Center(
+      child: Semantics(
+        button: true,
+        label: count == 0
+            ? 'Dodaj zdjęcie osoby'
+            : 'Zdjęcia osoby: $count — otwórz',
+        enabled: action != null,
+        // The tap too, not only the label: the label replaces the field's own semantics (ui review, MAJOR).
+        onTap: action,
+        excludeSemantics: failure == null,
+        child: InkWell(
+          onTap: action,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                circle,
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 280),
+                  child: caption,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// An error under a field: the error colour with its icon, never colour alone (SC 1.4.1).
 class _ErrorLine extends StatelessWidget {

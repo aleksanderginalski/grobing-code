@@ -35,6 +35,45 @@ Uint8List fictionalGravestonePng(
   return _png(width, height, rgb);
 }
 
+/// Made-up "old photos" of people for the debug data (ISSUE-017), drawn like the gravestone: a sepia
+/// ground and [heads] simple figures — a head and shoulders each. One figure is a "portrait", two a
+/// "wedding photo" to share between two made-up people. Nobody is meant.
+Uint8List fictionalPeoplePng(
+  int batch, {
+  required int heads,
+  int width = 480,
+  int height = 360,
+}) {
+  final Uint8List rgb = Uint8List(width * height * 3);
+  final int tint = (batch * 17) % 30;
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      final double fx = x / width;
+      final double fy = y / height;
+      (int, int, int) colour = (
+        150 - (fy * 70).round() + tint,
+        128 - (fy * 60).round() + tint,
+        96 - (fy * 45).round(),
+      );
+      for (int h = 0; h < heads; h++) {
+        final double cx = (h + 1) / (heads + 1);
+        final double dx = (fx - cx) * width / height;
+        final bool head =
+            dx * dx / 0.012 + (fy - 0.36) * (fy - 0.36) / 0.022 <= 1;
+        final bool shoulders =
+            fy > 0.58 && dx * dx / 0.03 + (fy - 1.0) * (fy - 1.0) / 0.2 <= 1;
+        if (head) colour = (214, 192, 156);
+        if (shoulders) colour = (58 + h * 20, 48 + h * 18, 38 + h * 14);
+      }
+      final int i = (y * width + x) * 3;
+      rgb[i] = colour.$1;
+      rgb[i + 1] = colour.$2;
+      rgb[i + 2] = colour.$3;
+    }
+  }
+  return _png(width, height, rgb);
+}
+
 /// A minimal PNG (truecolour, 8 bits, no filter): signature, IHDR, IDAT, IEND.
 Uint8List _png(int width, int height, Uint8List rgb) {
   final BytesBuilder raw = BytesBuilder(copy: false);

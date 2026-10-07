@@ -41,37 +41,8 @@ class PhotoViewerScreen extends StatefulWidget {
 
 class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late File _file = widget.file;
-  final TransformationController _zoom = TransformationController();
-  Offset? _doubleTapAt;
   bool _changing = false;
   bool _changeFailed = false;
-
-  /// Double tap zooms 2.5× at the tapped point and back — the single-pointer way to zoom
-  /// (WCAG 2.2 SC 2.5.1, zdjecie.md D4), which also chooses what to look at.
-  static const double _tapZoom = 2.5;
-
-  @override
-  void dispose() {
-    _zoom.dispose();
-    super.dispose();
-  }
-
-  void _toggleZoom() {
-    if (_zoom.value.getMaxScaleOnAxis() > 1.01) {
-      _zoom.value = Matrix4.identity();
-      return;
-    }
-    final Offset? at = _doubleTapAt;
-    if (at == null) return;
-    _zoom.value = Matrix4.identity()
-      ..translateByDouble(
-        -at.dx * (_tapZoom - 1),
-        -at.dy * (_tapZoom - 1),
-        0,
-        1,
-      )
-      ..scaleByDouble(_tapZoom, _tapZoom, 1, 1);
-  }
 
   /// "Zapisuję zdjęcie…" shows only once a photo is chosen (zdjecie.md, B — "zmiana w toku": after the
   /// choice), never while the sheet or the system window is open (ui review, MAJOR).
@@ -86,9 +57,9 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       setState(() => _changing = true);
       final File changed = await replace(picked);
       if (!mounted) return;
+      // A new file is a new [ZoomablePhoto] (its key), so the zoom starts again.
       setState(() {
         _file = changed;
-        _zoom.value = Matrix4.identity();
         _changing = false;
       });
     } on Object {
@@ -118,8 +89,16 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _bar(),
-          Expanded(child: _changing ? const _Changing() : _photo()),
+          PhotoViewerBar(title: widget.title, subtitle: widget.subtitle),
+          Expanded(
+            child: _changing
+                ? const _Changing()
+                : ZoomablePhoto(
+                    key: ValueKey(_file.path),
+                    file: _file,
+                    semanticLabel: widget.subtitle,
+                  ),
+          ),
           if (_changeFailed)
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -129,60 +108,6 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
             ),
           if (widget.replace != null || widget.onDelete != null) _actions(),
         ],
-      ),
-    ),
-  );
-
-  /// B1: back, the title and what the photo is — on the background, never on the photo.
-  Widget _bar() => Row(
-    children: [
-      const Padding(
-        padding: EdgeInsets.all(4),
-        child: BackButton(color: GrobingColors.text),
-      ),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: GrobingColors.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              widget.subtitle,
-              style: const TextStyle(
-                color: GrobingColors.textMuted,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(width: 16),
-    ],
-  );
-
-  /// B2: the whole photo, fitted; pinch to 4×, or double tap.
-  Widget _photo() => GestureDetector(
-    onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
-    onDoubleTap: _toggleZoom,
-    child: InteractiveViewer(
-      transformationController: _zoom,
-      minScale: 1,
-      maxScale: 4,
-      child: SizedBox.expand(
-        child: Image.file(
-          _file,
-          fit: BoxFit.contain,
-          semanticLabel: widget.subtitle,
-          errorBuilder: (_, _, _) => const _Unreadable(),
-        ),
       ),
     ),
   );
@@ -236,9 +161,149 @@ class _Changing extends StatelessWidget {
   );
 }
 
+/// How wide to decode a photo shown cut to a [box] dp square from the middle (`BoxFit.cover`): the
+/// width alone sets the decoded size, and a landscape photo decoded box-wide would be scaled up to fill
+/// the box's height — group photos are mostly landscape. Twice the box covers photos up to 2:1 (ui
+/// review).
+int coverDecodeWidth(BuildContext context, double box) =>
+    (2 * box * MediaQuery.devicePixelRatioOf(context)).round();
+
+/// B1: back, the title and what the photo is — on the background, never on the photo.
+class PhotoViewerBar extends StatelessWidget {
+  const PhotoViewerBar({super.key, required this.title, this.subtitle});
+
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const Padding(
+        padding: EdgeInsets.all(4),
+        child: BackButton(color: GrobingColors.text),
+      ),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: GrobingColors.text,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (subtitle case final String subtitle)
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: GrobingColors.textMuted,
+                  fontSize: 14,
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(width: 16),
+    ],
+  );
+}
+
+/// B2: the whole photo, fitted; pinch to 4×, or double tap. [onZoomed] says when it leaves or returns
+/// to the whole photo — a person's photos turn with a swipe only unzoomed (zdjecie.md, B3).
+class ZoomablePhoto extends StatefulWidget {
+  const ZoomablePhoto({
+    super.key,
+    required this.file,
+    required this.semanticLabel,
+    this.onZoomed,
+  });
+
+  final File file;
+  final String semanticLabel;
+  final ValueChanged<bool>? onZoomed;
+
+  @override
+  State<ZoomablePhoto> createState() => _ZoomablePhotoState();
+}
+
+class _ZoomablePhotoState extends State<ZoomablePhoto> {
+  final TransformationController _zoom = TransformationController();
+  Offset? _doubleTapAt;
+  bool _zoomed = false;
+
+  /// Double tap zooms 2.5× at the tapped point and back — the single-pointer way to zoom
+  /// (WCAG 2.2 SC 2.5.1, zdjecie.md D4), which also chooses what to look at.
+  static const double _tapZoom = 2.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoom.addListener(_reportZoom);
+  }
+
+  @override
+  void dispose() {
+    _zoom
+      ..removeListener(_reportZoom)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _reportZoom() {
+    final bool zoomed = _zoom.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed == _zoomed) return;
+    _zoomed = zoomed;
+    widget.onZoomed?.call(zoomed);
+  }
+
+  void _toggleZoom() {
+    if (_zoomed) {
+      _zoom.value = Matrix4.identity();
+      return;
+    }
+    final Offset? at = _doubleTapAt;
+    if (at == null) return;
+    _zoom.value = Matrix4.identity()
+      ..translateByDouble(
+        -at.dx * (_tapZoom - 1),
+        -at.dy * (_tapZoom - 1),
+        0,
+        1,
+      )
+      ..scaleByDouble(_tapZoom, _tapZoom, 1, 1);
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+    onDoubleTap: _toggleZoom,
+    child: InteractiveViewer(
+      transformationController: _zoom,
+      minScale: 1,
+      maxScale: 4,
+      // Unzoomed, a horizontal drag belongs to the pages around (a person's photos).
+      panEnabled: _zoomed || widget.onZoomed == null,
+      child: SizedBox.expand(
+        child: Image.file(
+          widget.file,
+          fit: BoxFit.contain,
+          semanticLabel: widget.semanticLabel,
+          errorBuilder: (_, _, _) => const UnreadablePhoto(),
+        ),
+      ),
+    ),
+  );
+}
+
 /// "B — błąd odczytu": the photo cannot be read; the actions stay, so it can be changed or deleted.
-class _Unreadable extends StatelessWidget {
-  const _Unreadable();
+class UnreadablePhoto extends StatelessWidget {
+  const UnreadablePhoto({super.key});
 
   @override
   Widget build(BuildContext context) => const Center(

@@ -167,6 +167,7 @@ class BuriedPerson {
     required this.birth,
     required this.death,
     required this.burial,
+    this.profilePhotoPath,
   });
 
   final int id;
@@ -178,6 +179,10 @@ class BuriedPerson {
   final DatedFact birth;
   final DatedFact death;
   final DatedFact burial;
+
+  /// The person's profile photo — their first photo link — relative to the media directory, or null
+  /// (05_DESIGN/grob.md v4, element 5; ISSUE-017).
+  final String? profilePhotoPath;
 
   /// What the correction form starts from.
   PersonEntry get entry => PersonEntry(
@@ -324,6 +329,7 @@ Stream<GraveDetail?> watchGrave(GrobingDatabase db, int graveId) => _watch(db, {
   db.events,
   db.assertions,
   db.media,
+  db.personMedia,
 }, () => loadGrave(db, graveId));
 
 Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
@@ -344,6 +350,9 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
             ..orderBy([OrderingTerm.asc(db.burials.id)]))
           .map((r) => r.readTable(db.persons))
           .get();
+  final Map<int, String> profiles = await profilePhotoPaths(db, [
+    for (final Person p in persons) p.id,
+  ]);
   return GraveDetail(
     id: grave.id,
     cemeteryId: cemetery.id,
@@ -366,6 +375,7 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
           birth: await _fact(db, p.id, EventType.birth),
           death: await _fact(db, p.id, EventType.death),
           burial: await _fact(db, p.id, EventType.burial),
+          profilePhotoPath: profiles[p.id],
         ),
     ],
     photoPath: await gravePhotoPath(db, graveId),
@@ -401,19 +411,25 @@ Future<DatedFact> _fact(
   );
 }
 
+/// What else a person's write carries, in the same transaction, once the person's id is known — their
+/// photos (ISSUE-017: `photos.dart` → applyPersonPhotoEdits; 05_DESIGN/zdjecia-osoby.md D1).
+typedef AlsoWrite = Future<void> Function(int personId);
+
 /// Writes [entry] as the first person of a new grave on [cemeteryId]; returns the grave's id. The
-/// grave, the person, the burial and the dates — each fact with its claim from the notes — are written
-/// together or not at all (05_DESIGN/wpis-osoby.md: no "half a person").
+/// grave, the person, the burial and the dates — each fact with its claim from the notes — and
+/// [alsoWrite] are written together or not at all (05_DESIGN/wpis-osoby.md: no "half a person").
 Future<int> addPersonToNewGrave(
   GrobingDatabase db, {
   required int cemeteryId,
   required PersonEntry entry,
   DateTime Function()? clock,
+  AlsoWrite? alsoWrite,
 }) => db.transaction(() async {
   final int grave = await db
       .into(db.graves)
       .insert(GravesCompanion.insert(cemeteryId: cemeteryId));
-  await _addPerson(db, grave, entry, clock);
+  final int person = await _addPerson(db, grave, entry, clock);
+  await alsoWrite?.call(person);
   return grave;
 });
 
@@ -424,7 +440,12 @@ Future<int> addPersonToGrave(
   required int graveId,
   required PersonEntry entry,
   DateTime Function()? clock,
-}) => db.transaction(() => _addPerson(db, graveId, entry, clock));
+  AlsoWrite? alsoWrite,
+}) => db.transaction(() async {
+  final int person = await _addPerson(db, graveId, entry, clock);
+  await alsoWrite?.call(person);
+  return person;
+});
 
 Future<int> _addPerson(
   GrobingDatabase db,
@@ -463,12 +484,13 @@ Future<int> _addPerson(
 /// Corrects [personId] in place (ISSUE-012 D1): a typo made while transcribing is an error of the same
 /// source, not a second source, so the values change in their rows and the claims stay. A date backed
 /// by more than one claim (another source spoke too) never changes here, whatever [entry] says. A
-/// cleared date goes, with its only claim.
+/// cleared date goes, with its only claim. [alsoWrite] goes in the same transaction.
 Future<void> updatePersonEntry(
   GrobingDatabase db,
   int personId,
-  PersonEntry entry,
-) => db.transaction(() async {
+  PersonEntry entry, {
+  AlsoWrite? alsoWrite,
+}) => db.transaction(() async {
   _requireName(entry);
   final int updated =
       await (db.update(db.persons)..where((p) => p.id.equals(personId))).write(
@@ -503,7 +525,90 @@ Future<void> updatePersonEntry(
       )..where((e) => e.id.equals(existing.id))).write(_dateValues(date));
     }
   }
+  await alsoWrite?.call(personId);
 });
+
+/// One person to choose in "Kto jest na zdjęciu?" (05_DESIGN/zdjecie.md, D4–D5).
+class PersonChoice {
+  const PersonChoice({
+    required this.id,
+    this.givenNames,
+    this.surname,
+    this.birthSurname,
+    this.birth,
+    this.death,
+    this.graveName,
+    this.cemeteryName,
+  });
+
+  final int id;
+  final String? givenNames;
+  final String? surname;
+  final String? birthSurname;
+  final QualifiedDate? birth;
+  final QualifiedDate? death;
+
+  /// Of the person's first burial (ADR-006 D3); both null for a person buried nowhere.
+  final String? graveName;
+  final String? cemeteryName;
+}
+
+/// Everyone in the app to choose from, and who of them lies in [graveId] in the order entered (as the
+/// grave view shows them). Sorting the rest is the screen's — it is Polish ordering.
+Future<({List<PersonChoice> all, List<int> inGrave})> loadPersonChoices(
+  GrobingDatabase db, {
+  int? graveId,
+}) async {
+  final List<Person> persons = await db.select(db.persons).get();
+  final Map<int, ({String? grave, String cemetery})> firstBurial = {};
+  for (final TypedResult r in await (db.select(db.burials).join([
+    innerJoin(db.graves, db.graves.id.equalsExp(db.burials.graveId)),
+    innerJoin(db.cemeteries, db.cemeteries.id.equalsExp(db.graves.cemeteryId)),
+  ])..orderBy([OrderingTerm.asc(db.burials.id)])).get()) {
+    firstBurial.putIfAbsent(
+      r.readTable(db.burials).personId,
+      () => (
+        grave: r.readTable(db.graves).name,
+        cemetery: r.readTable(db.cemeteries).name,
+      ),
+    );
+  }
+  final List<int> inGrave = graveId == null
+      ? const []
+      : [
+          for (final Burial b
+              in await (db.select(db.burials)
+                    ..where((b) => b.graveId.equals(graveId))
+                    ..orderBy([(b) => OrderingTerm.asc(b.id)]))
+                  .get())
+            b.personId,
+        ];
+  return (
+    all: [
+      for (final Person p in persons)
+        PersonChoice(
+          id: p.id,
+          givenNames: p.givenNames,
+          surname: p.surname,
+          birthSurname: p.birthSurname,
+          birth: await _firstDate(db, p.id, EventType.birth),
+          death: await _firstDate(db, p.id, EventType.death),
+          graveName: firstBurial[p.id]?.grave,
+          cemeteryName: firstBurial[p.id]?.cemetery,
+        ),
+    ],
+    inGrave: inGrave,
+  );
+}
+
+Future<QualifiedDate?> _firstDate(
+  GrobingDatabase db,
+  int personId,
+  EventType type,
+) async {
+  final Event? e = await firstEvent(db, personId: personId, type: type);
+  return e == null ? null : QualifiedDate.ofEvent(e);
+}
 
 /// Names the grave, or — for a blank [name] — takes its name away (05_DESIGN/grob.md, element 3a).
 Future<void> setGraveName(GrobingDatabase db, int graveId, String? name) async {

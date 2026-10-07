@@ -8,7 +8,7 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-const List<String> _v2Tables = [
+const List<String> _v4Tables = [
   'assertions',
   'burials',
   'cemeteries',
@@ -18,6 +18,7 @@ const List<String> _v2Tables = [
   'family_partners',
   'graves',
   'media',
+  'person_media',
   'persons',
   'settings',
 ];
@@ -36,14 +37,14 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 3, integrity ok, exactly the v3 tables, foreign keys on',
+      'user_version 4, integrity ok, exactly the v4 tables, foreign keys on',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 3);
+        expect(await _single(db, 'PRAGMA user_version'), 4);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -56,7 +57,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v2Tables);
+        expect(tables, _v4Tables);
       },
     );
 

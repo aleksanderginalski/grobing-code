@@ -71,8 +71,14 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   („Grób rodzinny Nowaków”). Aplikacja nigdy nie wylicza jej z nazwisk. Migracja v2→v3 tylko dodaje
   kolumnę (`addColumn`). Start aplikacji pyta o kopię w tle dopiero **po otwarciu bazy**, czyli po
   migracji (`lib/main.dart`, retro 1 R6): migracja zmienia plik, a nie zgłasza zmian do `tableUpdates()`.
+- **Zdjęcia osób jako łącza (schemat v4, ISSUE-017).** Nowa tabela `person_media` (osoba, zdjęcie, pozycja), a
+  `media` traci `person_id` i warunek „osoba albo grób”. Migracja v3→v4 przenosi zdjęcia osób z v3 do łączy w
+  kolejności `id` i przebudowuje `media` (`TableMigration`): wiersze i `id` zostają, więc odtworzenie kopii v3
+  przechodzi sprawdzenie liczby wierszy. Na końcu `PRAGMA foreign_key_check` — klucze obce są w migracji
+  wyłączone (`beforeOpen` włącza je po niej). Szczegóły: *Zdjęcia* niżej.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
-  pochówek i daty, każde z twierdzeniem „notatki”. Błąd w środku nie zostawia „pół osoby”.
+  pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
+  „pół osoby”.
 - **Odcisk danych** (ekran „Stan danych”, `lib/data/data_state.dart`) jest miarą dla kopii i
   odtworzenia (NFR-002). Liczy się z **treści**, nie z pliku: tabele po nazwie, wiersze po wszystkich
   kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.
@@ -136,8 +142,19 @@ Cmentarz dodaje się z wbudowanej bazy cmentarzy Polski (ISSUE-015): `assets/cem
 
 ## Zdjęcia
 
-Zdjęcie nagrobka: jedno na grób, do dodania, zmiany i usunięcia (ISSUE-016 w vaulcie; zdjęcia osób —
-ISSUE-017).
+Zdjęcie nagrobka: jedno na grób, do dodania, zmiany i usunięcia (ISSUE-016 w vaulcie). Zdjęcia osób: każda
+osoba ma swoją bazę zdjęć z „profilowym”, a jedno zdjęcie może należeć do kilku osób (ISSUE-017).
+
+- **Model (schemat v4, ISSUE-017):** wiersz `media` to zdjęcie (rekord), a `person_media` to łącze osoba–zdjęcie
+  z pozycją — jak `OBJE` w GEDCOM 7. **Profilowe to pierwsze łącze osoby** (najniższa pozycja), osobno dla każdej
+  osoby. Nagrobek zostaje przy `media.grave_id`. Wiersz `media` bez grobu i bez łącza znika w tej samej
+  transakcji, która go takim zostawiła, a jego plik usuwa sprzątanie.
+- **Zapis zdjęć osoby z „Zapisz” formularza** (`lib/app/photo/person_photos_draft.dart`): dodanie, profilowe,
+  osoby na zdjęciu i usunięcie z osoby czekają w formularzu. „Zapisz” przenosi nowe pliki do `media/zdjecia/` i
+  zapisuje wiersze w transakcji wpisu osoby (`graves.dart` → `AlsoWrite`), a „Odrzuć” cofa wszystko. **Przy
+  przeniesieniu plik dostaje czas „teraz”**, bo zdjęcie może czekać w otwartym formularzu dłużej niż godzinę, a
+  sprzątanie bierze pliki bez wiersza starsze niż 1 h. Nieudany zapis odkłada pliki z powrotem, więc „Zapisz”
+  można ponowić.
 
 - **Wybór:** paczka `image_picker` — systemowe okno wyboru zdjęć (Android Photo Picker od Androida 13) albo
   systemowy aparat, bez uprawnień do pamięci i aparatu (`lib/app/photo/photo_picker.dart`).
@@ -145,7 +162,8 @@ ISSUE-017).
   bok najwyżej 2048 px (mniejsze zdjęcie bez zmiany rozmiaru), obrócona według EXIF, **bez EXIF** (także bez
   lokalizacji). Robi ją kanał `com.grobing.app/photos` w `PhotoPreparation.kt`: Android 9+ `ImageDecoder`, Android
   7–8 `BitmapFactory` + `ExifInterface`. Oryginał zostaje w galerii albo na papierze.
-- **Pliki:** `media/groby/<id grobu>/<czas>-<losowe>.jpg` — nazwa nigdy z tego, co na zdjęciu. Przygotowanie
+- **Pliki:** `media/groby/<id grobu>/<czas>-<losowe>.jpg` i `media/zdjecia/<czas>-<losowe>.jpg` (zdjęcia osób —
+  bez id osoby, bo zdjęcie bywa wspólne) — nazwa nigdy z tego, co na zdjęciu. Przygotowanie
   idzie do `photo-work/` obok `media/` (poza kopią), a dopiero gotowy plik przechodzi do `media/`.
 - **Kolejność kroków chroni kopię** (D3, `lib/data/photos.dart`): plik powstaje przed wierszem `media`, usunięcie
   kasuje tylko wiersz, a plik bez wiersza usuwa `sweepOrphanMedia` — pod zamkiem danych, przed znacznikiem i

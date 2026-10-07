@@ -4,7 +4,8 @@ import '../theme.dart';
 import 'photo_picker.dart';
 
 /// The source sheet (05_DESIGN/zdjecie.md, A): the gallery first, then the camera (D1). Null when the
-/// sheet is closed without a choice.
+/// sheet is closed without a choice. For a person's photos the title is "Zdjęcia osoby" and the caller
+/// picks several from the gallery (v1.3).
 Future<PhotoSource?> showPhotoSourceSheet(
   BuildContext context, {
   String title = 'Zdjęcie nagrobka',

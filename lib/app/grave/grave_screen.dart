@@ -16,8 +16,8 @@ import '../widgets/buttons.dart';
 import 'person_form_screen.dart';
 
 /// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
-/// above the title (ISSUE-016); the people's photos come with ISSUE-017. The grave's name is set from
-/// the pencil next to the title.
+/// above the title (ISSUE-016) and each person's profile photo in their card (v4, ISSUE-017). The grave's
+/// name is set from the pencil next to the title.
 class GraveScreen extends StatefulWidget {
   const GraveScreen({
     super.key,
@@ -62,6 +62,7 @@ class _GraveScreenState extends State<GraveScreen> {
       person: person,
       graveTitle: _graveTitle(g),
       peopleCount: g.people.length,
+      graveId: g.id,
     ),
   );
 
@@ -214,7 +215,14 @@ class _GraveScreenState extends State<GraveScreen> {
           ),
         ),
       for (final BuriedPerson p in grave.people)
-        _PersonCard(person: p, onTap: () => _correct(grave, p)),
+        _PersonCard(
+          person: p,
+          photo: switch ((widget.photos, p.profilePhotoPath)) {
+            (final Photos photos, final String path) => photos.fileOf(path),
+            _ => null,
+          },
+          onTap: () => _correct(grave, p),
+        ),
       const SizedBox(height: 8),
       // Element 6: "Dodaj osobę" only — adding the photo is the field 1a (D10, D12).
       Row(
@@ -488,9 +496,12 @@ class _SavingPhoto extends StatelessWidget {
 /// Element 5: one person — "Imiona Nazwisko z d. Rodowe" and the dates as entered — leading to the
 /// correction of the entry (ISSUE-012 D1).
 class _PersonCard extends StatelessWidget {
-  const _PersonCard({required this.person, required this.onTap});
+  const _PersonCard({required this.person, this.photo, required this.onTap});
 
   final BuriedPerson person;
+
+  /// The person's profile photo (v4, ISSUE-017); without one, no thumbnail and no indent (D11).
+  final File? photo;
   final VoidCallback onTap;
 
   @override
@@ -508,6 +519,10 @@ class _PersonCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Row(
               children: [
+                if (photo case final File file) ...[
+                  _ProfileThumbnail(file: file),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,6 +557,39 @@ class _PersonCard extends StatelessWidget {
                 ),
                 const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
               ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Element 5 (v4): the profile photo in a 40 dp circle, cut from the middle, decoded at its size; no
+/// label of its own — the card's text describes the card (style-b.md rule 14). A file that cannot be read
+/// shows the broken-image icon on the background.
+class _ProfileThumbnail extends StatelessWidget {
+  const _ProfileThumbnail({required this.file});
+
+  final File file;
+
+  static const double _size = 40;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: ClipOval(
+      child: SizedBox.square(
+        dimension: _size,
+        child: Image.file(
+          file,
+          fit: BoxFit.cover,
+          cacheWidth: coverDecodeWidth(context, _size),
+          errorBuilder: (_, _, _) => const ColoredBox(
+            color: GrobingColors.background,
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 20,
+              color: GrobingColors.textMuted,
             ),
           ),
         ),

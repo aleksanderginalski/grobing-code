@@ -195,6 +195,29 @@ void main() {
   });
 
   testWidgets(
+    'US-005 AC-1 — "Zrób zdjęcie": the camera\'s photo stands above the title and the field goes (US-005 '
+    'review: the camera had no happy path)',
+    (tester) async {
+      await withGrave(tester);
+      picker.answers.add(pickedPhoto(Directory('${tmp.path}/cache'), 3));
+      await pumpScreen(
+        tester,
+        GraveScreen(database: db, graveId: grave, photos: photos),
+      );
+
+      await tester.tap(_addPhoto);
+      await _settle(tester);
+      await tester.tap(find.text('Zrób zdjęcie'));
+      await _pumpUntil(tester, () => _photoShown(tester));
+
+      expect(picker.asked, [PhotoSource.camera]);
+      expect(_addPhoto, findsNothing);
+      expect(await photoInDb(tester), startsWith('groby/$grave/'));
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
     'a photo that cannot be prepared: the message with its icon, no photo, "Dodaj zdjęcie" stays',
     (tester) async {
       await withGrave(tester);

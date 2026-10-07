@@ -8,9 +8,9 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v3 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
-// ADR-006) and the grave's name (ISSUE-012), still without the grave fee (S4) and the cemetery
-// offline-map status (SPIKE-001). Enums are
+// Schema v4 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// ADR-006), the grave's name (ISSUE-012) and people's photos as links (ISSUE-017), still without the
+// grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
 // stored by name, not index: data lives for decades and a reordered enum must not silently change
 // meaning. Renaming an enum value is a schema change and needs a migration.
 
@@ -154,18 +154,30 @@ class Assertions extends Table {
   ];
 }
 
-/// A photo file in the app's private storage, under [DataLocation.mediaDir].
+/// A photo — the record, like GEDCOM 7's MULTIMEDIA_RECORD — and its file in the app's private storage,
+/// under [DataLocation.mediaDir]. A grave's photo carries [graveId] (at most one per grave, ISSUE-016);
+/// people reach a photo through [PersonMedia] links, so one photo can be on several people (schema v4,
+/// ISSUE-017). A row with neither a grave nor a link does not outlive the write that left it so
+/// (`photos.dart` → applyPersonPhotoEdits); its file goes with the next sweep (ADR-008).
 @DataClassName('MediaFile')
 class Media extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get relativePath => text().unique()();
-  IntColumn get personId => integer().nullable().references(Persons, #id)();
   IntColumn get graveId => integer().nullable().references(Graves, #id)();
+}
+
+/// A person's link to a photo — GEDCOM 7's MULTIMEDIA_LINK (`OBJE`). A person's links are ordered by
+/// [position], then [mediaId]: *"the first is the most-preferred value"*, so the first is the person's
+/// profile photo, and each person has their own (05_DESIGN/zdjecie.md D9). What GEDCOM puts on the
+/// link — a face's crop, a title — would be columns here, added when a screen needs them.
+@TableIndex(name: 'person_media_media', columns: {#mediaId})
+class PersonMedia extends Table {
+  IntColumn get personId => integer().references(Persons, #id)();
+  IntColumn get mediaId => integer().references(Media, #id)();
+  IntColumn get position => integer()();
 
   @override
-  List<String> get customConstraints => [
-    'CHECK ((person_id IS NULL) <> (grave_id IS NULL))',
-  ];
+  Set<Column<Object>> get primaryKey => {personId, mediaId};
 }
 
 /// Single row: which person is the author ("ja" — the anchor of "how they connect to me").
@@ -217,6 +229,7 @@ class DataLocation {
     Burials,
     Assertions,
     Media,
+    PersonMedia,
     Settings,
   ],
 )
@@ -229,7 +242,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 3;
+  static const int currentSchemaVersion = 4;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -249,7 +262,11 @@ class GrobingDatabase extends _$GrobingDatabase {
         await m.runMigrationSteps(
           from: from,
           to: to,
-          steps: migrationSteps(from1To2: _from1To2, from2To3: _from2To3),
+          steps: migrationSteps(
+            from1To2: _from1To2,
+            from2To3: _from2To3,
+            from3To4: _from3To4,
+          ),
         );
         await customStatement('PRAGMA user_version = $to');
       });
@@ -291,6 +308,31 @@ class GrobingDatabase extends _$GrobingDatabase {
   /// ISSUE-012: graves get an optional name. A new nullable column: no row changes, nothing dropped.
   Future<void> _from2To3(Migrator m, Schema3 schema) =>
       m.addColumn(schema.graves, schema.graves.name);
+
+  /// ISSUE-017 (ADR-009): a person's photos become links, so one photo can be on several people. Every
+  /// `media` row stays — a restore of a v3 backup counts them (README → Baza danych). A v3 person photo
+  /// becomes that person's link, in the order of its id, so the first stays the first (the profile).
+  /// Foreign keys are off here — `beforeOpen` turns them on after the migration — so the table can be
+  /// rebuilt under the new links; the check at the end makes up for it.
+  Future<void> _from3To4(Migrator m, Schema4 schema) async {
+    await m.createTable(schema.personMedia);
+    await m.createIndex(schema.personMediaMedia);
+    await customStatement(
+      'INSERT INTO person_media (person_id, media_id, position) '
+      'SELECT person_id, id, '
+      'row_number() OVER (PARTITION BY person_id ORDER BY id) - 1 '
+      'FROM media WHERE person_id IS NOT NULL',
+    );
+    // Without person_id and its "a person or a grave" check: SQLite changes a CHECK only by rebuilding
+    // the table. Rows and ids are copied as they are.
+    await m.alterTable(TableMigration(schema.media));
+    final List<QueryRow> broken = await customSelect(
+      'PRAGMA foreign_key_check',
+    ).get();
+    if (broken.isNotEmpty) {
+      throw StateError('Schema v4: ${broken.length} broken references');
+    }
+  }
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

@@ -13,6 +13,10 @@ abstract interface class PhotoPicker {
   /// The picked photo as a file the app may read; null when the user cancels.
   Future<File?> pick(PhotoSource source);
 
+  /// Several photos from the gallery at once (a person's photos — 05_DESIGN/zdjecie.md v1.3, A2), in
+  /// the order the system window returns them (D8); empty when the user cancels.
+  Future<List<File>> pickMany();
+
   /// Removes the copy [pick] left in the app's cache, once the app has its own.
   Future<void> discard(File picked);
 }
@@ -43,6 +47,15 @@ class SystemPhotoPicker implements PhotoPicker {
       requestFullMetadata: false,
     );
     return picked == null ? null : File(picked.path);
+  }
+
+  @override
+  Future<List<File>> pickMany() async {
+    _usePhotoPicker();
+    final List<XFile> picked = await ImagePicker().pickMultiImage(
+      requestFullMetadata: false,
+    );
+    return [for (final XFile f in picked) File(f.path)];
   }
 
   /// Only a file inside the app's cache, where the package copies what it returns — never anything

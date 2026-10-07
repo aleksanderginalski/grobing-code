@@ -47,30 +47,28 @@ void main() {
   Future<List<MediaFile>> rows() =>
       (db.select(db.media)..orderBy([(m) => OrderingTerm.asc(m.id)])).get();
 
-  test(
-    'US-005 AC-1, AC-2 — the grave gets its photo: the file moves into the media directory under '
-    'groby/<id>/, one row names it, and the grave view shows it',
-    () async {
-      final File source = prepared(1);
-      final List<int> bytes = source.readAsBytesSync();
+  test('US-005 AC-1, AC-2 — the grave gets its photo: the file moves into the media directory under '
+      'groby/<id>/, one row names it, and the grave view shows it', () async {
+    final File source = prepared(1);
+    final List<int> bytes = source.readAsBytesSync();
 
-      final String path = await setGravePhoto(db, mediaDir, grave, source);
+    final String path = await setGravePhoto(db, mediaDir, grave, source);
 
-      expect(path, startsWith('groby/$grave/'));
-      expect(path, endsWith('.jpg'));
-      final File kept = File('${mediaDir.path}/$path');
-      expect(kept.readAsBytesSync(), bytes);
-      // AC-2: the app's own copy — the file it was given is gone (moved), the kept one stays.
-      expect(source.existsSync(), isFalse);
-      final List<MediaFile> all = await rows();
-      expect(all, hasLength(1));
-      expect(all.single.graveId, grave);
-      expect(all.single.personId, isNull);
-      expect(all.single.relativePath, path);
-      expect(await gravePhotoPath(db, grave), path);
-      expect((await loadGrave(db, grave))!.photoPath, path);
-    },
-  );
+    expect(path, startsWith('groby/$grave/'));
+    expect(path, endsWith('.jpg'));
+    final File kept = File('${mediaDir.path}/$path');
+    expect(kept.readAsBytesSync(), bytes);
+    // AC-2: the app's own copy — the file it was given is gone (moved), the kept one stays.
+    expect(source.existsSync(), isFalse);
+    final List<MediaFile> all = await rows();
+    expect(all, hasLength(1));
+    expect(all.single.graveId, grave);
+    // Schema v4: a grave's photo has no person links (people reach photos through person_media).
+    expect(await db.select(db.personMedia).get(), isEmpty);
+    expect(all.single.relativePath, path);
+    expect(await gravePhotoPath(db, grave), path);
+    expect((await loadGrave(db, grave))!.photoPath, path);
+  });
 
   test(
     'D1\' — changing the photo leaves one row with the new file; the old file stays until the sweep',

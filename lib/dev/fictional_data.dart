@@ -23,6 +23,32 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
     _ => (lat: 50.0 + (batch % 5) * 0.5, lon: 17.0 + (batch % 7) * 0.8),
   };
 
+  // Made-up pictures drawn in code — a gravestone (ISSUE-016), a portrait and a "wedding photo"
+  // (ISSUE-017). Drawn and written before the transaction, so it stays as short as a real write: the
+  // claim helpers' nested transactions report their tables at once, and a long transaction after them
+  // spreads one batch into more backup requests (background_backup_test). A file before its row is the
+  // order photos.dart keeps too (D3); the sweep takes only files older than an hour.
+  Future<String> picture(String name, Uint8List png) async {
+    final String path = 'wymyslone/$name-$batch.png';
+    final File file = File('${mediaDir.path}/$path');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(png, flush: true);
+    return path;
+  }
+
+  final String gravestone = await picture(
+    'nagrobek',
+    fictionalGravestonePng(batch),
+  );
+  final String portraitPath = await picture(
+    'portret',
+    fictionalPeoplePng(batch, heads: 1),
+  );
+  final String weddingPath = await picture(
+    'slub',
+    fictionalPeoplePng(batch, heads: 2),
+  );
+
   await db.transaction(() async {
     final int cemetery = await db
         .into(db.cemeteries)
@@ -156,19 +182,38 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
       await addBurialWithClaim(db, personId: person, graveId: inGrave);
     }
 
-    // A made-up gravestone picture drawn in code (ISSUE-016): the grave view shows it, and the media part
-    // of the fingerprint is exercised. The file is written before its row, as photos.dart does (D3).
-    final String relativePath = 'wymyslone/nagrobek-$batch.png';
-    final File file = File('${mediaDir.path}/$relativePath');
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(fictionalGravestonePng(batch), flush: true);
+    // The grave view shows the gravestone, and the media part of the fingerprint is exercised.
     await db
         .into(db.media)
         .insert(
           MediaCompanion.insert(
-            relativePath: relativePath,
+            relativePath: gravestone,
             graveId: Value(grave),
           ),
         );
+
+    // The mother has a portrait (her profile photo) and a "wedding photo" she shares with the father —
+    // one file, two links, his first and only one (ISSUE-017).
+    final int portrait = await db
+        .into(db.media)
+        .insert(MediaCompanion.insert(relativePath: portraitPath));
+    final int wedding = await db
+        .into(db.media)
+        .insert(MediaCompanion.insert(relativePath: weddingPath));
+    for (final (int person, int media, int position) in [
+      (mother, portrait, 0),
+      (mother, wedding, 1),
+      (father, wedding, 0),
+    ]) {
+      await db
+          .into(db.personMedia)
+          .insert(
+            PersonMediaCompanion.insert(
+              personId: person,
+              mediaId: media,
+              position: position,
+            ),
+          );
+    }
   });
 }

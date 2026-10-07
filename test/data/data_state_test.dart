@@ -26,18 +26,17 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test(
-    'empty database: schema 3, zero rows in every table, no photos',
-    () async {
-      final DataState state = await readDataState(db, mediaDir: media);
+  test('empty database: schema 4, zero rows in every table, no photos', () async {
+    final DataState state = await readDataState(db, mediaDir: media);
 
-      expect(state.schemaVersion, 3);
-      expect(state.rowCounts, hasLength(11));
-      expect(state.rowCounts.values, everyElement(0));
-      expect(state.mediaFileCount, 0);
-      expect(state.shortFingerprint, hasLength(16));
-    },
-  );
+    expect(state.schemaVersion, 4);
+    // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
+    expect(state.rowCounts, hasLength(12));
+    expect(state.rowCounts, contains('person_media'));
+    expect(state.rowCounts.values, everyElement(0));
+    expect(state.mediaFileCount, 0);
+    expect(state.shortFingerprint, hasLength(16));
+  });
 
   test('row counts follow the data', () async {
     await addFictionalData(db, media);
@@ -50,7 +49,11 @@ void main() {
     // One made-up dispute: the father's birth from the notes and from the grandmother (ISSUE-011).
     expect(state.rowCounts['events'], 5);
     expect(state.rowCounts['assertions'], 8);
-    expect(state.mediaFileCount, 1);
+    // The gravestone, a portrait and a shared "wedding photo" (ISSUE-017): three rows, three files, and
+    // three person links — the shared photo is one row and one file with two links.
+    expect(state.rowCounts['media'], 3);
+    expect(state.rowCounts['person_media'], 3);
+    expect(state.mediaFileCount, 3);
   });
 
   test(
@@ -76,7 +79,7 @@ void main() {
     await addFictionalData(db, media);
     final DataState before = await readDataState(db, mediaDir: media);
 
-    final File photo = media.listSync(recursive: true).whereType<File>().single;
+    final File photo = media.listSync(recursive: true).whereType<File>().first;
     await photo.writeAsString('inna treść', mode: FileMode.append);
     final DataState after = await readDataState(db, mediaDir: media);
 

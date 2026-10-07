@@ -60,6 +60,58 @@ class Photos {
   Future<void> deleteGravePhoto(GrobingDatabase db, int graveId) =>
       data.deleteGravePhoto(db, graveId);
 
+  /// Several photos from the gallery (a person's — zdjecie.md v1.3, A2); empty when cancelled.
+  Future<List<File>> pickMany() => picker.pickMany();
+
+  /// Makes a person's photo out of [picked], without writing anything: the prepared file waits in the
+  /// work directory until the person's "Zapisz" (zdjecia-osoby.md D1), or goes with [discard]. The
+  /// picker's copy goes either way.
+  Future<data.NewPhoto> preparePersonPhoto(File picked) async {
+    await workDir.create(recursive: true);
+    final File prepared = File('${workDir.path}/${_scratchName()}.jpg');
+    try {
+      await preparer.prepare(picked, prepared);
+      return data.NewPhoto(prepared);
+    } on Object {
+      if (await prepared.exists()) await prepared.delete();
+      rethrow;
+    } finally {
+      await picker.discard(picked);
+    }
+  }
+
+  /// Removes the prepared file of a photo that will not be saved ("Odrzuć", D1).
+  Future<void> discard(data.NewPhoto photo) async {
+    try {
+      if (await photo.prepared.exists()) await photo.prepared.delete();
+    } on FileSystemException {
+      // The next start clears the work directory anyway.
+    }
+  }
+
+  /// Runs [write] — a person's write — with [edits] in its transaction (zdjecia-osoby.md D1): the new
+  /// photos' files move into the media directory first (ADR-008), and go back when the write fails, so
+  /// "Zapisz" can be tried again. Without [edits] it is [write] alone.
+  Future<T> writeWithPersonPhotos<T>(
+    GrobingDatabase db,
+    data.PersonPhotoEdits? edits,
+    Future<T> Function(Future<void> Function(int personId)? alsoWrite) write,
+  ) async {
+    if (edits == null) return write(null);
+    final Map<data.NewPhoto, String> paths = await data.moveNewPersonPhotos(
+      mediaDir,
+      edits.newPhotos,
+    );
+    try {
+      return await write(
+        (personId) => data.applyPersonPhotoEdits(db, personId, edits, paths),
+      );
+    } on Object {
+      await data.returnMovedPhotos(mediaDir, paths);
+      rethrow;
+    }
+  }
+
   /// Removes what an interrupted preparation left behind. At start, before any photo is picked.
   Future<void> clearWork() async {
     try {

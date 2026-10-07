@@ -156,10 +156,15 @@ void main() {
       }
       final List<_Entry> entries = _readTar(tar.takeBytes());
 
+      // Ordered by path; each batch has a gravestone, a portrait and a shared "wedding photo" (ISSUE-017).
       expect(entries.map((e) => e.path), [
         'grobing.db',
         'media/wymyslone/nagrobek-1.png',
         'media/wymyslone/nagrobek-2.png',
+        'media/wymyslone/portret-1.png',
+        'media/wymyslone/portret-2.png',
+        'media/wymyslone/slub-1.png',
+        'media/wymyslone/slub-2.png',
         'manifest.json',
       ]);
       for (final _Entry e in entries) {
@@ -182,7 +187,7 @@ void main() {
       expect(manifest.dataFingerprint, liveState.fingerprint);
       expect(
         manifest.files.map((f) => f.path),
-        entries.take(3).map((e) => e.path),
+        entries.take(entries.length - 1).map((e) => e.path),
       );
       for (final (int i, BackupFileEntry f) in manifest.files.indexed) {
         expect(f.size, entries[i].data.length, reason: f.path);

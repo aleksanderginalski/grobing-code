@@ -16,13 +16,15 @@ File pickedPhoto(Directory dir, int n) {
     ..writeAsBytesSync(fictionalGravestonePng(n), flush: true);
 }
 
-/// The system picker as a queue of answers: each [pick] takes the next file (null = the user cancels).
+/// The system picker as a queue of answers: each [pick] takes the next file (null = the user cancels);
+/// each [pickMany] takes the next list (ISSUE-017; empty = the user cancels).
 class FakePhotoPicker implements PhotoPicker {
   final List<File?> answers = [];
+  final List<List<File>> manyAnswers = [];
   final List<PhotoSource> asked = [];
   final List<File> discarded = [];
 
-  /// When set, [pick] fails like a camera that cannot start.
+  /// When set, [pick] and [pickMany] fail like a camera that cannot start.
   Object? error;
 
   @override
@@ -30,6 +32,13 @@ class FakePhotoPicker implements PhotoPicker {
     asked.add(source);
     if (error != null) throw error!;
     return answers.isEmpty ? null : answers.removeAt(0);
+  }
+
+  @override
+  Future<List<File>> pickMany() async {
+    asked.add(PhotoSource.gallery);
+    if (error != null) throw error!;
+    return manyAnswers.isEmpty ? const [] : manyAnswers.removeAt(0);
   }
 
   @override

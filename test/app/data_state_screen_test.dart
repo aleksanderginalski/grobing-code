@@ -78,13 +78,16 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('3'),
+        find.text('4'),
         findsOneWidget,
       ); // the schema version; every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
       expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
-      expect(find.text('0'), findsNWidgets(12)); // 11 tables + photo files
+      // ISSUE-017: the new table has its Polish label, not "person_media".
+      expect(find.text('Zdjęcia osób (łącza)'), findsOneWidget);
+      expect(find.text('person_media'), findsNothing);
+      expect(find.text('0'), findsNWidgets(13)); // 12 tables + photo files
 
       // The button writes a file and a transaction: run it on the real clock, not the test's fake one.
       await tester.runAsync(() async {
@@ -96,8 +99,13 @@ void main() {
         () => find.text(empty.shortFingerprint).evaluate().isEmpty,
       );
 
-      // persons, burials — and the schema version, which is 3 since ISSUE-012
-      expect(find.text('3'), findsNWidgets(3));
+      // persons, burials, photo rows, person links and photo files (ISSUE-017: a gravestone, a portrait
+      // and a shared "wedding photo")
+      expect(find.text('3'), findsNWidgets(5));
+      expect(
+        find.text('4'),
+        findsOneWidget,
+      ); // the schema version, 4 since ISSUE-017
 
       await cleanUp(tester);
     },

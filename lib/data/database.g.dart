@@ -3552,20 +3552,6 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
-  static const VerificationMeta _personIdMeta = const VerificationMeta(
-    'personId',
-  );
-  @override
-  late final GeneratedColumn<int> personId = GeneratedColumn<int>(
-    'person_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES persons (id)',
-    ),
-  );
   static const VerificationMeta _graveIdMeta = const VerificationMeta(
     'graveId',
   );
@@ -3581,7 +3567,7 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
     ),
   );
   @override
-  List<GeneratedColumn> get $columns => [id, relativePath, personId, graveId];
+  List<GeneratedColumn> get $columns => [id, relativePath, graveId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3608,12 +3594,6 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
     } else if (isInserting) {
       context.missing(_relativePathMeta);
     }
-    if (data.containsKey('person_id')) {
-      context.handle(
-        _personIdMeta,
-        personId.isAcceptableOrUnknown(data['person_id']!, _personIdMeta),
-      );
-    }
     if (data.containsKey('grave_id')) {
       context.handle(
         _graveIdMeta,
@@ -3637,10 +3617,6 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
         DriftSqlType.string,
         data['${effectivePrefix}relative_path'],
       )!,
-      personId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}person_id'],
-      ),
       graveId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}grave_id'],
@@ -3657,22 +3633,13 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
 class MediaFile extends DataClass implements Insertable<MediaFile> {
   final int id;
   final String relativePath;
-  final int? personId;
   final int? graveId;
-  const MediaFile({
-    required this.id,
-    required this.relativePath,
-    this.personId,
-    this.graveId,
-  });
+  const MediaFile({required this.id, required this.relativePath, this.graveId});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['relative_path'] = Variable<String>(relativePath);
-    if (!nullToAbsent || personId != null) {
-      map['person_id'] = Variable<int>(personId);
-    }
     if (!nullToAbsent || graveId != null) {
       map['grave_id'] = Variable<int>(graveId);
     }
@@ -3683,9 +3650,6 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     return MediaCompanion(
       id: Value(id),
       relativePath: Value(relativePath),
-      personId: personId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(personId),
       graveId: graveId == null && nullToAbsent
           ? const Value.absent()
           : Value(graveId),
@@ -3700,7 +3664,6 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     return MediaFile(
       id: serializer.fromJson<int>(json['id']),
       relativePath: serializer.fromJson<String>(json['relativePath']),
-      personId: serializer.fromJson<int?>(json['personId']),
       graveId: serializer.fromJson<int?>(json['graveId']),
     );
   }
@@ -3710,7 +3673,6 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'relativePath': serializer.toJson<String>(relativePath),
-      'personId': serializer.toJson<int?>(personId),
       'graveId': serializer.toJson<int?>(graveId),
     };
   }
@@ -3718,12 +3680,10 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
   MediaFile copyWith({
     int? id,
     String? relativePath,
-    Value<int?> personId = const Value.absent(),
     Value<int?> graveId = const Value.absent(),
   }) => MediaFile(
     id: id ?? this.id,
     relativePath: relativePath ?? this.relativePath,
-    personId: personId.present ? personId.value : this.personId,
     graveId: graveId.present ? graveId.value : this.graveId,
   );
   MediaFile copyWithCompanion(MediaCompanion data) {
@@ -3732,7 +3692,6 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
       relativePath: data.relativePath.present
           ? data.relativePath.value
           : this.relativePath,
-      personId: data.personId.present ? data.personId.value : this.personId,
       graveId: data.graveId.present ? data.graveId.value : this.graveId,
     );
   }
@@ -3742,51 +3701,44 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     return (StringBuffer('MediaFile(')
           ..write('id: $id, ')
           ..write('relativePath: $relativePath, ')
-          ..write('personId: $personId, ')
           ..write('graveId: $graveId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, relativePath, personId, graveId);
+  int get hashCode => Object.hash(id, relativePath, graveId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is MediaFile &&
           other.id == this.id &&
           other.relativePath == this.relativePath &&
-          other.personId == this.personId &&
           other.graveId == this.graveId);
 }
 
 class MediaCompanion extends UpdateCompanion<MediaFile> {
   final Value<int> id;
   final Value<String> relativePath;
-  final Value<int?> personId;
   final Value<int?> graveId;
   const MediaCompanion({
     this.id = const Value.absent(),
     this.relativePath = const Value.absent(),
-    this.personId = const Value.absent(),
     this.graveId = const Value.absent(),
   });
   MediaCompanion.insert({
     this.id = const Value.absent(),
     required String relativePath,
-    this.personId = const Value.absent(),
     this.graveId = const Value.absent(),
   }) : relativePath = Value(relativePath);
   static Insertable<MediaFile> custom({
     Expression<int>? id,
     Expression<String>? relativePath,
-    Expression<int>? personId,
     Expression<int>? graveId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (relativePath != null) 'relative_path': relativePath,
-      if (personId != null) 'person_id': personId,
       if (graveId != null) 'grave_id': graveId,
     });
   }
@@ -3794,13 +3746,11 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
   MediaCompanion copyWith({
     Value<int>? id,
     Value<String>? relativePath,
-    Value<int?>? personId,
     Value<int?>? graveId,
   }) {
     return MediaCompanion(
       id: id ?? this.id,
       relativePath: relativePath ?? this.relativePath,
-      personId: personId ?? this.personId,
       graveId: graveId ?? this.graveId,
     );
   }
@@ -3814,9 +3764,6 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
     if (relativePath.present) {
       map['relative_path'] = Variable<String>(relativePath.value);
     }
-    if (personId.present) {
-      map['person_id'] = Variable<int>(personId.value);
-    }
     if (graveId.present) {
       map['grave_id'] = Variable<int>(graveId.value);
     }
@@ -3828,8 +3775,279 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
     return (StringBuffer('MediaCompanion(')
           ..write('id: $id, ')
           ..write('relativePath: $relativePath, ')
-          ..write('personId: $personId, ')
           ..write('graveId: $graveId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PersonMediaTable extends PersonMedia
+    with TableInfo<$PersonMediaTable, PersonMediaData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PersonMediaTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _personIdMeta = const VerificationMeta(
+    'personId',
+  );
+  @override
+  late final GeneratedColumn<int> personId = GeneratedColumn<int>(
+    'person_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES persons (id)',
+    ),
+  );
+  static const VerificationMeta _mediaIdMeta = const VerificationMeta(
+    'mediaId',
+  );
+  @override
+  late final GeneratedColumn<int> mediaId = GeneratedColumn<int>(
+    'media_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES media (id)',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [personId, mediaId, position];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'person_media';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PersonMediaData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('person_id')) {
+      context.handle(
+        _personIdMeta,
+        personId.isAcceptableOrUnknown(data['person_id']!, _personIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_personIdMeta);
+    }
+    if (data.containsKey('media_id')) {
+      context.handle(
+        _mediaIdMeta,
+        mediaId.isAcceptableOrUnknown(data['media_id']!, _mediaIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mediaIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {personId, mediaId};
+  @override
+  PersonMediaData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PersonMediaData(
+      personId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}person_id'],
+      )!,
+      mediaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}media_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $PersonMediaTable createAlias(String alias) {
+    return $PersonMediaTable(attachedDatabase, alias);
+  }
+}
+
+class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
+  final int personId;
+  final int mediaId;
+  final int position;
+  const PersonMediaData({
+    required this.personId,
+    required this.mediaId,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['person_id'] = Variable<int>(personId);
+    map['media_id'] = Variable<int>(mediaId);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  PersonMediaCompanion toCompanion(bool nullToAbsent) {
+    return PersonMediaCompanion(
+      personId: Value(personId),
+      mediaId: Value(mediaId),
+      position: Value(position),
+    );
+  }
+
+  factory PersonMediaData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PersonMediaData(
+      personId: serializer.fromJson<int>(json['personId']),
+      mediaId: serializer.fromJson<int>(json['mediaId']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'personId': serializer.toJson<int>(personId),
+      'mediaId': serializer.toJson<int>(mediaId),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  PersonMediaData copyWith({int? personId, int? mediaId, int? position}) =>
+      PersonMediaData(
+        personId: personId ?? this.personId,
+        mediaId: mediaId ?? this.mediaId,
+        position: position ?? this.position,
+      );
+  PersonMediaData copyWithCompanion(PersonMediaCompanion data) {
+    return PersonMediaData(
+      personId: data.personId.present ? data.personId.value : this.personId,
+      mediaId: data.mediaId.present ? data.mediaId.value : this.mediaId,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PersonMediaData(')
+          ..write('personId: $personId, ')
+          ..write('mediaId: $mediaId, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(personId, mediaId, position);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PersonMediaData &&
+          other.personId == this.personId &&
+          other.mediaId == this.mediaId &&
+          other.position == this.position);
+}
+
+class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
+  final Value<int> personId;
+  final Value<int> mediaId;
+  final Value<int> position;
+  final Value<int> rowid;
+  const PersonMediaCompanion({
+    this.personId = const Value.absent(),
+    this.mediaId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PersonMediaCompanion.insert({
+    required int personId,
+    required int mediaId,
+    required int position,
+    this.rowid = const Value.absent(),
+  }) : personId = Value(personId),
+       mediaId = Value(mediaId),
+       position = Value(position);
+  static Insertable<PersonMediaData> custom({
+    Expression<int>? personId,
+    Expression<int>? mediaId,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (personId != null) 'person_id': personId,
+      if (mediaId != null) 'media_id': mediaId,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PersonMediaCompanion copyWith({
+    Value<int>? personId,
+    Value<int>? mediaId,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return PersonMediaCompanion(
+      personId: personId ?? this.personId,
+      mediaId: mediaId ?? this.mediaId,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (personId.present) {
+      map['person_id'] = Variable<int>(personId.value);
+    }
+    if (mediaId.present) {
+      map['media_id'] = Variable<int>(mediaId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PersonMediaCompanion(')
+          ..write('personId: $personId, ')
+          ..write('mediaId: $mediaId, ')
+          ..write('position: $position, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
@@ -4053,7 +4271,12 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final $BurialsTable burials = $BurialsTable(this);
   late final $AssertionsTable assertions = $AssertionsTable(this);
   late final $MediaTable media = $MediaTable(this);
+  late final $PersonMediaTable personMedia = $PersonMediaTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final Index personMediaMedia = Index(
+    'person_media_media',
+    'CREATE INDEX person_media_media ON person_media (media_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4069,7 +4292,9 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     burials,
     assertions,
     media,
+    personMedia,
     settings,
+    personMediaMedia,
   ];
 }
 
@@ -4174,20 +4399,19 @@ final class $$PersonsTableReferences
     );
   }
 
-  static MultiTypedResultKey<$MediaTable, List<MediaFile>> _mediaRefsTable(
-    _$GrobingDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.media,
-    aliasName: 'persons__id__media__person_id',
+  static MultiTypedResultKey<$PersonMediaTable, List<PersonMediaData>>
+  _personMediaRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.personMedia,
+    aliasName: 'persons__id__person_media__person_id',
   );
 
-  $$MediaTableProcessedTableManager get mediaRefs {
-    final manager = $$MediaTableTableManager(
+  $$PersonMediaTableProcessedTableManager get personMediaRefs {
+    final manager = $$PersonMediaTableTableManager(
       $_db,
-      $_db.media,
+      $_db.personMedia,
     ).filter((f) => f.personId.id.sqlEquals($_itemColumn<int>('id')!));
 
-    final cache = $_typedResult.readTableOrNull(_mediaRefsTable($_db));
+    final cache = $_typedResult.readTableOrNull(_personMediaRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -4357,22 +4581,22 @@ class $$PersonsTableFilterComposer
     return f(composer);
   }
 
-  Expression<bool> mediaRefs(
-    Expression<bool> Function($$MediaTableFilterComposer f) f,
+  Expression<bool> personMediaRefs(
+    Expression<bool> Function($$PersonMediaTableFilterComposer f) f,
   ) {
-    final $$MediaTableFilterComposer composer = $composerBuilder(
+    final $$PersonMediaTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.media,
+      referencedTable: $db.personMedia,
       getReferencedColumn: (t) => t.personId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$MediaTableFilterComposer(
+          }) => $$PersonMediaTableFilterComposer(
             $db: $db,
-            $table: $db.media,
+            $table: $db.personMedia,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4587,22 +4811,22 @@ class $$PersonsTableAnnotationComposer
     return f(composer);
   }
 
-  Expression<T> mediaRefs<T extends Object>(
-    Expression<T> Function($$MediaTableAnnotationComposer a) f,
+  Expression<T> personMediaRefs<T extends Object>(
+    Expression<T> Function($$PersonMediaTableAnnotationComposer a) f,
   ) {
-    final $$MediaTableAnnotationComposer composer = $composerBuilder(
+    final $$PersonMediaTableAnnotationComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.media,
+      referencedTable: $db.personMedia,
       getReferencedColumn: (t) => t.personId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$MediaTableAnnotationComposer(
+          }) => $$PersonMediaTableAnnotationComposer(
             $db: $db,
-            $table: $db.media,
+            $table: $db.personMedia,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4656,7 +4880,7 @@ class $$PersonsTableTableManager
             bool familyChildrenRefs,
             bool eventsRefs,
             bool burialsRefs,
-            bool mediaRefs,
+            bool personMediaRefs,
             bool settingsRefs,
           })
         > {
@@ -4721,7 +4945,7 @@ class $$PersonsTableTableManager
                 familyChildrenRefs = false,
                 eventsRefs = false,
                 burialsRefs = false,
-                mediaRefs = false,
+                personMediaRefs = false,
                 settingsRefs = false,
               }) {
                 return PrefetchHooks(
@@ -4731,7 +4955,7 @@ class $$PersonsTableTableManager
                     if (familyChildrenRefs) db.familyChildren,
                     if (eventsRefs) db.events,
                     if (burialsRefs) db.burials,
-                    if (mediaRefs) db.media,
+                    if (personMediaRefs) db.personMedia,
                     if (settingsRefs) db.settings,
                   ],
                   addJoins: null,
@@ -4817,17 +5041,21 @@ class $$PersonsTableTableManager
                               ),
                           typedResults: items,
                         ),
-                      if (mediaRefs)
+                      if (personMediaRefs)
                         await $_getPrefetchedData<
                           Person,
                           $PersonsTable,
-                          MediaFile
+                          PersonMediaData
                         >(
                           currentTable: table,
                           referencedTable: $$PersonsTableReferences
-                              ._mediaRefsTable(db),
+                              ._personMediaRefsTable(db),
                           managerFromTypedResult: (p0) =>
-                              $$PersonsTableReferences(db, table, p0).mediaRefs,
+                              $$PersonsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).personMediaRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.personId == item.id,
@@ -4880,7 +5108,7 @@ typedef $$PersonsTableProcessedTableManager =
         bool familyChildrenRefs,
         bool eventsRefs,
         bool burialsRefs,
-        bool mediaRefs,
+        bool personMediaRefs,
         bool settingsRefs,
       })
     >;
@@ -8444,37 +8672,18 @@ typedef $$MediaTableCreateCompanionBuilder =
     MediaCompanion Function({
       Value<int> id,
       required String relativePath,
-      Value<int?> personId,
       Value<int?> graveId,
     });
 typedef $$MediaTableUpdateCompanionBuilder =
     MediaCompanion Function({
       Value<int> id,
       Value<String> relativePath,
-      Value<int?> personId,
       Value<int?> graveId,
     });
 
 final class $$MediaTableReferences
     extends BaseReferences<_$GrobingDatabase, $MediaTable, MediaFile> {
   $$MediaTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $PersonsTable _personIdTable(_$GrobingDatabase db) =>
-      db.persons.createAlias('media__person_id__persons__id');
-
-  $$PersonsTableProcessedTableManager? get personId {
-    final $_column = $_itemColumn<int>('person_id');
-    if ($_column == null) return null;
-    final manager = $$PersonsTableTableManager(
-      $_db,
-      $_db.persons,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_personIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
 
   static $GravesTable _graveIdTable(_$GrobingDatabase db) =>
       db.graves.createAlias('media__grave_id__graves__id');
@@ -8490,6 +8699,24 @@ final class $$MediaTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$PersonMediaTable, List<PersonMediaData>>
+  _personMediaRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.personMedia,
+    aliasName: 'media__id__person_media__media_id',
+  );
+
+  $$PersonMediaTableProcessedTableManager get personMediaRefs {
+    final manager = $$PersonMediaTableTableManager(
+      $_db,
+      $_db.personMedia,
+    ).filter((f) => f.mediaId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_personMediaRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 }
@@ -8513,29 +8740,6 @@ class $$MediaTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  $$PersonsTableFilterComposer get personId {
-    final $$PersonsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.personId,
-      referencedTable: $db.persons,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PersonsTableFilterComposer(
-            $db: $db,
-            $table: $db.persons,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
   $$GravesTableFilterComposer get graveId {
     final $$GravesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -8558,6 +8762,31 @@ class $$MediaTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> personMediaRefs(
+    Expression<bool> Function($$PersonMediaTableFilterComposer f) f,
+  ) {
+    final $$PersonMediaTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.personMedia,
+      getReferencedColumn: (t) => t.mediaId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonMediaTableFilterComposer(
+            $db: $db,
+            $table: $db.personMedia,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MediaTableOrderingComposer
@@ -8578,29 +8807,6 @@ class $$MediaTableOrderingComposer
     column: $table.relativePath,
     builder: (column) => ColumnOrderings(column),
   );
-
-  $$PersonsTableOrderingComposer get personId {
-    final $$PersonsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.personId,
-      referencedTable: $db.persons,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PersonsTableOrderingComposer(
-            $db: $db,
-            $table: $db.persons,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 
   $$GravesTableOrderingComposer get graveId {
     final $$GravesTableOrderingComposer composer = $composerBuilder(
@@ -8643,6 +8849,371 @@ class $$MediaTableAnnotationComposer
     builder: (column) => column,
   );
 
+  $$GravesTableAnnotationComposer get graveId {
+    final $$GravesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.graveId,
+      referencedTable: $db.graves,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GravesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> personMediaRefs<T extends Object>(
+    Expression<T> Function($$PersonMediaTableAnnotationComposer a) f,
+  ) {
+    final $$PersonMediaTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.personMedia,
+      getReferencedColumn: (t) => t.mediaId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonMediaTableAnnotationComposer(
+            $db: $db,
+            $table: $db.personMedia,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$MediaTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $MediaTable,
+          MediaFile,
+          $$MediaTableFilterComposer,
+          $$MediaTableOrderingComposer,
+          $$MediaTableAnnotationComposer,
+          $$MediaTableCreateCompanionBuilder,
+          $$MediaTableUpdateCompanionBuilder,
+          (MediaFile, $$MediaTableReferences),
+          MediaFile,
+          PrefetchHooks Function({bool graveId, bool personMediaRefs})
+        > {
+  $$MediaTableTableManager(_$GrobingDatabase db, $MediaTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MediaTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MediaTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MediaTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> relativePath = const Value.absent(),
+                Value<int?> graveId = const Value.absent(),
+              }) => MediaCompanion(
+                id: id,
+                relativePath: relativePath,
+                graveId: graveId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String relativePath,
+                Value<int?> graveId = const Value.absent(),
+              }) => MediaCompanion.insert(
+                id: id,
+                relativePath: relativePath,
+                graveId: graveId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$MediaTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback: ({graveId = false, personMediaRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (personMediaRefs) db.personMedia],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (graveId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.graveId,
+                                referencedTable: $$MediaTableReferences
+                                    ._graveIdTable(db),
+                                referencedColumn: $$MediaTableReferences
+                                    ._graveIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (personMediaRefs)
+                    await $_getPrefetchedData<
+                      MediaFile,
+                      $MediaTable,
+                      PersonMediaData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$MediaTableReferences
+                          ._personMediaRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$MediaTableReferences(db, table, p0).personMediaRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.mediaId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$MediaTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $MediaTable,
+      MediaFile,
+      $$MediaTableFilterComposer,
+      $$MediaTableOrderingComposer,
+      $$MediaTableAnnotationComposer,
+      $$MediaTableCreateCompanionBuilder,
+      $$MediaTableUpdateCompanionBuilder,
+      (MediaFile, $$MediaTableReferences),
+      MediaFile,
+      PrefetchHooks Function({bool graveId, bool personMediaRefs})
+    >;
+typedef $$PersonMediaTableCreateCompanionBuilder =
+    PersonMediaCompanion Function({
+      required int personId,
+      required int mediaId,
+      required int position,
+      Value<int> rowid,
+    });
+typedef $$PersonMediaTableUpdateCompanionBuilder =
+    PersonMediaCompanion Function({
+      Value<int> personId,
+      Value<int> mediaId,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+final class $$PersonMediaTableReferences
+    extends
+        BaseReferences<_$GrobingDatabase, $PersonMediaTable, PersonMediaData> {
+  $$PersonMediaTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PersonsTable _personIdTable(_$GrobingDatabase db) =>
+      db.persons.createAlias('person_media__person_id__persons__id');
+
+  $$PersonsTableProcessedTableManager get personId {
+    final $_column = $_itemColumn<int>('person_id')!;
+
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_personIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $MediaTable _mediaIdTable(_$GrobingDatabase db) =>
+      db.media.createAlias('person_media__media_id__media__id');
+
+  $$MediaTableProcessedTableManager get mediaId {
+    final $_column = $_itemColumn<int>('media_id')!;
+
+    final manager = $$MediaTableTableManager(
+      $_db,
+      $_db.media,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_mediaIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PersonMediaTableFilterComposer
+    extends Composer<_$GrobingDatabase, $PersonMediaTable> {
+  $$PersonMediaTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PersonsTableFilterComposer get personId {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MediaTableFilterComposer get mediaId {
+    final $$MediaTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mediaId,
+      referencedTable: $db.media,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaTableFilterComposer(
+            $db: $db,
+            $table: $db.media,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PersonMediaTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $PersonMediaTable> {
+  $$PersonMediaTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PersonsTableOrderingComposer get personId {
+    final $$PersonsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableOrderingComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MediaTableOrderingComposer get mediaId {
+    final $$MediaTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mediaId,
+      referencedTable: $db.media,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaTableOrderingComposer(
+            $db: $db,
+            $table: $db.media,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PersonMediaTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $PersonMediaTable> {
+  $$PersonMediaTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
   $$PersonsTableAnnotationComposer get personId {
     final $$PersonsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -8666,20 +9237,20 @@ class $$MediaTableAnnotationComposer
     return composer;
   }
 
-  $$GravesTableAnnotationComposer get graveId {
-    final $$GravesTableAnnotationComposer composer = $composerBuilder(
+  $$MediaTableAnnotationComposer get mediaId {
+    final $$MediaTableAnnotationComposer composer = $composerBuilder(
       composer: this,
-      getCurrentColumn: (t) => t.graveId,
-      referencedTable: $db.graves,
+      getCurrentColumn: (t) => t.mediaId,
+      referencedTable: $db.media,
       getReferencedColumn: (t) => t.id,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$GravesTableAnnotationComposer(
+          }) => $$MediaTableAnnotationComposer(
             $db: $db,
-            $table: $db.graves,
+            $table: $db.media,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8690,63 +9261,65 @@ class $$MediaTableAnnotationComposer
   }
 }
 
-class $$MediaTableTableManager
+class $$PersonMediaTableTableManager
     extends
         RootTableManager<
           _$GrobingDatabase,
-          $MediaTable,
-          MediaFile,
-          $$MediaTableFilterComposer,
-          $$MediaTableOrderingComposer,
-          $$MediaTableAnnotationComposer,
-          $$MediaTableCreateCompanionBuilder,
-          $$MediaTableUpdateCompanionBuilder,
-          (MediaFile, $$MediaTableReferences),
-          MediaFile,
-          PrefetchHooks Function({bool personId, bool graveId})
+          $PersonMediaTable,
+          PersonMediaData,
+          $$PersonMediaTableFilterComposer,
+          $$PersonMediaTableOrderingComposer,
+          $$PersonMediaTableAnnotationComposer,
+          $$PersonMediaTableCreateCompanionBuilder,
+          $$PersonMediaTableUpdateCompanionBuilder,
+          (PersonMediaData, $$PersonMediaTableReferences),
+          PersonMediaData,
+          PrefetchHooks Function({bool personId, bool mediaId})
         > {
-  $$MediaTableTableManager(_$GrobingDatabase db, $MediaTable table)
+  $$PersonMediaTableTableManager(_$GrobingDatabase db, $PersonMediaTable table)
     : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$MediaTableFilterComposer($db: db, $table: table),
+              $$PersonMediaTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$MediaTableOrderingComposer($db: db, $table: table),
+              $$PersonMediaTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$MediaTableAnnotationComposer($db: db, $table: table),
+              $$PersonMediaTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
-                Value<String> relativePath = const Value.absent(),
-                Value<int?> personId = const Value.absent(),
-                Value<int?> graveId = const Value.absent(),
-              }) => MediaCompanion(
-                id: id,
-                relativePath: relativePath,
+                Value<int> personId = const Value.absent(),
+                Value<int> mediaId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PersonMediaCompanion(
                 personId: personId,
-                graveId: graveId,
+                mediaId: mediaId,
+                position: position,
+                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                Value<int> id = const Value.absent(),
-                required String relativePath,
-                Value<int?> personId = const Value.absent(),
-                Value<int?> graveId = const Value.absent(),
-              }) => MediaCompanion.insert(
-                id: id,
-                relativePath: relativePath,
+                required int personId,
+                required int mediaId,
+                required int position,
+                Value<int> rowid = const Value.absent(),
+              }) => PersonMediaCompanion.insert(
                 personId: personId,
-                graveId: graveId,
+                mediaId: mediaId,
+                position: position,
+                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) =>
-                    (e.readTable(table), $$MediaTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable(table),
+                  $$PersonMediaTableReferences(db, table, e),
+                ),
               )
               .toList(),
-          prefetchHooksCallback: ({personId = false, graveId = false}) {
+          prefetchHooksCallback: ({personId = false, mediaId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -8771,23 +9344,23 @@ class $$MediaTableTableManager
                           state.withJoin(
                                 currentTable: table,
                                 currentColumn: table.personId,
-                                referencedTable: $$MediaTableReferences
+                                referencedTable: $$PersonMediaTableReferences
                                     ._personIdTable(db),
-                                referencedColumn: $$MediaTableReferences
+                                referencedColumn: $$PersonMediaTableReferences
                                     ._personIdTable(db)
                                     .id,
                               )
                               as T;
                     }
-                    if (graveId) {
+                    if (mediaId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.graveId,
-                                referencedTable: $$MediaTableReferences
-                                    ._graveIdTable(db),
-                                referencedColumn: $$MediaTableReferences
-                                    ._graveIdTable(db)
+                                currentColumn: table.mediaId,
+                                referencedTable: $$PersonMediaTableReferences
+                                    ._mediaIdTable(db),
+                                referencedColumn: $$PersonMediaTableReferences
+                                    ._mediaIdTable(db)
                                     .id,
                               )
                               as T;
@@ -8804,19 +9377,19 @@ class $$MediaTableTableManager
       );
 }
 
-typedef $$MediaTableProcessedTableManager =
+typedef $$PersonMediaTableProcessedTableManager =
     ProcessedTableManager<
       _$GrobingDatabase,
-      $MediaTable,
-      MediaFile,
-      $$MediaTableFilterComposer,
-      $$MediaTableOrderingComposer,
-      $$MediaTableAnnotationComposer,
-      $$MediaTableCreateCompanionBuilder,
-      $$MediaTableUpdateCompanionBuilder,
-      (MediaFile, $$MediaTableReferences),
-      MediaFile,
-      PrefetchHooks Function({bool personId, bool graveId})
+      $PersonMediaTable,
+      PersonMediaData,
+      $$PersonMediaTableFilterComposer,
+      $$PersonMediaTableOrderingComposer,
+      $$PersonMediaTableAnnotationComposer,
+      $$PersonMediaTableCreateCompanionBuilder,
+      $$PersonMediaTableUpdateCompanionBuilder,
+      (PersonMediaData, $$PersonMediaTableReferences),
+      PersonMediaData,
+      PrefetchHooks Function({bool personId, bool mediaId})
     >;
 typedef $$SettingsTableCreateCompanionBuilder =
     SettingsCompanion Function({Value<int> id, Value<int?> mePersonId});
@@ -9084,6 +9657,8 @@ class $GrobingDatabaseManager {
       $$AssertionsTableTableManager(_db, _db.assertions);
   $$MediaTableTableManager get media =>
       $$MediaTableTableManager(_db, _db.media);
+  $$PersonMediaTableTableManager get personMedia =>
+      $$PersonMediaTableTableManager(_db, _db.personMedia);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
 }
