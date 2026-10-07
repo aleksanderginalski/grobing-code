@@ -6,9 +6,9 @@ import '../../data/graves.dart';
 import '../dates.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
-import '../photo/photo_viewer_screen.dart'
-    show PhotoErrorLine, coverDecodeWidth;
+import '../photo/photo_viewer_screen.dart' show PhotoErrorLine;
 import '../photo/photos.dart';
+import '../photo/profile_circle.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
@@ -706,20 +706,16 @@ class _PhotoField extends StatelessWidget {
         ? null
         : (count == 0 ? onAdd : onOpen);
     final Widget circle = switch (profile) {
-      final DraftPhoto p => ClipOval(
-        child: SizedBox.square(
-          dimension: _size,
-          child: Image.file(
-            p.file,
-            fit: BoxFit.cover,
-            cacheWidth: coverDecodeWidth(context, _size),
-            errorBuilder: (_, _, _) => const ColoredBox(
-              color: GrobingColors.surface,
-              child: Icon(
-                Icons.broken_image_outlined,
-                color: GrobingColors.textMuted,
-              ),
-            ),
+      // v4.1: in the link's crop, or from the middle (ISSUE-018).
+      final DraftPhoto p => ProfileCircle(
+        file: p.file,
+        crop: draft.cropOf(p),
+        size: _size,
+        unreadable: const ColoredBox(
+          color: GrobingColors.surface,
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: GrobingColors.textMuted,
           ),
         ),
       ),

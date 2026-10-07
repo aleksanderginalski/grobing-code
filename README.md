@@ -76,6 +76,15 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   kolejności `id` i przebudowuje `media` (`TableMigration`): wiersze i `id` zostają, więc odtworzenie kopii v3
   przechodzi sprawdzenie liczby wierszy. Na końcu `PRAGMA foreign_key_check` — klucze obce są w migracji
   wyłączone (`beforeOpen` włącza je po niej). Szczegóły: *Zdjęcia* niżej.
+- **Kadr profilowego (schemat v5, ISSUE-018).** Łącze `person_media` ma cztery opcjonalne kolumny kadru
+  (`crop_left`, `crop_top`, `crop_width`, `crop_height`) — `CROP` z GEDCOM 7, w pikselach pliku zdjęcia. Plik to
+  kopia dostępowa: obrócona przed zapisem, bez EXIF i nigdy nie zmieniana w miejscu, więc piksele kadru się nie
+  przesuwają. Kadr należy do łącza, więc każda osoba na zdjęciu grupowym ma własny. Wszystkie cztery puste =
+  bez kadru: okrąg pokazuje środek, jak przed v5. Migracja v4→v5 tylko dodaje kolumny (`addColumn`).
+  **Kadr przeżywa każdą edycję zdjęć osoby:** `applyPersonPhotoEdits` przepisuje łącza od nowa, więc najpierw
+  czyta ich kadry i zapisuje je z powrotem, chyba że edycja ustawiła nowy. Granicę obrazu pilnuje ekran kadru
+  (`lib/app/photo/crop_geometry.dart`), bo wymiarów zdjęcia nie ma w bazie; okrąg i tak przycina kadr do
+  obrazu.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.

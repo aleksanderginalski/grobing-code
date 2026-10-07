@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../data/graves.dart';
+import '../../data/photos.dart' show PhotoCrop;
 import '../polish.dart';
 import '../theme.dart';
 import 'person_photos_draft.dart';
 import 'photo_people_screen.dart';
 import 'photo_viewer_screen.dart';
+import 'profile_crop_screen.dart';
 
-/// A person's photo on the whole screen (05_DESIGN/zdjecie.md v1.3, B in the person's mode): the photos
+/// A person's photo on the whole screen (05_DESIGN/zdjecie.md v1.4, B in the person's mode): the photos
 /// turn with a swipe or ‹ › (B3), "Na zdjęciu" names everyone on it (B5), and the actions make it the
-/// profile or remove it from this person (B4', C1'). Every change goes to the [draft] and is written with
-/// the person's "Zapisz" (zdjecia-osoby.md D1).
+/// profile through its crop, correct the profile's crop, or remove it from this person (B4', C1';
+/// kadr-profilowego.md). Every change goes to the [draft] and is written with the person's "Zapisz"
+/// (zdjecia-osoby.md D1).
 class PersonPhotoViewerScreen extends StatefulWidget {
   const PersonPhotoViewerScreen({
     super.key,
@@ -112,13 +115,37 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
     await _loadOthers();
   }
 
-  /// B4': the photo becomes the first — the view follows it there.
-  void _makeProfile() {
+  /// The crop screen on [photo], from its link's crop; null when left with back (kadr-profilowego.md D9).
+  Future<PhotoCrop?> _crop(DraftPhoto photo) =>
+      Navigator.of(context).push<PhotoCrop>(
+        MaterialPageRoute(
+          builder: (_) => ProfileCropScreen(
+            file: photo.file,
+            personName: widget.personName,
+            initial: widget.draft.cropOf(photo),
+          ),
+        ),
+      );
+
+  /// B4' "Ustaw jako profilowe": through the crop (kadr-profilowego.md D2) — on "Gotowe" the photo becomes
+  /// the first, with that crop, and the view follows it there.
+  Future<void> _makeProfile() async {
     final DraftPhoto? photo = _photo;
     if (photo == null) return;
-    widget.draft.setProfile(photo);
+    final PhotoCrop? crop = await _crop(photo);
+    if (crop == null || !mounted) return;
+    widget.draft.setProfile(photo, crop: crop);
     _index = 0;
     _pages.jumpToPage(0);
+  }
+
+  /// B4' "Popraw kadr" on the profile photo (zdjecie.md v1.4).
+  Future<void> _correctCrop() async {
+    final DraftPhoto? photo = _photo;
+    if (photo == null) return;
+    final PhotoCrop? crop = await _crop(photo);
+    if (crop == null || !mounted) return;
+    widget.draft.setCrop(photo, crop);
   }
 
   /// C1': what stays, and with whom; then back to the person's photos.
@@ -154,7 +181,11 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            PhotoViewerBar(title: widget.personName, subtitle: 'Zdjęcie osoby'),
+            // The profile is told by the bar, not by colour (kadr-profilowego.md D8).
+            PhotoViewerBar(
+              title: widget.personName,
+              subtitle: _index == 0 ? 'Zdjęcie profilowe' : 'Zdjęcie osoby',
+            ),
             Expanded(
               child: PageView.builder(
                 controller: _pages,
@@ -249,10 +280,10 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
     ],
   );
 
-  /// B4': "Ustaw jako profilowe" in amber — or the state "✓ Profilowe", which is no button — and "Usuń z
-  /// tej osoby" in the text colour (style-b.md rule 14). Two fixed places, so turning the photos never
-  /// moves "Usuń z tej osoby" under the finger; a long label wraps instead of being cut (SC 1.4.4; ui
-  /// review).
+  /// B4': "Ustaw jako profilowe" in amber — on the profile photo "Popraw kadr" instead, the state being in
+  /// the bar (zdjecie.md v1.4, kadr-profilowego.md D8) — and "Usuń z tej osoby" in the text colour
+  /// (style-b.md rule 14). Two fixed places, so turning the photos never moves "Usuń z tej osoby" under
+  /// the finger; a long label wraps instead of being cut (SC 1.4.4; ui review).
   Widget _actions() => Padding(
     padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
     child: Row(
@@ -261,27 +292,12 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         Expanded(
           child: Center(
             child: _index == 0
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.check,
-                          size: 18,
-                          color: GrobingColors.textMuted,
-                        ),
-                        SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Profilowe',
-                            style: TextStyle(
-                              color: GrobingColors.textMuted,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
+                ? TextButton.icon(
+                    onPressed: _correctCrop,
+                    icon: const Icon(Icons.crop_outlined),
+                    label: const Text(
+                      'Popraw kadr',
+                      textAlign: TextAlign.center,
                     ),
                   )
                 : TextButton.icon(

@@ -26,10 +26,10 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 4, zero rows in every table, no photos', () async {
+  test('empty database: schema 5, zero rows in every table, no photos', () async {
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 4);
+    expect(state.schemaVersion, 5);
     // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
     expect(state.rowCounts, hasLength(12));
     expect(state.rowCounts, contains('person_media'));
@@ -86,6 +86,23 @@ void main() {
     expect(after.fingerprint, isNot(before.fingerprint));
     expect(after.rowCounts, before.rowCounts);
   });
+
+  test(
+    'ISSUE-018 — a changed crop alone changes the fingerprint: the crop is in the backup check',
+    () async {
+      await addFictionalData(db, media);
+      final DataState before = await readDataState(db, mediaDir: media);
+
+      await db.customStatement(
+        'UPDATE person_media SET crop_left = crop_left + 1 '
+        'WHERE crop_left IS NOT NULL',
+      );
+      final DataState after = await readDataState(db, mediaDir: media);
+
+      expect(after.fingerprint, isNot(before.fingerprint));
+      expect(after.rowCounts, before.rowCounts);
+    },
+  );
 
   test(
     'a VACUUM INTO snapshot has the same fingerprint: it measures content, not the file',

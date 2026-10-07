@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../data/photos.dart' show PhotoCrop;
 import '../polish.dart';
 import '../theme.dart';
 import 'person_photo_viewer_screen.dart';
@@ -9,6 +10,7 @@ import 'person_photos_draft.dart';
 import 'photo_picker.dart';
 import 'photo_source_sheet.dart';
 import 'photo_viewer_screen.dart';
+import 'profile_circle.dart';
 
 /// Picks a person's photos — several from the gallery, one with the camera (05_DESIGN/zdjecie.md v1.3,
 /// A) — and hands them to [draft] to prepare. Shared by the form's element 1a and the tile here.
@@ -96,7 +98,11 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
                 children: [
                   if (draft.profile case final DraftPhoto profile) ...[
-                    _ProfileHeader(photo: profile, onTap: () => _open(0)),
+                    _ProfileHeader(
+                      photo: profile,
+                      crop: draft.cropOf(profile),
+                      onTap: () => _open(0),
+                    ),
                     const SizedBox(height: 24),
                     _SectionHeader(count: items.length),
                     const SizedBox(height: 12),
@@ -203,12 +209,13 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
             'Spróbuj jeszcze raz.';
 }
 
-/// Element 2: the profile photo in a 96 dp circle — as the form and the grave view will show it — and
-/// "Profilowe" under it.
+/// Element 2: the profile photo in a 96 dp circle, in its crop (v1.1, ISSUE-018) — as the form and the
+/// grave view will show it — and "Profilowe" under it.
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.photo, required this.onTap});
+  const _ProfileHeader({required this.photo, this.crop, required this.onTap});
 
   final DraftPhoto photo;
+  final PhotoCrop? crop;
   final VoidCallback onTap;
 
   @override
@@ -223,19 +230,11 @@ class _ProfileHeader extends StatelessWidget {
         customBorder: const CircleBorder(),
         child: Column(
           children: [
-            ClipOval(
-              child: SizedBox.square(
-                dimension: 96,
-                child: Image.file(
-                  photo.file,
-                  fit: BoxFit.cover,
-                  cacheWidth: coverDecodeWidth(context, 96),
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: GrobingColors.surface,
-                    child: _Unreadable(),
-                  ),
-                ),
-              ),
+            ProfileCircle(
+              file: photo.file,
+              crop: crop,
+              size: 96,
+              unreadable: const _Unreadable(),
             ),
             const SizedBox(height: 8),
             const Text(

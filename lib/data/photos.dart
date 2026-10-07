@@ -97,12 +97,72 @@ Future<String> setGravePhoto(
 Future<void> deleteGravePhoto(GrobingDatabase db, int graveId) =>
     (db.delete(db.media)..where((m) => m.graveId.equals(graveId))).go();
 
-/// One photo in a person's list: its row and its file, relative to the media directory.
+/// The crop of a person's link to a photo (ISSUE-018, ADR-010): GEDCOM 7's `CROP`, in pixels of the
+/// photo's file — [left] and [top] are the pixels not shown from the left and the top, [width] and
+/// [height] the size of what is shown. The crop screen writes a square; the profile circle shows the
+/// circle inside it.
+class PhotoCrop {
+  const PhotoCrop({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+  }) : assert(left >= 0 && top >= 0 && width > 0 && height > 0);
+
+  final int left;
+  final int top;
+  final int width;
+  final int height;
+
+  /// The crop of a `person_media` row, or null when the link has none (or a broken one: anything but
+  /// four values with a positive size counts as none, so the circle shows the middle).
+  static PhotoCrop? of(PersonMediaData link) {
+    final (int? l, int? t, int? w, int? h) = (
+      link.cropLeft,
+      link.cropTop,
+      link.cropWidth,
+      link.cropHeight,
+    );
+    if (l == null || t == null || w == null || h == null) return null;
+    if (l < 0 || t < 0 || w <= 0 || h <= 0) return null;
+    return PhotoCrop(left: l, top: t, width: w, height: h);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhotoCrop &&
+      other.left == left &&
+      other.top == top &&
+      other.width == width &&
+      other.height == height;
+
+  @override
+  int get hashCode => Object.hash(left, top, width, height);
+
+  @override
+  String toString() => 'PhotoCrop($left, $top, $width × $height)';
+}
+
+/// One photo in a person's list: its row, its file, relative to the media directory, and the crop of
+/// the person's link to it.
 class PersonPhoto {
-  const PersonPhoto({required this.mediaId, required this.relativePath});
+  const PersonPhoto({
+    required this.mediaId,
+    required this.relativePath,
+    this.crop,
+  });
 
   final int mediaId;
   final String relativePath;
+  final PhotoCrop? crop;
+}
+
+/// A person's profile photo — the file of their first link — and that link's crop.
+class ProfilePhoto {
+  const ProfilePhoto(this.relativePath, this.crop);
+
+  final String relativePath;
+  final PhotoCrop? crop;
 }
 
 /// The photos of [personId] in the order of their links: the first is the profile photo (GEDCOM 7:
@@ -126,6 +186,7 @@ Future<List<PersonPhoto>> personPhotos(GrobingDatabase db, int personId) async {
       PersonPhoto(
         mediaId: r.readTable(db.media).id,
         relativePath: r.readTable(db.media).relativePath,
+        crop: PhotoCrop.of(r.readTable(db.personMedia)),
       ),
   ];
 }
@@ -140,14 +201,15 @@ Future<List<int>> photoPeopleIds(GrobingDatabase db, int mediaId) async => [
     l.personId,
 ];
 
-/// Each of [personIds] that has a photo → the path of their profile photo (their first link).
-Future<Map<int, String>> profilePhotoPaths(
+/// Each of [personIds] that has a photo → their profile photo: the file of their first link and its
+/// crop (ISSUE-018).
+Future<Map<int, ProfilePhoto>> profilePhotos(
   GrobingDatabase db,
   Iterable<int> personIds,
 ) async {
-  final Map<int, String> paths = {};
+  final Map<int, ProfilePhoto> profiles = {};
   final List<int> ids = personIds.toList();
-  if (ids.isEmpty) return paths;
+  if (ids.isEmpty) return profiles;
   final List<TypedResult> rows =
       await (db.select(db.personMedia).join([
               innerJoin(
@@ -162,12 +224,14 @@ Future<Map<int, String>> profilePhotoPaths(
             ]))
           .get();
   for (final TypedResult r in rows) {
-    paths.putIfAbsent(
-      r.readTable(db.personMedia).personId,
-      () => r.readTable(db.media).relativePath,
+    final PersonMediaData link = r.readTable(db.personMedia);
+    profiles.putIfAbsent(
+      link.personId,
+      () =>
+          ProfilePhoto(r.readTable(db.media).relativePath, PhotoCrop.of(link)),
     );
   }
-  return paths;
+  return profiles;
 }
 
 /// A photo in an edit of a person's photos: one already saved, or one picked in this edit.
@@ -200,7 +264,11 @@ final class NewPhoto extends PhotoRef {
 /// What an edit of one person's photos changes (05_DESIGN/zdjecia-osoby.md D1: it is written with the
 /// person's "Zapisz", in the same transaction).
 class PersonPhotoEdits {
-  const PersonPhotoEdits({required this.photos, this.others = const {}});
+  const PersonPhotoEdits({
+    required this.photos,
+    this.others = const {},
+    this.crops = const {},
+  });
 
   /// The person's photos after the edit, in their order: the first is the profile photo. A saved photo
   /// missing here is removed from this person only.
@@ -209,6 +277,11 @@ class PersonPhotoEdits {
   /// For each photo whose people changed: everyone else on it after the edit (05_DESIGN/zdjecie.md, D).
   /// A photo not here keeps its other people.
   final Map<PhotoRef, Set<int>> others;
+
+  /// The crops set in this edit on this person's links (ISSUE-018). A saved link not here keeps the
+  /// crop it has — so an edit that only adds, removes or reorders photos never loses one (plan F1); a
+  /// new photo not here has none.
+  final Map<PhotoRef, PhotoCrop> crops;
 
   /// The photos of this edit that need a row: on this person or on someone else.
   List<NewPhoto> get newPhotos => [
@@ -272,7 +345,8 @@ Future<void> returnMovedPhotos(
 /// Writes [edits] for [personId]. Call it inside the transaction that writes the person, after
 /// [moveNewPersonPhotos] gave [paths]:
 /// - a row for each new photo;
-/// - the person's links rewritten in the new order (positions 0…n−1);
+/// - the person's links rewritten in the new order (positions 0…n−1), each with the crop this edit set
+///   or the one it had (ISSUE-018, F1);
 /// - someone else added to a photo gets a link at the end of their own order, so their profile stays —
 ///   or, with no photos before, this one becomes it;
 /// - a `media` row left with neither a grave nor a link goes; its file goes with the next sweep, so a
@@ -293,14 +367,25 @@ Future<void> applyPersonPhotoEdits(
   };
 
   final List<int> ordered = [];
+  final Map<int, PhotoCrop> crops = {};
   for (final PhotoRef photo in edits.photos) {
     final int id = await idOf(photo);
     if (!ordered.contains(id)) ordered.add(id);
+    final PhotoCrop? crop = edits.crops[photo];
+    if (crop != null) crops[id] = crop;
   }
+  // The links are rewritten from nothing, so the crops they have are read first and written back.
+  final Map<int, PhotoCrop?> kept = {
+    for (final PersonMediaData l in await (db.select(
+      db.personMedia,
+    )..where((l) => l.personId.equals(personId))).get())
+      l.mediaId: PhotoCrop.of(l),
+  };
   await (db.delete(
     db.personMedia,
   )..where((l) => l.personId.equals(personId))).go();
   for (final (int i, int id) in ordered.indexed) {
+    final PhotoCrop? crop = crops[id] ?? kept[id];
     await db
         .into(db.personMedia)
         .insert(
@@ -308,6 +393,10 @@ Future<void> applyPersonPhotoEdits(
             personId: personId,
             mediaId: id,
             position: i,
+            cropLeft: Value(crop?.left),
+            cropTop: Value(crop?.top),
+            cropWidth: Value(crop?.width),
+            cropHeight: Value(crop?.height),
           ),
         );
   }

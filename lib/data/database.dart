@@ -168,13 +168,23 @@ class Media extends Table {
 
 /// A person's link to a photo — GEDCOM 7's MULTIMEDIA_LINK (`OBJE`). A person's links are ordered by
 /// [position], then [mediaId]: *"the first is the most-preferred value"*, so the first is the person's
-/// profile photo, and each person has their own (05_DESIGN/zdjecie.md D9). What GEDCOM puts on the
-/// link — a face's crop, a title — would be columns here, added when a screen needs them.
+/// profile photo, and each person has their own (05_DESIGN/zdjecie.md D9).
+///
+/// The crop of the link (ISSUE-018, ADR-010) is GEDCOM's `CROP`: in pixels of the photo's file — the
+/// access copy, upright and never changed in place (ADR-008) — and on the link, so each person on a
+/// group photo has their own. All four empty = no crop: the profile circle shows the middle. Whether
+/// the crop lies inside the image SQL cannot tell (the image's size is not in the database); one write
+/// path keeps it ([applyPersonPhotoEdits] in photos.dart, from the crop screen). A title (`TITL`)
+/// would be a column here too, when a screen needs it.
 @TableIndex(name: 'person_media_media', columns: {#mediaId})
 class PersonMedia extends Table {
   IntColumn get personId => integer().references(Persons, #id)();
   IntColumn get mediaId => integer().references(Media, #id)();
   IntColumn get position => integer()();
+  IntColumn get cropLeft => integer().nullable()();
+  IntColumn get cropTop => integer().nullable()();
+  IntColumn get cropWidth => integer().nullable()();
+  IntColumn get cropHeight => integer().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {personId, mediaId};
@@ -242,7 +252,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 4;
+  static const int currentSchemaVersion = 5;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -266,6 +276,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from1To2: _from1To2,
             from2To3: _from2To3,
             from3To4: _from3To4,
+            from4To5: _from4To5,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -332,6 +343,15 @@ class GrobingDatabase extends _$GrobingDatabase {
     if (broken.isNotEmpty) {
       throw StateError('Schema v4: ${broken.length} broken references');
     }
+  }
+
+  /// ISSUE-018 (ADR-010): a link gets its crop. Four new nullable columns: no row changes, nothing
+  /// dropped, and every v4 link has no crop — its profile circle shows the middle, as before.
+  Future<void> _from4To5(Migrator m, Schema5 schema) async {
+    await m.addColumn(schema.personMedia, schema.personMedia.cropLeft);
+    await m.addColumn(schema.personMedia, schema.personMedia.cropTop);
+    await m.addColumn(schema.personMedia, schema.personMedia.cropWidth);
+    await m.addColumn(schema.personMedia, schema.personMedia.cropHeight);
   }
 }
 

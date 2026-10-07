@@ -24,6 +24,7 @@ import 'package:grobing/dev/fictional_photo.dart';
 import '../drift/grobing/generated/schema_v1.dart' as v1;
 import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../drift/grobing/generated/schema_v3.dart' as v3;
+import '../drift/grobing/generated/schema_v4.dart' as v4;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -187,6 +188,25 @@ const List<String> _v2Rows = [
 
 /// Made-up rows of a phone at schema v3 (ISSUE-017 F3): a grave's photo and three people's photos, still
 /// with one owner each — Anna has two, Jan one.
+/// Made-up rows of a phone at schema v4 (ISSUE-018 F3): a gravestone, a photo Jan and Anna share (Jan's
+/// profile, Anna's second) and Anna's own profile — links without crops, as every v4 link is.
+const List<String> _v4Rows = [
+  'INSERT INTO persons (id, given_names, surname) VALUES '
+      "(1, 'Jan', 'Wymyślony'), (2, 'Anna', 'Wymyślona')",
+  "INSERT INTO cemeteries (id, name) VALUES (1, 'Cmentarz Wymyślony')",
+  "INSERT INTO graves (id, cemetery_id, name) VALUES (1, 1, 'Grób Wymyślonych')",
+  'INSERT INTO burials (id, person_id, grave_id) VALUES (1, 1, 1), (2, 2, 1)',
+  'INSERT INTO assertions (event_id, burial_id, source_kind, status, recorded_at) VALUES '
+      "(NULL, 1, 'notes', 'claimed', 1791273600), "
+      "(NULL, 2, 'notes', 'claimed', 1791273600)",
+  'INSERT INTO media (id, relative_path, grave_id) VALUES '
+      "(1, 'groby/1/nagrobek.png', 1), "
+      "(2, 'zdjecia/slub.png', NULL), "
+      "(3, 'zdjecia/anna.png', NULL)",
+  'INSERT INTO person_media (person_id, media_id, position) VALUES '
+      '(1, 2, 0), (2, 3, 0), (2, 2, 1)',
+];
+
 const List<String> _v3Rows = [
   'INSERT INTO persons (id, given_names, surname) VALUES '
       "(1, 'Jan', 'Wymyślony'), (2, 'Anna', 'Wymyślona')",
@@ -372,6 +392,16 @@ void main() {
           'wymyslone/slub-1.png',
         ]);
         expect(father.single.mediaId, mother[1].mediaId);
+        // ISSUE-018 F4: each link to the shared photo comes back with its own crop; the portrait has none.
+        expect(mother[0].crop, isNull);
+        expect(
+          mother[1].crop,
+          const PhotoCrop(left: 80, top: 50, width: 160, height: 160),
+        );
+        expect(
+          father.single.crop,
+          const PhotoCrop(left: 240, top: 50, width: 160, height: 160),
+        );
         for (final PersonPhoto p in mother) {
           expect(
             File('${fresh.dir.path}/media/${p.relativePath}').existsSync(),
@@ -1327,9 +1357,12 @@ void main() {
             passphrase: _passphrase,
           );
 
-      expect((result.schemaFrom, result.schemaTo), (3, 4));
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (3, GrobingDatabase.currentSchemaVersion),
+      );
       final DataState after = await stateOnDisk(fresh.dir);
-      expect(after.schemaVersion, 4);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
       for (final MapEntry<String, int> t in v3State.rowCounts.entries) {
         expect(after.rowCounts[t.key], t.value, reason: t.key);
       }
@@ -1363,6 +1396,105 @@ void main() {
       expect(anna, ['osoby/anna-1.png', 'osoby/anna-2.png']);
       expect(jan, ['osoby/jan-1.png']);
       expect(gravestone, 'groby/1/nagrobek.png');
+      expect(broken, isEmpty);
+    },
+  );
+
+  test(
+    'ISSUE-018 F3 — a v4 backup restores into the v5 app: every v4 table and count kept, every link and '
+    'its position kept, no link has a crop (the circles show the middle), every file is there',
+    () async {
+      final File v4File = File('${tmp.path}/v4.db');
+      final Directory v4Media = Directory('${tmp.path}/v4-media');
+      final v4.DatabaseAtV4 old = v4.DatabaseAtV4(NativeDatabase(v4File));
+      for (final String row in _v4Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 4');
+      const List<String> photoPaths = [
+        'groby/1/nagrobek.png',
+        'zdjecia/anna.png',
+        'zdjecia/slub.png',
+      ];
+      for (final (int i, String path) in photoPaths.indexed) {
+        File('${v4Media.path}/$path')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalPeoplePng(i + 1, heads: 2));
+      }
+      final DataState v4State = await readDataState(old, mediaDir: v4Media);
+      expect(v4State.schemaVersion, 4);
+      expect(v4State.rowCounts['person_media'], 3);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v4-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v4-snapshot.db').readAsBytesSync(),
+        ),
+        for (final String path in photoPaths)
+          (
+            path: 'media/$path',
+            data: File('${v4Media.path}/$path').readAsBytesSync(),
+          ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v4.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 4,
+              'record_counts': v4State.rowCounts,
+              'data_fingerprint': v4State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v5');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (4, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(after.rowCounts, v4State.rowCounts);
+      expect(after.mediaFileCount, 3);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<PersonPhoto> jan = await personPhotos(reopened, 1);
+      final List<PersonPhoto> anna = await personPhotos(reopened, 2);
+      final List<Object?> broken = [
+        for (final r
+            in await reopened.customSelect('PRAGMA foreign_key_check').get())
+          r.data,
+      ];
+      await reopened.close();
+      expect(jan.map((p) => (p.relativePath, p.crop)), [
+        ('zdjecia/slub.png', null),
+      ]);
+      expect(anna.map((p) => (p.relativePath, p.crop)), [
+        ('zdjecia/anna.png', null),
+        ('zdjecia/slub.png', null),
+      ]);
+      for (final String path in photoPaths) {
+        expect(
+          File('${fresh.dir.path}/media/$path').existsSync(),
+          isTrue,
+          reason: path,
+        );
+      }
       expect(broken, isEmpty);
     },
   );

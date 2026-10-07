@@ -3826,8 +3826,60 @@ class $PersonMediaTable extends PersonMedia
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _cropLeftMeta = const VerificationMeta(
+    'cropLeft',
+  );
   @override
-  List<GeneratedColumn> get $columns => [personId, mediaId, position];
+  late final GeneratedColumn<int> cropLeft = GeneratedColumn<int>(
+    'crop_left',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cropTopMeta = const VerificationMeta(
+    'cropTop',
+  );
+  @override
+  late final GeneratedColumn<int> cropTop = GeneratedColumn<int>(
+    'crop_top',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cropWidthMeta = const VerificationMeta(
+    'cropWidth',
+  );
+  @override
+  late final GeneratedColumn<int> cropWidth = GeneratedColumn<int>(
+    'crop_width',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cropHeightMeta = const VerificationMeta(
+    'cropHeight',
+  );
+  @override
+  late final GeneratedColumn<int> cropHeight = GeneratedColumn<int>(
+    'crop_height',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    personId,
+    mediaId,
+    position,
+    cropLeft,
+    cropTop,
+    cropWidth,
+    cropHeight,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3864,6 +3916,30 @@ class $PersonMediaTable extends PersonMedia
     } else if (isInserting) {
       context.missing(_positionMeta);
     }
+    if (data.containsKey('crop_left')) {
+      context.handle(
+        _cropLeftMeta,
+        cropLeft.isAcceptableOrUnknown(data['crop_left']!, _cropLeftMeta),
+      );
+    }
+    if (data.containsKey('crop_top')) {
+      context.handle(
+        _cropTopMeta,
+        cropTop.isAcceptableOrUnknown(data['crop_top']!, _cropTopMeta),
+      );
+    }
+    if (data.containsKey('crop_width')) {
+      context.handle(
+        _cropWidthMeta,
+        cropWidth.isAcceptableOrUnknown(data['crop_width']!, _cropWidthMeta),
+      );
+    }
+    if (data.containsKey('crop_height')) {
+      context.handle(
+        _cropHeightMeta,
+        cropHeight.isAcceptableOrUnknown(data['crop_height']!, _cropHeightMeta),
+      );
+    }
     return context;
   }
 
@@ -3885,6 +3961,22 @@ class $PersonMediaTable extends PersonMedia
         DriftSqlType.int,
         data['${effectivePrefix}position'],
       )!,
+      cropLeft: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}crop_left'],
+      ),
+      cropTop: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}crop_top'],
+      ),
+      cropWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}crop_width'],
+      ),
+      cropHeight: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}crop_height'],
+      ),
     );
   }
 
@@ -3898,10 +3990,18 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
   final int personId;
   final int mediaId;
   final int position;
+  final int? cropLeft;
+  final int? cropTop;
+  final int? cropWidth;
+  final int? cropHeight;
   const PersonMediaData({
     required this.personId,
     required this.mediaId,
     required this.position,
+    this.cropLeft,
+    this.cropTop,
+    this.cropWidth,
+    this.cropHeight,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3909,6 +4009,18 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     map['person_id'] = Variable<int>(personId);
     map['media_id'] = Variable<int>(mediaId);
     map['position'] = Variable<int>(position);
+    if (!nullToAbsent || cropLeft != null) {
+      map['crop_left'] = Variable<int>(cropLeft);
+    }
+    if (!nullToAbsent || cropTop != null) {
+      map['crop_top'] = Variable<int>(cropTop);
+    }
+    if (!nullToAbsent || cropWidth != null) {
+      map['crop_width'] = Variable<int>(cropWidth);
+    }
+    if (!nullToAbsent || cropHeight != null) {
+      map['crop_height'] = Variable<int>(cropHeight);
+    }
     return map;
   }
 
@@ -3917,6 +4029,18 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       personId: Value(personId),
       mediaId: Value(mediaId),
       position: Value(position),
+      cropLeft: cropLeft == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cropLeft),
+      cropTop: cropTop == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cropTop),
+      cropWidth: cropWidth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cropWidth),
+      cropHeight: cropHeight == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cropHeight),
     );
   }
 
@@ -3929,6 +4053,10 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       personId: serializer.fromJson<int>(json['personId']),
       mediaId: serializer.fromJson<int>(json['mediaId']),
       position: serializer.fromJson<int>(json['position']),
+      cropLeft: serializer.fromJson<int?>(json['cropLeft']),
+      cropTop: serializer.fromJson<int?>(json['cropTop']),
+      cropWidth: serializer.fromJson<int?>(json['cropWidth']),
+      cropHeight: serializer.fromJson<int?>(json['cropHeight']),
     );
   }
   @override
@@ -3938,20 +4066,41 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       'personId': serializer.toJson<int>(personId),
       'mediaId': serializer.toJson<int>(mediaId),
       'position': serializer.toJson<int>(position),
+      'cropLeft': serializer.toJson<int?>(cropLeft),
+      'cropTop': serializer.toJson<int?>(cropTop),
+      'cropWidth': serializer.toJson<int?>(cropWidth),
+      'cropHeight': serializer.toJson<int?>(cropHeight),
     };
   }
 
-  PersonMediaData copyWith({int? personId, int? mediaId, int? position}) =>
-      PersonMediaData(
-        personId: personId ?? this.personId,
-        mediaId: mediaId ?? this.mediaId,
-        position: position ?? this.position,
-      );
+  PersonMediaData copyWith({
+    int? personId,
+    int? mediaId,
+    int? position,
+    Value<int?> cropLeft = const Value.absent(),
+    Value<int?> cropTop = const Value.absent(),
+    Value<int?> cropWidth = const Value.absent(),
+    Value<int?> cropHeight = const Value.absent(),
+  }) => PersonMediaData(
+    personId: personId ?? this.personId,
+    mediaId: mediaId ?? this.mediaId,
+    position: position ?? this.position,
+    cropLeft: cropLeft.present ? cropLeft.value : this.cropLeft,
+    cropTop: cropTop.present ? cropTop.value : this.cropTop,
+    cropWidth: cropWidth.present ? cropWidth.value : this.cropWidth,
+    cropHeight: cropHeight.present ? cropHeight.value : this.cropHeight,
+  );
   PersonMediaData copyWithCompanion(PersonMediaCompanion data) {
     return PersonMediaData(
       personId: data.personId.present ? data.personId.value : this.personId,
       mediaId: data.mediaId.present ? data.mediaId.value : this.mediaId,
       position: data.position.present ? data.position.value : this.position,
+      cropLeft: data.cropLeft.present ? data.cropLeft.value : this.cropLeft,
+      cropTop: data.cropTop.present ? data.cropTop.value : this.cropTop,
+      cropWidth: data.cropWidth.present ? data.cropWidth.value : this.cropWidth,
+      cropHeight: data.cropHeight.present
+          ? data.cropHeight.value
+          : this.cropHeight,
     );
   }
 
@@ -3960,37 +4109,65 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     return (StringBuffer('PersonMediaData(')
           ..write('personId: $personId, ')
           ..write('mediaId: $mediaId, ')
-          ..write('position: $position')
+          ..write('position: $position, ')
+          ..write('cropLeft: $cropLeft, ')
+          ..write('cropTop: $cropTop, ')
+          ..write('cropWidth: $cropWidth, ')
+          ..write('cropHeight: $cropHeight')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(personId, mediaId, position);
+  int get hashCode => Object.hash(
+    personId,
+    mediaId,
+    position,
+    cropLeft,
+    cropTop,
+    cropWidth,
+    cropHeight,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is PersonMediaData &&
           other.personId == this.personId &&
           other.mediaId == this.mediaId &&
-          other.position == this.position);
+          other.position == this.position &&
+          other.cropLeft == this.cropLeft &&
+          other.cropTop == this.cropTop &&
+          other.cropWidth == this.cropWidth &&
+          other.cropHeight == this.cropHeight);
 }
 
 class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
   final Value<int> personId;
   final Value<int> mediaId;
   final Value<int> position;
+  final Value<int?> cropLeft;
+  final Value<int?> cropTop;
+  final Value<int?> cropWidth;
+  final Value<int?> cropHeight;
   final Value<int> rowid;
   const PersonMediaCompanion({
     this.personId = const Value.absent(),
     this.mediaId = const Value.absent(),
     this.position = const Value.absent(),
+    this.cropLeft = const Value.absent(),
+    this.cropTop = const Value.absent(),
+    this.cropWidth = const Value.absent(),
+    this.cropHeight = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PersonMediaCompanion.insert({
     required int personId,
     required int mediaId,
     required int position,
+    this.cropLeft = const Value.absent(),
+    this.cropTop = const Value.absent(),
+    this.cropWidth = const Value.absent(),
+    this.cropHeight = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : personId = Value(personId),
        mediaId = Value(mediaId),
@@ -3999,12 +4176,20 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     Expression<int>? personId,
     Expression<int>? mediaId,
     Expression<int>? position,
+    Expression<int>? cropLeft,
+    Expression<int>? cropTop,
+    Expression<int>? cropWidth,
+    Expression<int>? cropHeight,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (personId != null) 'person_id': personId,
       if (mediaId != null) 'media_id': mediaId,
       if (position != null) 'position': position,
+      if (cropLeft != null) 'crop_left': cropLeft,
+      if (cropTop != null) 'crop_top': cropTop,
+      if (cropWidth != null) 'crop_width': cropWidth,
+      if (cropHeight != null) 'crop_height': cropHeight,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4013,12 +4198,20 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     Value<int>? personId,
     Value<int>? mediaId,
     Value<int>? position,
+    Value<int?>? cropLeft,
+    Value<int?>? cropTop,
+    Value<int?>? cropWidth,
+    Value<int?>? cropHeight,
     Value<int>? rowid,
   }) {
     return PersonMediaCompanion(
       personId: personId ?? this.personId,
       mediaId: mediaId ?? this.mediaId,
       position: position ?? this.position,
+      cropLeft: cropLeft ?? this.cropLeft,
+      cropTop: cropTop ?? this.cropTop,
+      cropWidth: cropWidth ?? this.cropWidth,
+      cropHeight: cropHeight ?? this.cropHeight,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4035,6 +4228,18 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     if (position.present) {
       map['position'] = Variable<int>(position.value);
     }
+    if (cropLeft.present) {
+      map['crop_left'] = Variable<int>(cropLeft.value);
+    }
+    if (cropTop.present) {
+      map['crop_top'] = Variable<int>(cropTop.value);
+    }
+    if (cropWidth.present) {
+      map['crop_width'] = Variable<int>(cropWidth.value);
+    }
+    if (cropHeight.present) {
+      map['crop_height'] = Variable<int>(cropHeight.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4047,6 +4252,10 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
           ..write('personId: $personId, ')
           ..write('mediaId: $mediaId, ')
           ..write('position: $position, ')
+          ..write('cropLeft: $cropLeft, ')
+          ..write('cropTop: $cropTop, ')
+          ..write('cropWidth: $cropWidth, ')
+          ..write('cropHeight: $cropHeight, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9030,6 +9239,10 @@ typedef $$PersonMediaTableCreateCompanionBuilder =
       required int personId,
       required int mediaId,
       required int position,
+      Value<int?> cropLeft,
+      Value<int?> cropTop,
+      Value<int?> cropWidth,
+      Value<int?> cropHeight,
       Value<int> rowid,
     });
 typedef $$PersonMediaTableUpdateCompanionBuilder =
@@ -9037,6 +9250,10 @@ typedef $$PersonMediaTableUpdateCompanionBuilder =
       Value<int> personId,
       Value<int> mediaId,
       Value<int> position,
+      Value<int?> cropLeft,
+      Value<int?> cropTop,
+      Value<int?> cropWidth,
+      Value<int?> cropHeight,
       Value<int> rowid,
     });
 
@@ -9091,6 +9308,26 @@ class $$PersonMediaTableFilterComposer
   });
   ColumnFilters<int> get position => $composableBuilder(
     column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cropLeft => $composableBuilder(
+    column: $table.cropLeft,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cropTop => $composableBuilder(
+    column: $table.cropTop,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cropWidth => $composableBuilder(
+    column: $table.cropWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cropHeight => $composableBuilder(
+    column: $table.cropHeight,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9155,6 +9392,26 @@ class $$PersonMediaTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cropLeft => $composableBuilder(
+    column: $table.cropLeft,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cropTop => $composableBuilder(
+    column: $table.cropTop,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cropWidth => $composableBuilder(
+    column: $table.cropWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cropHeight => $composableBuilder(
+    column: $table.cropHeight,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PersonsTableOrderingComposer get personId {
     final $$PersonsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9213,6 +9470,20 @@ class $$PersonMediaTableAnnotationComposer
   });
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get cropLeft =>
+      $composableBuilder(column: $table.cropLeft, builder: (column) => column);
+
+  GeneratedColumn<int> get cropTop =>
+      $composableBuilder(column: $table.cropTop, builder: (column) => column);
+
+  GeneratedColumn<int> get cropWidth =>
+      $composableBuilder(column: $table.cropWidth, builder: (column) => column);
+
+  GeneratedColumn<int> get cropHeight => $composableBuilder(
+    column: $table.cropHeight,
+    builder: (column) => column,
+  );
 
   $$PersonsTableAnnotationComposer get personId {
     final $$PersonsTableAnnotationComposer composer = $composerBuilder(
@@ -9292,11 +9563,19 @@ class $$PersonMediaTableTableManager
                 Value<int> personId = const Value.absent(),
                 Value<int> mediaId = const Value.absent(),
                 Value<int> position = const Value.absent(),
+                Value<int?> cropLeft = const Value.absent(),
+                Value<int?> cropTop = const Value.absent(),
+                Value<int?> cropWidth = const Value.absent(),
+                Value<int?> cropHeight = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PersonMediaCompanion(
                 personId: personId,
                 mediaId: mediaId,
                 position: position,
+                cropLeft: cropLeft,
+                cropTop: cropTop,
+                cropWidth: cropWidth,
+                cropHeight: cropHeight,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9304,11 +9583,19 @@ class $$PersonMediaTableTableManager
                 required int personId,
                 required int mediaId,
                 required int position,
+                Value<int?> cropLeft = const Value.absent(),
+                Value<int?> cropTop = const Value.absent(),
+                Value<int?> cropWidth = const Value.absent(),
+                Value<int?> cropHeight = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PersonMediaCompanion.insert(
                 personId: personId,
                 mediaId: mediaId,
                 position: position,
+                cropLeft: cropLeft,
+                cropTop: cropTop,
+                cropWidth: cropWidth,
+                cropHeight: cropHeight,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -17,8 +17,8 @@ class DraftPhoto {
 }
 
 /// A person's photos while their form is open (05_DESIGN/zdjecia-osoby.md D1): every change — added
-/// photos, the profile, who else is on a photo, a photo removed — waits here and is written with the
-/// person's "Zapisz" ([edits]), or dropped with "Odrzuć" ([dispose]).
+/// photos, the profile and its crop (ISSUE-018), who else is on a photo, a photo removed — waits here
+/// and is written with the person's "Zapisz" ([edits]), or dropped with "Odrzuć" ([dispose]).
 class PersonPhotosDraft extends ChangeNotifier {
   PersonPhotosDraft({
     required this.database,
@@ -40,6 +40,8 @@ class PersonPhotosDraft extends ChangeNotifier {
   List<int> _savedOrder = const [];
   final Map<data.PhotoRef, Set<int>> _others = {};
   final Map<data.PhotoRef, Set<int>> _savedOthers = {};
+  final Map<data.PhotoRef, data.PhotoCrop> _savedCrops = {};
+  final Map<data.PhotoRef, data.PhotoCrop> _crops = {};
   final List<data.NewPhoto> _created = [];
   int _preparing = 0;
   ({int failed, int of})? _failure;
@@ -58,6 +60,7 @@ class PersonPhotosDraft extends ChangeNotifier {
 
   bool get hasChanges =>
       _others.isNotEmpty ||
+      _crops.isNotEmpty ||
       !listEquals(_savedOrder, [
         for (final DraftPhoto p in _items)
           if (p.ref case data.SavedPhoto(:final int mediaId)) mediaId else -1,
@@ -75,6 +78,13 @@ class PersonPhotosDraft extends ChangeNotifier {
           DraftPhoto(data.SavedPhoto(p.mediaId), photos.fileOf(p.relativePath)),
       ]);
     _savedOrder = [for (final data.PersonPhoto p in saved) p.mediaId];
+    _savedCrops
+      ..clear()
+      ..addAll({
+        for (final data.PersonPhoto p in saved)
+          if (p.crop case final data.PhotoCrop crop)
+            data.SavedPhoto(p.mediaId): crop,
+      });
     _notify();
   }
 
@@ -108,16 +118,39 @@ class PersonPhotosDraft extends ChangeNotifier {
     }
   }
 
-  /// Makes [photo] the profile photo: the first of this person's (zdjecie.md B4').
-  void setProfile(DraftPhoto photo) {
+  /// Makes [photo] the profile photo: the first of this person's (zdjecie.md B4'), with the [crop] set on
+  /// the crop screen (kadr-profilowego.md D2).
+  void setProfile(DraftPhoto photo, {data.PhotoCrop? crop}) {
     if (!_items.remove(photo)) return;
     _items.insert(0, photo);
+    if (crop != null) _setCrop(photo, crop);
     _notify();
   }
 
-  /// Removes [photo] from this person only (zdjecie.md C1'); others on it keep it.
+  /// The crop of this person's link to [photo]: as changed in this form, or as saved; null — none, the
+  /// circle shows the middle (kadr-profilowego.md D3).
+  data.PhotoCrop? cropOf(DraftPhoto photo) =>
+      _crops[photo.ref] ?? _savedCrops[photo.ref];
+
+  /// "Popraw kadr" → "Gotowe" (kadr-profilowego.md, zdjecie.md v1.4).
+  void setCrop(DraftPhoto photo, data.PhotoCrop crop) {
+    _setCrop(photo, crop);
+    _notify();
+  }
+
+  void _setCrop(DraftPhoto photo, data.PhotoCrop crop) {
+    if (crop == _savedCrops[photo.ref]) {
+      _crops.remove(photo.ref);
+    } else {
+      _crops[photo.ref] = crop;
+    }
+  }
+
+  /// Removes [photo] from this person only (zdjecie.md C1'); others on it keep it. Its crop goes with the
+  /// link.
   void remove(DraftPhoto photo) {
     if (!_items.remove(photo)) return;
+    _crops.remove(photo.ref);
     _notify();
   }
 
@@ -158,6 +191,7 @@ class PersonPhotosDraft extends ChangeNotifier {
             for (final MapEntry<data.PhotoRef, Set<int>> e in _others.entries)
               e.key: {...e.value},
           },
+          crops: {..._crops},
         )
       : null;
 

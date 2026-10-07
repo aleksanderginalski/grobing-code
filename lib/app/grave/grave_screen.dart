@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/graves.dart';
-import '../../data/photos.dart' show gravePhotoPath;
+import '../../data/photos.dart' show PhotoCrop, gravePhotoPath;
 import '../dates.dart';
 import '../photo/photo_picker.dart';
 import '../photo/photo_source_sheet.dart';
 import '../photo/photo_viewer_screen.dart';
 import '../photo/photos.dart';
+import '../photo/profile_circle.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
@@ -520,7 +521,7 @@ class _PersonCard extends StatelessWidget {
             child: Row(
               children: [
                 if (photo case final File file) ...[
-                  _ProfileThumbnail(file: file),
+                  _ProfileThumbnail(file: file, crop: person.profileCrop),
                   const SizedBox(width: 12),
                 ],
                 Expanded(
@@ -565,33 +566,27 @@ class _PersonCard extends StatelessWidget {
   );
 }
 
-/// Element 5 (v4): the profile photo in a 40 dp circle, cut from the middle, decoded at its size; no
-/// label of its own — the card's text describes the card (style-b.md rule 14). A file that cannot be read
-/// shows the broken-image icon on the background.
+/// Element 5 (v4.1): the profile photo in a 40 dp circle, in its link's crop or cut from the middle
+/// (ISSUE-018); no label of its own — the card's text describes the card (style-b.md rule 14). A file that
+/// cannot be read shows the broken-image icon on the background.
 class _ProfileThumbnail extends StatelessWidget {
-  const _ProfileThumbnail({required this.file});
+  const _ProfileThumbnail({required this.file, this.crop});
 
   final File file;
-
-  static const double _size = 40;
+  final PhotoCrop? crop;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
-    child: ClipOval(
-      child: SizedBox.square(
-        dimension: _size,
-        child: Image.file(
-          file,
-          fit: BoxFit.cover,
-          cacheWidth: coverDecodeWidth(context, _size),
-          errorBuilder: (_, _, _) => const ColoredBox(
-            color: GrobingColors.background,
-            child: Icon(
-              Icons.broken_image_outlined,
-              size: 20,
-              color: GrobingColors.textMuted,
-            ),
-          ),
+    child: ProfileCircle(
+      file: file,
+      crop: crop,
+      size: 40,
+      unreadable: const ColoredBox(
+        color: GrobingColors.background,
+        child: Icon(
+          Icons.broken_image_outlined,
+          size: 20,
+          color: GrobingColors.textMuted,
         ),
       ),
     ),

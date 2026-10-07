@@ -168,6 +168,7 @@ class BuriedPerson {
     required this.death,
     required this.burial,
     this.profilePhotoPath,
+    this.profileCrop,
   });
 
   final int id;
@@ -183,6 +184,9 @@ class BuriedPerson {
   /// The person's profile photo — their first photo link — relative to the media directory, or null
   /// (05_DESIGN/grob.md v4, element 5; ISSUE-017).
   final String? profilePhotoPath;
+
+  /// The crop of that link, or null — the circle shows the middle (05_DESIGN/grob.md v4.1; ISSUE-018).
+  final PhotoCrop? profileCrop;
 
   /// What the correction form starts from.
   PersonEntry get entry => PersonEntry(
@@ -350,7 +354,7 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
             ..orderBy([OrderingTerm.asc(db.burials.id)]))
           .map((r) => r.readTable(db.persons))
           .get();
-  final Map<int, String> profiles = await profilePhotoPaths(db, [
+  final Map<int, ProfilePhoto> profiles = await profilePhotos(db, [
     for (final Person p in persons) p.id,
   ]);
   return GraveDetail(
@@ -375,7 +379,8 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
           birth: await _fact(db, p.id, EventType.birth),
           death: await _fact(db, p.id, EventType.death),
           burial: await _fact(db, p.id, EventType.burial),
-          profilePhotoPath: profiles[p.id],
+          profilePhotoPath: profiles[p.id]?.relativePath,
+          profileCrop: profiles[p.id]?.crop,
         ),
     ],
     photoPath: await gravePhotoPath(db, graveId),

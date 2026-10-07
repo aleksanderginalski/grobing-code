@@ -193,17 +193,19 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
         );
 
     // The mother has a portrait (her profile photo) and a "wedding photo" she shares with the father —
-    // one file, two links, his first and only one (ISSUE-017).
+    // one file, two links, his first and only one (ISSUE-017). Each link to the wedding photo has its own
+    // crop on its own drawn head (ISSUE-018): the father's profile shows him, not the middle between
+    // them, and the mother's crop shows if she makes it her profile.
     final int portrait = await db
         .into(db.media)
         .insert(MediaCompanion.insert(relativePath: portraitPath));
     final int wedding = await db
         .into(db.media)
         .insert(MediaCompanion.insert(relativePath: weddingPath));
-    for (final (int person, int media, int position) in [
-      (mother, portrait, 0),
-      (mother, wedding, 1),
-      (father, wedding, 0),
+    for (final (int person, int media, int position, int? cropLeft) in [
+      (mother, portrait, 0, null),
+      (mother, wedding, 1, _headCropLeft(0)),
+      (father, wedding, 0, _headCropLeft(1)),
     ]) {
       await db
           .into(db.personMedia)
@@ -212,8 +214,19 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
               personId: person,
               mediaId: media,
               position: position,
+              cropLeft: Value(cropLeft),
+              cropTop: Value(cropLeft == null ? null : _headCropTop),
+              cropWidth: Value(cropLeft == null ? null : _headCropSide),
+              cropHeight: Value(cropLeft == null ? null : _headCropSide),
             ),
           );
     }
   });
 }
+
+// A square around head [index] of the two on the drawn wedding photo (`fictionalPeoplePng`, 480 × 360,
+// heads at a third and two thirds of the width, at 36 % of the height).
+const int _headCropSide = 160;
+const int _headCropTop = 50;
+int _headCropLeft(int index) =>
+    (480 * (index + 1) / 3).round() - _headCropSide ~/ 2;

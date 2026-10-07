@@ -13,8 +13,10 @@ import '../../support/photo_fakes.dart';
 
 // ISSUE-017 — a person's photos while the form is open (05_DESIGN/zdjecia-osoby.md D1): nothing is
 // written until "Zapisz", "Odrzuć" drops the prepared files, a photo that cannot be read is counted and
-// the others stay, the profile and the people on a photo change only the draft. Pictures drawn in code,
-// made-up people only (family-data.md).
+// the others stay, the profile and the people on a photo change only the draft. ISSUE-018: the crop of a
+// link — loaded with the saved photos, set with the profile or alone, a change only of the draft, no
+// change when put back, gone with a removed photo. Pictures drawn in code, made-up people only
+// (family-data.md).
 
 void main() {
   late Directory tmp;
@@ -149,6 +151,74 @@ void main() {
       expect(await photoPeopleIds(db, (second.ref as SavedPhoto).mediaId), [
         jan,
       ]);
+      draft.dispose();
+    },
+  );
+
+  test(
+    'ISSUE-018 — the crop: loaded with the saved photos; set with the profile ("Ustaw jako profilowe" → '
+    '"Gotowe") or alone ("Popraw kadr"); the same crop again is no change; a removed photo takes its crop; '
+    '"Zapisz" carries only crops set in this edit',
+    () async {
+      const PhotoCrop face = PhotoCrop(
+        left: 10,
+        top: 20,
+        width: 200,
+        height: 200,
+      );
+      const PhotoCrop other = PhotoCrop(
+        left: 50,
+        top: 0,
+        width: 150,
+        height: 150,
+      );
+      final PersonPhotosDraft first = PersonPhotosDraft(
+        database: db,
+        photos: photos,
+        personId: jan,
+      );
+      await first.addPicked([picked(1), picked(2)]);
+      first.setCrop(first.items.first, face);
+      await photos.writeWithPersonPhotos<void>(
+        db,
+        first.edits(),
+        (also) => updatePersonEntry(
+          db,
+          jan,
+          const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+          alsoWrite: also,
+        ),
+      );
+      first.dispose();
+
+      final PersonPhotosDraft draft = PersonPhotosDraft(
+        database: db,
+        photos: photos,
+        personId: jan,
+      );
+      await draft.load();
+      final DraftPhoto profile = draft.items[0];
+      final DraftPhoto second = draft.items[1];
+      expect(draft.cropOf(profile), face);
+      expect(draft.cropOf(second), isNull);
+      expect(draft.hasChanges, isFalse);
+
+      draft.setCrop(profile, face);
+      expect(draft.hasChanges, isFalse, reason: 'the saved crop again');
+
+      draft.setProfile(second, crop: other);
+      expect(draft.profile, second);
+      expect(draft.cropOf(second), other);
+      expect(draft.cropOf(profile), face, reason: 'its own crop stays');
+      expect(draft.edits()!.crops, {second.ref: other});
+
+      draft.remove(second);
+      expect(draft.cropOf(second), isNull);
+      expect(draft.edits()!.crops, isEmpty);
+      expect(draft.hasChanges, isTrue, reason: 'a photo removed');
+
+      // Nothing of this reached the database.
+      expect((await personPhotos(db, jan)).map((p) => p.crop), [face, null]);
       draft.dispose();
     },
   );

@@ -78,7 +78,7 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('4'),
+        find.text('5'),
         findsOneWidget,
       ); // the schema version; every count is 0
       expect(find.text('Osoby'), findsOneWidget);
@@ -102,10 +102,17 @@ void main() {
       // persons, burials, photo rows, person links and photo files (ISSUE-017: a gravestone, a portrait
       // and a shared "wedding photo")
       expect(find.text('3'), findsNWidgets(5));
+      // The schema version, 5 since ISSUE-018 — read in its own row: a count may be 5 too.
       expect(
-        find.text('4'),
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Wersja schematu'),
+            matching: find.byType(Row),
+          ),
+          matching: find.text('5'),
+        ),
         findsOneWidget,
-      ); // the schema version, 4 since ISSUE-017
+      );
 
       await cleanUp(tester);
     },
