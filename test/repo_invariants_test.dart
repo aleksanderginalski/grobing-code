@@ -136,4 +136,23 @@ void main() {
       expect(manifest, isNot(contains('android.permission.INTERNET"')));
     },
   );
+
+  // ISSUE-015 AC-5: the cemeteries from OpenStreetMap are a derived database under ODbL — the
+  // repository says so next to the file and keeps the script that rebuilds it.
+  test(
+    'the cemetery database ships with its ODbL licence, origin and rebuild script (ISSUE-015 AC-5)',
+    () {
+      final String pubspec = File('pubspec.yaml').readAsStringSync();
+      expect(pubspec, contains('- assets/cemeteries/poland_cemeteries.json'));
+      expect(pubspec, contains('ODbL'));
+      final String readme = File('README.md').readAsStringSync();
+      expect(readme, contains('## Baza cmentarzy'));
+      expect(readme, contains('ODbL 1.0, © autorzy OpenStreetMap'));
+      expect(readme, contains('openstreetmap.org/copyright'));
+      expect(
+        File('tool/cemeteries/extract_cemeteries.dart').existsSync(),
+        isTrue,
+      );
+    },
+  );
 }

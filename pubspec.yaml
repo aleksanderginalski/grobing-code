@@ -50,3 +50,7 @@ flutter:
     # Outline, rivers and cities of Poland from Natural Earth (public domain); rebuilt by
     # tool/map/extract_poland.dart (README → Mapa).
     - assets/map/poland.json
+    # Cemeteries of Poland from OpenStreetMap (ISSUE-015) — © autorzy OpenStreetMap, ODbL 1.0: a derived
+    # database under the same licence, attribution shown under the results; rebuilt by
+    # tool/cemeteries/extract_cemeteries.dart (README → Baza cmentarzy).
+    - assets/cemeteries/poland_cemeteries.json

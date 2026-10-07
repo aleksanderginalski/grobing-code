@@ -15,6 +15,8 @@ class MainActivity : FlutterActivity() {
             startActivityForResult(intent, requestCode)
         }
         background = BackgroundChannel(applicationContext, messenger)
+        // From the activity, so "back" in Maps returns to Grobing.
+        ExternalLinks(messenger) { intent -> startActivity(intent) }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

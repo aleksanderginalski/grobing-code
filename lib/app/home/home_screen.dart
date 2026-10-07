@@ -10,10 +10,12 @@ import '../../backup/restore_service.dart';
 import '../../data/cemeteries.dart';
 import '../../data/database.dart';
 import '../data_state_screen.dart';
+import '../external_link.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import 'cemetery_base.dart';
 import 'cemetery_card.dart';
 import 'cemetery_form.dart';
 import 'cemetery_search.dart';
@@ -33,6 +35,8 @@ class HomeScreen extends StatefulWidget {
     this.restore,
     this.onRestored,
     this.mapData,
+    this.base,
+    this.openUrl = openExternalUrl,
   });
 
   final GrobingDatabase database;
@@ -43,6 +47,13 @@ class HomeScreen extends StatefulWidget {
 
   /// The map, when already loaded (tests); otherwise read from the bundled asset.
   final PolandMapData? mapData;
+
+  /// The cemeteries of Poland, when already loaded (tests); otherwise read from the bundled asset on
+  /// the first entry into the search (ISSUE-015 D5).
+  final Future<CemeteryBase>? base;
+
+  /// Opens the satellite photo in another app (tests replace it).
+  final Future<bool> Function(String url) openUrl;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -56,6 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ? Future.value(widget.mapData)
       : PolandMapData.load();
   final MapController _map = MapController();
+
+  /// The database of cemeteries: read once, on the first entry into the search, and kept.
+  Future<CemeteryBase>? _base;
 
   /// The ids of the open sheet: one cemetery, several (a group), or none.
   List<int> _selected = const [];
@@ -125,10 +139,28 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   Future<void> _openSearch() async {
+    // The preview draws the map too; a map that cannot be read leaves the card working.
+    final PolandMapData? map = await _mapData.then<PolandMapData?>(
+      (m) => m,
+      onError: (Object _) => null,
+    );
+    if (!mounted) return;
     final SearchOutcome? outcome = await Navigator.of(context)
         .push<SearchOutcome>(
           MaterialPageRoute(
-            builder: (_) => CemeterySearchScreen(cemeteries: _current),
+            builder: (_) => CemeterySearchScreen(
+              cemeteries: _current,
+              base: _base ??= widget.base ?? CemeteryBase.load(),
+              saveFromBase: (cemetery, values) => addCemetery(
+                widget.database,
+                name: values.name,
+                locality: values.locality,
+                point: cemetery.point,
+              ),
+              mapData: map,
+              pins: _pins(),
+              openUrl: widget.openUrl,
+            ),
           ),
         );
     if (!mounted) return;
@@ -137,9 +169,21 @@ class _HomeScreenState extends State<HomeScreen> {
         _select([id], zoomIn: true);
       case AddByHand(:final String name):
         await _edit(null, name: name);
+      case AddedFromBase(:final int id, :final GeoPoint point):
+        _showSaved(id, point);
       case null:
         break;
     }
+  }
+
+  /// Quiet confirmation (style-b.md rule 10): the saved candle and its sheet.
+  void _showSaved(int id, GeoPoint? point) {
+    setState(() => _selected = [id]);
+    if (point == null) return;
+    final LatLng p = LatLng(point.lat, point.lon);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reveal(p, zoomIn: false);
+    });
   }
 
   /// Adding by hand ([cemetery] null) or correcting: the window, then the pick mode. Closing the pick
@@ -191,14 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
       if (saved == true && mounted) {
-        // Quiet confirmation (style-b.md rule 10): the saved candle and its sheet.
-        setState(() => _selected = [savedId!]);
-        if (currentPoint != null) {
-          final LatLng p = LatLng(currentPoint!.lat, currentPoint!.lon);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _reveal(p, zoomIn: false);
-          });
-        }
+        _showSaved(savedId!, currentPoint);
         return;
       }
     }

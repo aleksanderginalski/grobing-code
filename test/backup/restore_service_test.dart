@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show MigrationStrategy, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/app/home/cemetery_base.dart';
 import 'package:grobing/backup/age/age.dart';
 import 'package:grobing/backup/backup_archive.dart';
 import 'package:grobing/backup/backup_service.dart';
@@ -440,6 +441,59 @@ void main() {
           ('Cmentarz Wymyślony', const GeoPoint(51.0, 20.0)),
           ('Cmentarz Próbny', null),
         ]);
+      } finally {
+        await restored.close();
+      }
+    },
+  );
+
+  test(
+    'ISSUE-015 DoD — a cemetery added from the bundled database comes back from a backup with the '
+    "database's point and the corrected name",
+    () async {
+      final BaseCemetery powazki = CemeteryBase.fromJson(
+        File(CemeteryBase.asset).readAsStringSync(),
+      ).search('powazki').shown.firstWhere((c) => c.locality == 'Warszawa');
+      final Directory from = Directory('${tmp.path}/from-base')..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${from.path}/grobing.db')),
+      );
+      await addCemetery(
+        db,
+        name: 'Stare Powązki',
+        locality: powazki.locality,
+        point: powazki.point,
+      );
+      await db.customStatement('VACUUM INTO ?', ['${tmp.path}/from-base.db']);
+      await db.close();
+      final File backup = File('${tmp.path}/from-base.age');
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/from-base.db'),
+        mediaDir: Directory('${from.path}/media'),
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+      final String uri = upload('from-base.age', backup.readAsBytesSync());
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+      await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+        backupUri: uri,
+        keyUri: FakeDocumentStore.uriOf('klucz.age'),
+        passphrase: _passphrase,
+      );
+
+      final GrobingDatabase restored = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      try {
+        final CemeterySummary c = (await watchCemeteries(
+          restored,
+        ).first).single;
+        expect(
+          (c.name, c.locality, c.point),
+          ('Stare Powązki', 'Warszawa', powazki.point),
+        );
       } finally {
         await restored.close();
       }

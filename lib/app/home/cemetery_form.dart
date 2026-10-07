@@ -6,16 +6,22 @@ import '../theme.dart';
 typedef CemeteryFormValues = ({String name, String? locality});
 
 /// The window "Nowy cmentarz" / "Popraw cmentarz" (05_DESIGN/cmentarze.md, element 15): name and an
-/// optional locality, then "Dalej" to the pick mode. Null when cancelled.
+/// optional locality, then "Dalej" to the pick mode — or, for a cemetery from the database, whose point
+/// is known, "Zapisz" (ISSUE-015). Null when cancelled.
 Future<CemeteryFormValues?> showCemeteryForm(
   BuildContext context, {
   required String title,
   String name = '',
   String? locality,
+  bool fromBase = false,
 }) => showDialog<CemeteryFormValues>(
   context: context,
-  builder: (_) =>
-      _CemeteryForm(title: title, name: name, locality: locality ?? ''),
+  builder: (_) => _CemeteryForm(
+    title: title,
+    name: name,
+    locality: locality ?? '',
+    fromBase: fromBase,
+  ),
 );
 
 class _CemeteryForm extends StatefulWidget {
@@ -23,11 +29,13 @@ class _CemeteryForm extends StatefulWidget {
     required this.title,
     required this.name,
     required this.locality,
+    required this.fromBase,
   });
 
   final String title;
   final String name;
   final String locality;
+  final bool fromBase;
 
   @override
   State<_CemeteryForm> createState() => _CemeteryFormState();
@@ -97,6 +105,9 @@ class _CemeteryFormState extends State<_CemeteryForm> {
             },
             decoration: InputDecoration(
               labelText: 'Nazwa',
+              // The database often has no name, or only "Cmentarz parafialny": the one you use goes
+              // here (D20).
+              hintText: widget.fromBase ? 'np. Cmentarz parafialny' : null,
               // Never colour alone (SC 1.4.1): the message comes with an icon.
               error: _nameMissing
                   ? const Row(
@@ -135,7 +146,10 @@ class _CemeteryFormState extends State<_CemeteryForm> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Anuluj'),
         ),
-        TextButton(onPressed: _next, child: const Text('Dalej')),
+        TextButton(
+          onPressed: _next,
+          child: Text(widget.fromBase ? 'Zapisz' : 'Dalej'),
+        ),
       ],
     );
   }

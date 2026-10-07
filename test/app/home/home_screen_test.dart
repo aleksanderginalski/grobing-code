@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
@@ -7,6 +8,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/data_state_screen.dart';
 import 'package:grobing/app/grobing_app.dart';
+import 'package:grobing/app/home/base_preview_screen.dart';
+import 'package:grobing/app/home/cemetery_base.dart';
+import 'package:grobing/app/home/cemetery_search.dart';
 import 'package:grobing/app/home/home_screen.dart';
 import 'package:grobing/app/home/pick_point_screen.dart';
 import 'package:grobing/app/home/poland_map_data.dart';
@@ -25,10 +29,50 @@ import '../../support/backup_fakes.dart';
 // others in the search · AC-3 search by name or locality, no hits → "Dodaj ręcznie" · AC-4 (narrowed,
 // D5) the sheet's counts · AC-5 "Stan danych" under the gear, no start screen · correcting with the
 // edit icon (D6) · adding by hand through the window and the pick mode. Made-up cemeteries only.
+//
+// ISSUE-015 — adding from the bundled database: results with locality and voivodeship, the OSM
+// attribution, the preview with its link (nothing leaves before the tap), the window with "Zapisz",
+// "Dodany", the limit of 30, loading and error states. The database here is a handful of public
+// cemeteries (Powązki, Rakowicki) and made-up ones; the real extract is tested in
+// cemetery_base_test.dart.
 
 final PolandMapData _map = PolandMapData.fromJson(
   File(PolandMapData.asset).readAsStringSync(),
 );
+
+const GeoPoint _powazki = GeoPoint(52.255, 20.984);
+
+/// Public cemeteries as the extract describes them, and one made-up without a name.
+final CemeteryBase _base = CemeteryBase(const [
+  BaseCemetery(
+    name: 'Cmentarz Powązkowski',
+    otherNames: ['Stare Powązki'],
+    point: _powazki,
+    kind: 'rzymskokatolicki',
+    locality: 'Warszawa',
+    district: 'Żoliborz',
+    voivodeship: 'mazowieckie',
+  ),
+  BaseCemetery(
+    name: 'Cmentarz Powązkowski',
+    point: GeoPoint(50.97, 15.65),
+    locality: 'Marczów',
+    voivodeship: 'dolnośląskie',
+  ),
+  BaseCemetery(
+    name: 'Cmentarz Rakowicki',
+    point: GeoPoint(50.0745, 19.952),
+    locality: 'Kraków',
+    district: 'Krowodrza',
+    voivodeship: 'małopolskie',
+  ),
+  BaseCemetery(
+    name: '',
+    point: GeoPoint(52.5, 19.5),
+    locality: 'Wymyślin',
+    voivodeship: 'mazowieckie',
+  ),
+]);
 
 /// Lets drift's stream and the map settle between frames (widget tests run in a fake clock).
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
@@ -61,7 +105,11 @@ void main() {
     });
   }
 
-  Future<void> pumpHome(WidgetTester tester) async {
+  Future<void> pumpHome(
+    WidgetTester tester, {
+    Future<CemeteryBase>? base,
+    Future<bool> Function(String url)? openUrl,
+  }) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -77,6 +125,8 @@ void main() {
             FakeDocumentStore(Directory('${tmp.path}/drive')),
           ),
           mapData: _map,
+          base: base ?? Future.value(_base),
+          openUrl: openUrl ?? (_) async => true,
         ),
       ),
     );
@@ -192,7 +242,12 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'cmentarz leśny');
       await tester.pump();
-      expect(find.text('Nie ma cmentarza „cmentarz leśny”.'), findsOneWidget);
+      expect(
+        find.text(
+          'Nie ma cmentarza „cmentarz leśny” ani u Ciebie, ani w bazie.',
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ręcznie'));
       await tester.pumpAndSettle();
       expect(find.text('Nowy cmentarz'), findsOneWidget);
@@ -390,6 +445,283 @@ void main() {
       await tester.runAsync(() => addCemetery(db, name: 'Cmentarz Wymyślony'));
       await _pumpUntil(tester, () => background.requests >= 1);
       await cleanUp(tester);
+    },
+  );
+
+  Future<void> search(WidgetTester tester, String text) async {
+    await tester.tap(find.text('Szukaj cmentarza'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), text);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'ISSUE-015 AC-1, AC-2, AC-5: results from the database with locality, district, voivodeship and '
+    'denomination; the OSM attribution; "Nie ma go w bazie — dodaj ręcznie"',
+    (tester) async {
+      await pumpHome(tester);
+      await search(tester, 'powazki');
+
+      expect(find.text('Z bazy cmentarzy'), findsOneWidget);
+      expect(find.text('Cmentarz Powązkowski'), findsNWidgets(2));
+      expect(
+        find.text(
+          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Marczów ·\u00A0woj. dolnośląskie'), findsOneWidget);
+      expect(find.text(osmAttribution), findsOneWidget);
+      expect(osmAttribution, 'Dane: © autorzy OpenStreetMap (ODbL)');
+      expect(
+        find.widgetWithText(TextButton, 'Nie ma go w bazie — dodaj ręcznie'),
+        findsOneWidget,
+      );
+
+      // By its other name, and an unnamed one by its locality.
+      await tester.enterText(find.byType(TextField), 'stare powazki');
+      await tester.pumpAndSettle();
+      expect(find.text('Cmentarz Powązkowski'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'wymyslin');
+      await tester.pumpAndSettle();
+      expect(find.text('Cmentarz bez nazwy'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-015 AC-3: the preview — outlined candle and card; nothing is opened before the tap; the '
+    'tap opens the satellite photo at the point; no app → a message; back → the same results',
+    (tester) async {
+      final List<String> opened = [];
+      await pumpHome(
+        tester,
+        openUrl: (url) async {
+          opened.add(url);
+          return false;
+        },
+      );
+      await search(tester, 'powazki');
+      await tester.tap(
+        find.text(
+          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BasePreviewScreen), findsOneWidget);
+      expect(find.text('Cmentarz z bazy'), findsOneWidget);
+      expect(
+        pins(tester).where((p) => p.look == PinLook.outlined),
+        hasLength(1),
+      );
+      expect(
+        find.text('Warszawa (Żoliborz) ·\u00A0woj. mazowieckie'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'),
+        findsOneWidget,
+      );
+      expect(opened, isEmpty);
+
+      await tester.tap(find.text('Zobacz zdjęcie satelitarne'));
+      await tester.pumpAndSettle();
+      expect(opened, hasLength(1));
+      expect(opened.single, contains('center=52.25500,20.98400'));
+      expect(opened.single, contains('basemap=satellite'));
+      expect(find.text('Nie ma aplikacji, która to otworzy.'), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(BasePreviewScreen), findsNothing);
+      expect(find.widgetWithText(TextField, 'powazki'), findsOneWidget);
+      expect(find.text('Z bazy cmentarzy'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-015 AC-4: adding from the database — the window with its name and locality and "Zapisz", '
+    'a corrected name saved with the point from the database, the candle and its sheet; then '
+    '"Dodany" leads to that sheet',
+    (tester) async {
+      await pumpHome(tester);
+      await search(tester, 'powazki');
+      await tester.tap(
+        find.text(
+          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nowy cmentarz'), findsOneWidget);
+      expect(
+        find.widgetWithText(TextField, 'Cmentarz Powązkowski'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TextField, 'Warszawa'), findsOneWidget);
+      expect(find.text('Dalej'), findsNothing);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Cmentarz Powązkowski'),
+        'Stare Powązki',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+      await _pumpUntil(
+        tester,
+        () => find.text('0 grobów · 0 osób').evaluate().isNotEmpty,
+      );
+      // The window's closing animation still holds the typed name.
+      await tester.pumpAndSettle();
+
+      final CemeterySummary saved = (await tester.runAsync(
+        () => watchCemeteries(db).first,
+      ))!.single;
+      expect(
+        (saved.name, saved.locality, saved.point),
+        ('Stare Powązki', 'Warszawa', _powazki),
+      );
+      expect(pins(tester).single.look, PinLook.selected);
+      expect(find.text('Stare Powązki'), findsOneWidget);
+
+      await search(tester, 'powazki');
+      expect(find.text('Dodany'), findsOneWidget);
+      await tester.tap(find.text('Dodany'));
+      await _pumpUntil(
+        tester,
+        () => find.byType(CemeterySearchScreen).evaluate().isEmpty,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Stare Powązki'), findsOneWidget);
+      expect(find.text('0 grobów · 0 osób'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-015 D8: more than 30 hits → 30 shown and "Pokazuję 30 z 35 — dopisz miejscowość."',
+    (tester) async {
+      await pumpHome(
+        tester,
+        base: Future.value(
+          CemeteryBase([
+            for (int i = 0; i < 35; i++)
+              BaseCemetery(
+                name: 'Cmentarz Wymyślony $i',
+                point: const GeoPoint(52.0, 20.0),
+                locality: 'Wymyślin',
+                voivodeship: 'mazowieckie',
+              ),
+          ]),
+        ),
+      );
+      await search(tester, 'wymyslony');
+      await tester.scrollUntilVisible(
+        find.text('Pokazuję 30 z 35 — dopisz miejscowość.'),
+        400,
+        // The list's own Scrollable, not the text field's.
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        find.text('Pokazuję 30 z 35 — dopisz miejscowość.'),
+        findsOneWidget,
+      );
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-015 States: a slow database shows a thin progress bar; a broken one says so, while your '
+    'cemeteries and adding by hand still work',
+    (tester) async {
+      await tester.runAsync(
+        () => addCemetery(db, name: 'Cmentarz Wymyślony', locality: 'Wymyślin'),
+      );
+      final Completer<CemeteryBase> slow = Completer();
+      await pumpHome(tester, base: slow.future);
+      await tester.tap(find.text('Szukaj cmentarza'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'wymyslin');
+      await tester.pump();
+      slow.completeError(StateError('the bundled file is damaged'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.text('Cmentarz Wymyślony'), findsOneWidget);
+      expect(
+        find.text('Baza cmentarzy jest niedostępna — dodaj ręcznie.'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TextButton, 'Dodaj ręcznie'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-015 (ui review): the window opens over the preview — "Anuluj" stays there; a failed save '
+    'says so with its icon and the window comes back with what was typed',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      int attempts = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: GrobingTheme.dark,
+          home: BasePreviewScreen(
+            cemetery: _base.search('rakowicki').shown.single,
+            mapData: _map,
+            onSave: (values) async {
+              attempts++;
+              throw StateError('disk full');
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Anuluj'));
+      await tester.pumpAndSettle();
+      expect(find.byType(BasePreviewScreen), findsOneWidget);
+      expect(find.text('Nowy cmentarz'), findsNothing);
+      expect(attempts, 0);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Cmentarz Rakowicki'),
+        'Cmentarz na Rakowicach',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+      await tester.pumpAndSettle();
+      expect(attempts, 1);
+      expect(find.byType(BasePreviewScreen), findsOneWidget);
+      expect(
+        find.text('Nie udało się zapisać. Spróbuj jeszcze raz.'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'));
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(TextField, 'Cmentarz na Rakowicach'),
+        findsOneWidget,
+      );
     },
   );
 }

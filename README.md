@@ -91,6 +91,43 @@ kraju, rzeki i 9 miast są w aplikacji, w `assets/map/poland.json` (ok. 37 KB).
 - **Znicze, które nachodzą na siebie** (cel dotyku 48 dp), łączą się w jeden znicz z liczbą
   (`lib/app/home/pin_groups.dart`). Ikona znicza jest jedna na całą aplikację: `lib/app/widgets/candle.dart`.
 
+## Baza cmentarzy
+
+Cmentarz dodaje się z wbudowanej bazy cmentarzy Polski (ISSUE-015): `assets/cemeteries/poland_cemeteries.json`
+(ok. 1,9 MB, ok. 16 tys. cmentarzy). Działa bez sieci; aplikacja dalej nie ma uprawnienia `INTERNET`.
+- **Licencja: ODbL 1.0, © autorzy OpenStreetMap** ([prawa autorskie OSM](https://www.openstreetmap.org/copyright/pl)).
+  Plik jest bazą pochodną, więc obowiązuje go ta sama licencja (także w tym repozytorium). W aplikacji pod
+  wynikami jest podpis „Dane: © autorzy OpenStreetMap (ODbL)”. Nagłówek pliku (`source`, `license`,
+  `osmBase`) mówi, skąd i z którego dnia są dane. Województwa: Natural Earth 1:10m, domena publiczna.
+- **Odtworzenie:** `dart run tool/cemeteries/extract_cemeteries.dart <katalog>`, gdzie katalog ma trzy pliki
+  (nie ma ich w repo). Pobierz je z [Overpass API](https://overpass-api.de/api/interpreter) i z
+  [Natural Earth](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson):
+  - `osm_cemeteries.json`:
+    ```
+    [out:json][timeout:300];
+    area["ISO3166-1"="PL"][admin_level=2]->.pl;
+    (nwr["landuse"="cemetery"](area.pl); nwr["amenity"="grave_yard"](area.pl););
+    out tags center;
+    ```
+  - `osm_places.json`:
+    ```
+    [out:json][timeout:300];
+    area["ISO3166-1"="PL"][admin_level=2]->.pl;
+    node["place"~"^(city|town|village|hamlet|suburb)$"](area.pl);
+    out;
+    ```
+  - `ne_10m_admin_1_states_provinces.geojson`.
+
+  Obecny plik powstał z wyciągu OSM z 2026-10-06 (`osmBase` w nagłówku). Nowy wyciąg oznacza nową wersję
+  aplikacji; aktualizacji z sieci nie ma.
+- **Miejscowość** w wyniku to najbliższa miejscowość z uwzględnieniem rangi (zasięg: miasto 12 km, miasteczko
+  5 km, wieś 2,5 km, przysiółek 1,5 km). W mieście i miasteczku w nawiasie jest dzielnica bliżej niż 2,5 km.
+  Pozostałe miejscowości w zasięgu są słowami do szukania. Ten sam cmentarz zmapowany dwa razy (ta sama
+  nazwa i miejscowość, mniej niż 300 m) jest scalany.
+- **Zdjęcie satelitarne** otwiera się w innej aplikacji (Mapy Google, bez nich przeglądarka) adresem z
+  `basemap=satellite`, tylko po dotknięciu (`lib/app/external_link.dart`, kanał `grobing/external` w
+  `ExternalLinks.kt`). `geo:` nie umie wybrać warstwy satelitarnej.
+
 ## Kopia
 
 Jeden zaszyfrowany plik w Dysku autora, nadpisywany przy każdej kopii (ADR-004 i ISSUE-008 w vaulcie).

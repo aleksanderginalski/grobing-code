@@ -27,6 +27,8 @@ class PolandMap extends StatelessWidget {
     this.onPins,
     this.onMapTap,
     this.placed,
+    this.placedLook = PinLook.selected,
+    this.focus,
     this.fitPadding = const EdgeInsets.all(16),
   });
 
@@ -41,8 +43,21 @@ class PolandMap extends StatelessWidget {
   final void Function(List<int> ids)? onPins;
   final void Function(LatLng point)? onMapTap;
 
-  /// Pick mode: the candle set by a tap.
+  /// Pick mode: the candle set by a tap. The preview of a cemetery from the database: its candle.
   final LatLng? placed;
+
+  /// How [placed] looks: selected in pick mode, outlined in the preview — a cemetery not added yet
+  /// (style-b.md rule 13; 05_DESIGN/cmentarze.md D19).
+  final PinLook placedLook;
+
+  /// Start zoomed in on this point, [focusZoomIn] steps past the whole of Poland, instead of the whole
+  /// of Poland (the preview, element 14).
+  final LatLng? focus;
+
+  /// 2^1.5 ≈ 2.8× the whole of Poland, about 240 km across: one of the nine cities is in the frame for
+  /// 96% of the cemeteries in the database, so the map says where in Poland the cemetery is. At 2³
+  /// (84 km) it was 29% — a lone candle on plain land (ui review, measured on the extract).
+  static const double focusZoomIn = 1.5;
 
   /// Margins of the whole of Poland at the least zoom. The home screen keeps the sheet's height free
   /// at the bottom, so Poland stands under the search, above the sheet (ui review, 2026-10-06).
@@ -68,12 +83,11 @@ class PolandMap extends StatelessWidget {
           // With a MapController, flutter_map checks the constraint against a camera built from these
           // before it applies the fit; its defaults (50.5° N, 30.5° E — Kyiv) are outside Poland and
           // fail that check (seen on the emulator, ISSUE-014).
-          initialCenter: data.bounds.center,
-          initialZoom: minZoom,
-          initialCameraFit: CameraFit.bounds(
-            bounds: data.bounds,
-            padding: fitPadding,
-          ),
+          initialCenter: focus ?? data.bounds.center,
+          initialZoom: focus == null ? minZoom : minZoom + focusZoomIn,
+          initialCameraFit: focus != null
+              ? null
+              : CameraFit.bounds(bounds: data.bounds, padding: fitPadding),
           minZoom: minZoom,
           maxZoom: minZoom + maxZoomIn,
           // Not `contain`: on a portrait screen showing the whole width of Poland the view is taller
@@ -117,7 +131,10 @@ class PolandMap extends StatelessWidget {
                   width: CandlePin.selectedSize.width,
                   height: CandlePin.selectedSize.height,
                   alignment: Alignment.topCenter,
-                  child: const CandlePin(look: PinLook.selected),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: CandlePin(look: placedLook),
+                  ),
                 ),
               ],
             ),

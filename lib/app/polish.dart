@@ -17,26 +17,28 @@ String peopleLabel(int n) => '$n ${plural(n, 'osoba', 'osoby', 'osób')}';
 String cemeteriesLabel(int n) =>
     '$n ${plural(n, 'cmentarz', 'cmentarze', 'cmentarzy')}';
 
-const Map<String, String> _plain = {
-  'ą': 'a',
-  'ć': 'c',
-  'ę': 'e',
-  'ł': 'l',
-  'ń': 'n',
-  'ó': 'o',
-  'ś': 's',
-  'ź': 'z',
-  'ż': 'z',
+/// Polish lower-case letters → their plain letter, by UTF-16 code unit (all in one unit).
+const Map<int, int> _plain = {
+  0x0105: 0x61, // ą → a
+  0x0107: 0x63, // ć → c
+  0x0119: 0x65, // ę → e
+  0x0142: 0x6C, // ł → l
+  0x0144: 0x6E, // ń → n
+  0x00F3: 0x6F, // ó → o
+  0x015B: 0x73, // ś → s
+  0x017A: 0x7A, // ź → z
+  0x017C: 0x7A, // ż → z
 };
 
 /// Lower case without Polish diacritics: "Łódź" → "lodz". Typing "ł" or "ź" on a phone keyboard needs
-/// a long press, so the search does not ask for them.
+/// a long press, so the search does not ask for them. By code unit: the cemetery database folds about
+/// 16 thousand names at its first use (ISSUE-015 D5, measured).
 String fold(String s) {
-  final StringBuffer out = StringBuffer();
-  for (final String ch in s.toLowerCase().split('')) {
-    out.write(_plain[ch] ?? ch);
+  final List<int> units = s.toLowerCase().codeUnits.toList();
+  for (int i = 0; i < units.length; i++) {
+    if (units[i] >= 0xF3) units[i] = _plain[units[i]] ?? units[i];
   }
-  return out.toString();
+  return String.fromCharCodes(units);
 }
 
 /// What a query is matched with: its words, folded, and those of 5 letters or more without the last
