@@ -31,6 +31,29 @@ flutter test
 flutter run            # debug — emulator albo telefon testowy
 ```
 
+## Testy
+
+`flutter test` uruchamia wszystko. Testy ekranów, które czytają bazę `drift`, mają trzy pułapki. Żadna nie daje
+błędu — przebieg **wisi bez końca** (ISSUE-014, ISSUE-012):
+
+- **Strumień drift i fałszywy zegar.** Test widżetu biegnie w fałszywym czasie, a drift zamyka zapytanie
+  strumieniowe na timerze w tym czasie. `db.close()` w `tester.runAsync` przy wciąż podpiętym ekranie czeka na
+  timer, który nie ruszy. Przed zamknięciem bazy zdejmij ekran:
+  `await tester.pumpWidget(const SizedBox()); await tester.pump(const Duration(seconds: 1));`.
+- **Zapis albo odczyt bazy w `tester.runAsync` przy podpiętym ekranie.** Strumień ekranu ponawia zapytanie w
+  strefie fałszywego zegara i trzyma blokadę bazy, więc `runAsync` wisi. Wzorzec `leaveScreen`
+  (`test/app/grave/grave_screens_test.dart`): ekran zdjęty jak wyżej → `runAsync` z zapisem → ekran podpięty od
+  nowa.
+- **Czekanie na pliki i bazę.** Biegną w prawdziwym czasie, a `pumpAndSettle` na nie nie czeka. Wzorzec
+  `_pumpUntil` w testach ekranów: na zmianę `runAsync(() => Future.delayed(10 ms))` i `pump(50 ms)`, aż warunek
+  się spełni (z limitem, po którym test pada).
+
+Po przerwanym albo zawieszonym przebiegu:
+
+- następny `flutter test` może paść na **zablokowanym `sqlite3.dll`**. Plik trzyma najpewniej proces testów z
+  poprzedniego przebiegu (`flutter_tester.exe` w Menedżerze zadań) — zamknij go i uruchom testy ponownie;
+- Flutter zapisuje wtedy **`flutter_01.log` w korzeniu repo**. `.gitignore` go pomija (`*.log`); można usunąć.
+
 ## Baza danych
 
 SQLite przez `drift` (ADR-005 w vaulcie). Paczka `sqlite3` **dołącza własny SQLite** (build hooks), więc

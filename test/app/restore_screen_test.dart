@@ -210,7 +210,7 @@ void main() {
       // The screen reads the restored data from disk: the same fingerprint.
       await _pumpUntil(tester, () => find.text(short).evaluate().isNotEmpty);
 
-      await tester.tap(find.byTooltip('Back'));
+      await tester.tap(find.byTooltip('Wstecz'));
       await tester.pumpAndSettle();
       expect(find.byType(HomeScreen), findsOneWidget);
 

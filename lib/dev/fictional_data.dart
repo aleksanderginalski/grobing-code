@@ -82,21 +82,28 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
           ),
         );
 
-    Future<int> person(String given, {String? birthSurname}) => db
-        .into(db.persons)
-        .insert(
-          PersonsCompanion.insert(
-            givenNames: Value('$given $batch'),
-            surname: const Value('Wymyślona'),
-            birthSurname: Value(birthSurname),
-            bio: const Value('Osoba wymyślona do testów.'),
-            bioSource: const Value('dane testowe'),
-          ),
-        );
+    // The surname in the form that fits the made-up name, as in the tests — "Wymyślona" on the father read
+    // as a declension error on the screens (ISSUE-021, D2). The model has no sex; a surname is just text.
+    Future<int> person(String given, String surname, {String? birthSurname}) =>
+        db
+            .into(db.persons)
+            .insert(
+              PersonsCompanion.insert(
+                givenNames: Value('$given $batch'),
+                surname: Value(surname),
+                birthSurname: Value(birthSurname),
+                bio: const Value('Osoba wymyślona do testów.'),
+                bioSource: const Value('dane testowe'),
+              ),
+            );
 
-    final int father = await person('Ojciec');
-    final int mother = await person('Matka', birthSurname: 'Zmyślona');
-    final int child = await person('Dziecko');
+    final int father = await person('Ojciec', 'Wymyślony');
+    final int mother = await person(
+      'Matka',
+      'Wymyślona',
+      birthSurname: 'Zmyślona',
+    );
+    final int child = await person('Dziecko', 'Wymyślone');
 
     // Two unions of the father, each a family with its claims (ISSUE-019, ADR-011): the first with the
     // mother, ended by a parting; the second with a partner and a child buried nowhere — the author's

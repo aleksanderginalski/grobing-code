@@ -219,6 +219,9 @@ class _BasePreviewScreenState extends State<BasePreviewScreen> {
   Widget _satelliteLink() => Semantics(
     link: true,
     label: 'Zobacz zdjęcie satelitarne, w innej aplikacji',
+    // excludeSemantics drops the InkWell's tap too: without its own the link is only read, never pressed
+    // by Switch Access or Voice Access (WCAG 2.2 SC 4.1.2; the pattern of ISSUE-017, ISSUE-021).
+    onTap: _openSatellite,
     excludeSemantics: true,
     child: InkWell(
       onTap: _openSatellite,

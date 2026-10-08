@@ -400,6 +400,9 @@ class _AddPhotoField extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     button: true,
     label: 'Dodaj zdjęcie nagrobka',
+    // excludeSemantics drops the InkWell's tap too: without its own the button is only read, never pressed
+    // by Switch Access or Voice Access (WCAG 2.2 SC 4.1.2; the pattern of ISSUE-017, ISSUE-021).
+    onTap: onTap,
     excludeSemantics: true,
     child: Material(
       color: Colors.transparent,

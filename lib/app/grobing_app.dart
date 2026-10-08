@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../backup/backup_service.dart';
 import '../backup/restore_service.dart';
@@ -123,6 +124,11 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       title: 'Grobing',
       debugShowCheckedModeBanner: false,
       theme: GrobingTheme.dark,
+      // Flutter's own texts — the back button, the text menu, closing a sheet for a screen reader — in
+      // Polish whatever the phone's language, like every screen of the app (ISSUE-021, D1).
+      locale: const Locale('pl'),
+      supportedLocales: const [Locale('pl')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       // No `home`: Flutter refuses it next to `onGenerateInitialRoutes`. The home screen (the map of
       // Poland, ISSUE-014) is the only named route; after a restore "Stan danych" opens on top of it
       // with the notice.

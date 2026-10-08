@@ -592,6 +592,38 @@ void main() {
   );
 
   testWidgets(
+    'ISSUE-021 AC-3: the satellite link is a link with a tap action, so Switch Access and Voice Access '
+    'can press it (WCAG 2.2 SC 4.1.2); the action opens the same address as a tap',
+    (tester) async {
+      final List<String> opened = [];
+      await pumpHome(
+        tester,
+        openUrl: (url) async {
+          opened.add(url);
+          return true;
+        },
+      );
+      await search(tester, 'powazki');
+      await tester.tap(
+        find.text('Warszawa (Żoliborz) · woj. mazowieckie · rzymskokatolicki'),
+      );
+      await tester.pumpAndSettle();
+
+      const String label = 'Zobacz zdjęcie satelitarne, w innej aplikacji';
+      expect(
+        tester.getSemantics(find.bySemanticsLabel(label)),
+        isSemantics(isLink: true, hasTapAction: true),
+      );
+      tester.semantics.tap(find.semantics.byLabel(label));
+      await tester.pumpAndSettle();
+      expect(opened, hasLength(1));
+      expect(opened.single, contains('center=52.25500,20.98400'));
+      expect(opened.single, contains('basemap=satellite'));
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
     'ISSUE-015 AC-4: adding from the database — the window with its name and locality and "Zapisz", '
     'a corrected name saved with the point from the database, the candle and its sheet; then '
     '"Dodany" leads to that sheet',

@@ -168,6 +168,28 @@ void main() {
     },
   );
 
+  testWidgets(
+    'ISSUE-021 AC-3 — "Dodaj zdjęcie nagrobka" is a button with a tap action, so Switch Access and Voice '
+    'Access can press it (WCAG 2.2 SC 4.1.2); the action opens the same sheet as a tap',
+    (tester) async {
+      await withGrave(tester);
+      await pumpScreen(
+        tester,
+        GraveScreen(database: db, graveId: grave, photos: photos),
+      );
+
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Dodaj zdjęcie nagrobka')),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      tester.semantics.tap(find.semantics.byLabel('Dodaj zdjęcie nagrobka'));
+      await _settle(tester);
+      expect(find.text('Zdjęcie nagrobka'), findsOneWidget);
+      expect(find.text('Wybierz z galerii'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
   testWidgets('closing the sheet or the picker changes nothing', (
     tester,
   ) async {

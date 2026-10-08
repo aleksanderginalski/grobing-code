@@ -16,6 +16,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Polish texts of Flutter's own widgets — "Wstecz", "Wklej", "Zamknij" (ISSUE-021, D1). Part of the SDK,
+  # not pub.dev: it moves with the pinned Flutter, never on its own; its intl was already in the lock.
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   # Database (ADR-005). drift and drift_dev are pinned as a pair: the pinned Flutter holds analyzer at
   # 10.x, so drift_dev cannot go past 2.34.0, and drift 2.34.1+ breaks that drift_dev (the schema dump
