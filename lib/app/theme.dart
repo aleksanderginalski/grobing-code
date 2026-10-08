@@ -19,6 +19,11 @@ abstract final class GrobingColors {
   /// Error message under a field and its frame — always with an icon, never colour alone (SC 1.4.1):
   /// 6.45:1 on the background, 5.89:1 on the surface.
   static const Color error = Color(0xFFE07A6F);
+
+  /// State green (style-b.md → State colours, the proposal of v1.14): something is safe and ready — the
+  /// backup in the settings (05_DESIGN/ustawienia.md, element 2), later "Plan offline". Always with an
+  /// icon and words, never colour alone (SC 1.4.1): 8.19:1 on the surface.
+  static const Color stateOk = Color(0xFF8CC084);
 }
 
 abstract final class GrobingTheme {

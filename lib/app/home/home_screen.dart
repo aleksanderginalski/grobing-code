@@ -9,11 +9,12 @@ import '../../backup/backup_service.dart';
 import '../../backup/restore_service.dart';
 import '../../data/cemeteries.dart';
 import '../../data/database.dart';
-import '../data_state_screen.dart';
 import '../external_link.dart';
 import '../grave/cemetery_screen.dart';
 import '../photo/photos.dart';
 import '../polish.dart';
+import '../settings/settings_screen.dart';
+import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
@@ -26,7 +27,8 @@ import 'poland_map.dart';
 import 'poland_map_data.dart';
 
 /// The home screen (ISSUE-014; 05_DESIGN/cmentarze.md): the map of Poland with a candle on every
-/// cemetery of the family, the search, adding and correcting a cemetery, and the way to "Stan danych".
+/// cemetery of the family, the search, adding and correcting a cemetery, and the gear to the settings
+/// (ISSUE-022). The first route of the app: the Mapa tab of the bottom bar.
 /// It replaces the start screen of ISSUE-002.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -132,14 +134,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
-  Future<void> _openDataState() => Navigator.of(context).push(
+  /// The gear: the settings, with "Stan danych" a level down (05_DESIGN/ustawienia.md, D1).
+  Future<void> _openSettings() => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => DataStateScreen(
+      builder: (_) => SettingsScreen(
         database: widget.database,
         location: widget.location,
         backup: widget.backup,
         restore: widget.restore,
         onRestored: widget.onRestored,
+        photos: widget.photos,
       ),
     ),
   );
@@ -254,7 +258,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!didPop) setState(() => _selected = const []);
     },
     child: Scaffold(
-      // The sheet reaches the bottom edge, its content above the gesture bar (ui review).
+      // Element 18: the sheets stand above the bar, which keeps clear of the gesture bar itself.
+      bottomNavigationBar: GrobingTabBar(
+        active: AppTab.map,
+        database: widget.database,
+        photos: widget.photos,
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -269,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
-  /// Element 1: the candle and "Grobing" — the app's sign — and the gear to "Stan danych".
+  /// Element 1: the candle and "Grobing" — the app's sign — and the gear to the settings.
   Widget _bar() => SizedBox(
     height: 64,
     child: Row(
@@ -290,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.settings_outlined),
           color: GrobingColors.textMuted,
           tooltip: 'Ustawienia',
-          onPressed: _openDataState,
+          onPressed: _openSettings,
         ),
         const SizedBox(width: 4),
       ],

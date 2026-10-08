@@ -66,6 +66,39 @@ class Correction extends PersonFormMode {
   final int? graveId;
 }
 
+/// The correction of [personId]'s entry opened from outside their grave — a relative's chip in "Rodzina"
+/// (wpis-osoby.md v5) or a card of the Osoby tab until the person view exists (ISSUE-022 D2). Their first
+/// grave, when they have one, is the form's subtitle and comes first in "Kto jest na zdjęciu?".
+Future<void> openPersonEntry(
+  BuildContext context,
+  GrobingDatabase database,
+  int personId, {
+  Photos? photos,
+}) async {
+  final ({
+    BuriedPerson person,
+    int? graveId,
+    String? graveTitle,
+    int peopleCount,
+  })?
+  found = await loadPersonForCorrection(database, personId);
+  if (found == null || !context.mounted) return;
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PersonFormScreen(
+        database: database,
+        mode: Correction(
+          person: found.person,
+          graveTitle: found.graveTitle,
+          peopleCount: found.peopleCount,
+          graveId: found.graveId,
+        ),
+        photos: photos,
+      ),
+    ),
+  );
+}
+
 /// One person buried in a grave, as the notes give them (ISSUE-012; 05_DESIGN/wpis-osoby.md v2). The
 /// screen of the transcription used about 100 times (G6), so every field, key and question counts.
 class PersonFormScreen extends StatefulWidget {

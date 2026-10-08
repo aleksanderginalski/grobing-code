@@ -18,6 +18,7 @@ import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/families.dart';
 import 'package:grobing/data/graves.dart';
+import 'package:grobing/data/people.dart';
 import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_data.dart';
 import 'package:grobing/dev/fictional_photo.dart';
@@ -275,6 +276,13 @@ void main() {
       NativeDatabase(File('${source.path}/grobing.db')),
     );
     await addFictionalData(db, Directory('${source.path}/media'));
+    // ISSUE-022: the source phone has chosen "ja" — a setting in the database, so it travels with it.
+    await setMe(
+      db,
+      (await (db.select(
+        db.persons,
+      )..where((p) => p.givenNames.equals('Matka 1'))).getSingle()).id,
+    );
     final DataState state = await readDataState(
       db,
       mediaDir: Directory('${source.path}/media'),
@@ -416,7 +424,9 @@ void main() {
                     )
                     .getSingle())
                 .read<int>('c');
+        final int? me = await watchMe(back).first;
         await back.close();
+        expect(me, idOf('Matka 1'), reason: 'ISSUE-022: "ja" comes back');
         expect(fatherFamilies.unions.map((u) => u.partner!.givenNames), [
           'Matka 1',
           'Partnerka 1',

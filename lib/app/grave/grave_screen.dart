@@ -12,6 +12,7 @@ import '../photo/photo_viewer_screen.dart';
 import '../photo/photos.dart';
 import '../photo/profile_circle.dart';
 import '../polish.dart';
+import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import 'person_form_screen.dart';
@@ -137,6 +138,12 @@ class _GraveScreenState extends State<GraveScreen> {
       final bool failed =
           snapshot.hasError || (snapshot.hasData && grave == null);
       return Scaffold(
+        // Opened from the map — the only way here until the person view (ISSUE-024) adds a second.
+        bottomNavigationBar: GrobingTabBar(
+          active: AppTab.map,
+          database: widget.database,
+          photos: widget.photos,
+        ),
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

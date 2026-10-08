@@ -54,30 +54,12 @@ class _FamilySectionState extends State<FamilySection> {
 
   /// A chip: the relative's entry on top of this form, which stays below with what is typed in it
   /// (wpis-osoby.md D-rodzina-2). Saving or going back returns here.
-  Future<void> _openPerson(int personId) async {
-    final ({
-      BuriedPerson person,
-      int? graveId,
-      String? graveTitle,
-      int peopleCount,
-    })?
-    found = await loadPersonForCorrection(widget.database, personId);
-    if (found == null || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PersonFormScreen(
-          database: widget.database,
-          mode: Correction(
-            person: found.person,
-            graveTitle: found.graveTitle,
-            peopleCount: found.peopleCount,
-            graveId: found.graveId,
-          ),
-          photos: widget.photos,
-        ),
-      ),
-    );
-  }
+  Future<void> _openPerson(int personId) => openPersonEntry(
+    context,
+    widget.database,
+    personId,
+    photos: widget.photos,
+  );
 
   Future<void> _openSheet({int? familyId, FamilyStart? start}) =>
       Navigator.of(context).push(

@@ -138,4 +138,53 @@ void main() {
     expect(lifeLine(burial: buried), 'poch. 18.03.1951');
     expect(lifeLine(), 'bez dat');
   });
+
+  // ISSUE-022 — the years of a life in the list of people (05_DESIGN/osoby.md, element 4).
+  test('lifeYears: years alone, with their qualifiers', () {
+    QualifiedDate d(DateQualifier q, PartialDate from, [PartialDate? to]) =>
+        QualifiedDate(q, from, to);
+    final QualifiedDate born = d(
+      DateQualifier.exact,
+      const PartialDate(1926, 3, 14),
+    );
+    final QualifiedDate died = d(
+      DateQualifier.exact,
+      const PartialDate(2010, 11),
+    );
+    expect(lifeYears(birth: born, death: died), '1926–2010');
+    expect(
+      lifeYears(birth: d(DateQualifier.exact, const PartialDate(1955))),
+      'ur. 1955',
+    );
+    expect(lifeYears(death: died), 'zm. 2010');
+    expect(
+      lifeYears(
+        birth: d(DateQualifier.about, const PartialDate(1890)),
+        death: died,
+      ),
+      'ok. 1890 – 2010',
+    );
+    expect(
+      lifeYears(
+        birth: d(
+          DateQualifier.between,
+          const PartialDate(1893),
+          const PartialDate(1895),
+        ),
+      ),
+      'ur. między 1893 a 1895',
+    );
+    expect(
+      lifeYears(
+        birth: d(
+          DateQualifier.between,
+          const PartialDate(1893, 3),
+          const PartialDate(1893, 5),
+        ),
+      ),
+      'ur. 1893',
+      reason: 'between two dates of one year is that year',
+    );
+    expect(lifeYears(), 'bez dat');
+  });
 }

@@ -86,4 +86,35 @@ void main() {
       expect(capitalizeWords('łąka'), 'Łąka');
     },
   );
+
+  // ISSUE-022 — the Osoby tab's search (05_DESIGN/osoby.md, element 2, AC-2).
+  test(
+    'matchesWordStart: from the start of a word, without Polish letters and case',
+    () {
+      final List<String?> anna = ['Anna', 'Wymyślona', 'Zmyślona'];
+      expect(matchesWordStart('wymys', anna), isTrue);
+      expect(matchesWordStart('WYMYŚ', anna), isTrue);
+      expect(
+        matchesWordStart('zmys', anna),
+        isTrue,
+        reason: 'the birth surname too',
+      );
+      expect(
+        matchesWordStart('anna wym', anna),
+        isTrue,
+        reason: 'every word, any field',
+      );
+      expect(
+        matchesWordStart('myslona', anna),
+        isFalse,
+        reason: 'not inside a word',
+      );
+      expect(matchesWordStart('anna x', anna), isFalse);
+      expect(matchesWordStart('  ', anna), isFalse);
+      expect(matchesWordStart('zmys', ['Ewa', 'Testowa-Zmyślonek']), isTrue);
+      expect(matchesWordStart('zmys', ['Ewa', 'Przezmyślonek']), isFalse);
+      expect(matchesWordStart('lod', ['Łódź']), isTrue);
+      expect(matchesWordStart('test', [null, 'Testowski']), isTrue);
+    },
+  );
 }

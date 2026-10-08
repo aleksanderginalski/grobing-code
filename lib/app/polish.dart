@@ -80,6 +80,25 @@ bool matchesQuery(String query, Iterable<String?> fields) {
   return stems.isNotEmpty && stems.every(haystack.contains);
 }
 
+/// Whether every word of [query] starts a word of one of [fields], folded (05_DESIGN/osoby.md, element
+/// 2): "wymys" finds "Wymyślona", "zmys" finds "Zmyślonek" and "Testowa-Zmyślonek", but not "Przezmyślonek".
+/// Unlike [matchesQuery] no ending is cut: a name is typed from its start, and a cut stem would find
+/// names inside other names.
+bool matchesWordStart(String query, Iterable<String?> fields) {
+  final List<String> words = _words(query);
+  if (words.isEmpty) return false;
+  final List<String> haystack = [
+    for (final String field in fields.whereType<String>()) ..._words(field),
+  ];
+  return words.every((w) => haystack.any((h) => h.startsWith(w)));
+}
+
+/// Folded words of [s], split at spaces and hyphens (a double surname is two words).
+List<String> _words(String s) => [
+  for (final String w in fold(s).split(RegExp(r'[\s-]+')))
+    if (w.isNotEmpty) w,
+];
+
 const String _alphabet = 'aąbcćdeęfghijklłmnńoópqrsśtuvwxyzźż';
 
 /// Compares in the order of the Polish alphabet (ą after a, ł after l, ż last), ignoring case. Other

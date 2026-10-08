@@ -10,6 +10,7 @@ import 'package:grobing/app/data_state_screen.dart';
 import 'package:grobing/app/grobing_app.dart';
 import 'package:grobing/app/home/home_screen.dart';
 import 'package:grobing/app/restore_screen.dart';
+import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/backup/age/age.dart';
 import 'package:grobing/backup/backup_archive.dart';
 import 'package:grobing/backup/restore_swap.dart';
@@ -19,7 +20,8 @@ import 'package:grobing/dev/fictional_data.dart';
 
 import '../support/backup_fakes.dart';
 
-// ISSUE-009 on screen: "Stan danych" → "Odtwórz z kopii" → backup file, key file, passphrase →
+// ISSUE-009 on screen (since ISSUE-022 from the settings under the gear): "Odtwórz z kopii" → backup
+// file, key file, passphrase →
 // the app reopens on the restored data with a notice (AC-1, D3); a phone with data is warned first
 // and "Anuluj" changes nothing (D4); a refusal says the data is untouched (AC-2).
 
@@ -143,10 +145,12 @@ void main() {
         reopen: open,
       ),
     );
+    // ISSUE-022: the gear opens the settings, whose "Odtwórz z kopii" opens the restore at once
+    // (05_DESIGN/ustawienia.md, element 4; ui review).
     await tester.tap(find.byTooltip('Ustawienia'));
     await _pumpUntil(
       tester,
-      () => find.text('Odtwórz z kopii').evaluate().isNotEmpty,
+      () => find.byType(SettingsScreen).evaluate().isNotEmpty,
     );
     await tester.tap(find.text('Odtwórz z kopii'));
     await _pumpUntil(

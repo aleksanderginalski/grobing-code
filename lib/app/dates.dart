@@ -66,6 +66,22 @@ String formatDate(QualifiedDate d) {
   };
 }
 
+/// The years of a life, for a list of people (05_DESIGN/osoby.md, element 4): `1926–2010`, `ur. 1955`,
+/// `ok. 1890 – 1951`; `bez dat` when nothing is known. Months and days stay in the person's entry.
+String lifeYears({QualifiedDate? birth, QualifiedDate? death}) =>
+    lifeLine(birth: _yearOnly(birth), death: _yearOnly(death));
+
+/// [d] with its years alone; "between" two dates of one year is that year.
+QualifiedDate? _yearOnly(QualifiedDate? d) {
+  if (d == null) return null;
+  final PartialDate from = PartialDate(d.from.year);
+  final PartialDate? to = d.to == null ? null : PartialDate(d.to!.year);
+  if (to != null && to.year == from.year) {
+    return QualifiedDate(DateQualifier.exact, from);
+  }
+  return QualifiedDate(d.qualifier, from, to);
+}
+
 /// A bare year — the one form that sits next to a dash without spaces.
 bool _bareYear(QualifiedDate d) =>
     d.qualifier == DateQualifier.exact && d.from.month == null;

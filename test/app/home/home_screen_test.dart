@@ -15,6 +15,7 @@ import 'package:grobing/app/home/cemetery_search.dart';
 import 'package:grobing/app/home/home_screen.dart';
 import 'package:grobing/app/home/pick_point_screen.dart';
 import 'package:grobing/app/home/poland_map_data.dart';
+import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/widgets/candle.dart';
 import 'package:grobing/backup/backup_settings.dart';
@@ -436,34 +437,45 @@ void main() {
     },
   );
 
-  testWidgets('AC-5: the app starts on the map; the gear opens "Stan danych"', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      GrobingApp(
-        database: db,
-        location: DataLocation.inDirectory(Directory('${tmp.path}/data')),
-        backup: backupServiceIn(
-          tmp,
-          db,
-          FakeDocumentStore(Directory('${tmp.path}/drive')),
+  testWidgets(
+    'AC-5: the app starts on the map; the gear opens the settings, "Stan danych" a level down (ISSUE-022)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        GrobingApp(
+          database: db,
+          location: DataLocation.inDirectory(Directory('${tmp.path}/data')),
+          backup: backupServiceIn(
+            tmp,
+            db,
+            FakeDocumentStore(Directory('${tmp.path}/drive')),
+          ),
         ),
-      ),
-    );
-    await _pumpUntil(
-      tester,
-      () => find.byType(FlutterMap).evaluate().isNotEmpty,
-    );
-    expect(find.byType(HomeScreen), findsOneWidget);
+      );
+      await _pumpUntil(
+        tester,
+        () => find.byType(FlutterMap).evaluate().isNotEmpty,
+      );
+      expect(find.byType(HomeScreen), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Ustawienia'));
-    await tester.pumpAndSettle();
-    expect(find.byType(DataStateScreen), findsOneWidget);
-    await cleanUp(tester);
-  });
+      await tester.tap(find.byTooltip('Ustawienia'));
+      await _pumpUntil(
+        tester,
+        () => find.byType(SettingsScreen).evaluate().isNotEmpty,
+      );
+      expect(find.byType(DataStateScreen), findsNothing);
+      // On a 360 dp wide phone the row is below the fold of the settings list.
+      await tester.scrollUntilVisible(find.text('Stan danych'), 200);
+      await tester.tap(find.text('Stan danych'));
+      await _pumpUntil(
+        tester,
+        () => find.byType(DataStateScreen).evaluate().isNotEmpty,
+      );
+      await cleanUp(tester);
+    },
+  );
 
   testWidgets(
     'DoD: adding a cemetery asks for a background backup (ISSUE-010)',
