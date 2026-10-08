@@ -28,6 +28,7 @@ import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../drift/grobing/generated/schema_v3.dart' as v3;
 import '../drift/grobing/generated/schema_v4.dart' as v4;
 import '../drift/grobing/generated/schema_v5.dart' as v5;
+import '../drift/grobing/generated/schema_v6.dart' as v6;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -204,6 +205,25 @@ const List<String> _v5Rows = [
       "(1, 'marriage', 1, 'before', 1920)",
   'INSERT INTO assertions (event_id, burial_id, source_kind, status, recorded_at) VALUES '
       "(1, NULL, 'notes', 'claimed', 1791273600)",
+];
+
+/// Made-up rows of a phone at schema v6 (ISSUE-025 AC-4): the father's two unions with their claims, the
+/// first with its wedding — no sex and no "Razem od", as v6 kept them.
+const List<String> _v6Rows = [
+  'INSERT INTO persons (id, given_names, surname) VALUES '
+      "(1, 'Ojciec', 'Wymyślony'), (2, 'Matka', 'Wymyślona'), (3, 'Dziecko', 'Wymyślone'), "
+      "(4, 'Partnerka', 'Zmyślona'), (5, 'Drugie dziecko', 'Wymyślone')",
+  'INSERT INTO families (id) VALUES (1), (2)',
+  'INSERT INTO family_partners (family_id, person_id) VALUES (1, 1), (1, 2), (2, 1), (2, 4)',
+  'INSERT INTO family_children (id, family_id, person_id) VALUES (1, 1, 3), (2, 2, 5)',
+  'INSERT INTO events (id, type, family_id, qualifier, year) VALUES '
+      "(1, 'marriage', 1, 'before', 1920)",
+  'INSERT INTO assertions (event_id, family_id, family_child_id, source_kind, status, recorded_at) VALUES '
+      "(1, NULL, NULL, 'notes', 'claimed', 1791273600), "
+      "(NULL, 1, NULL, 'notes', 'claimed', 1791273600), "
+      "(NULL, 2, NULL, 'notes', 'claimed', 1791273600), "
+      "(NULL, NULL, 1, 'notes', 'claimed', 1791273600), "
+      "(NULL, NULL, 2, 'notes', 'claimed', 1791273600)",
 ];
 
 /// Made-up rows of a phone at schema v4 (ISSUE-018 F3): a gravestone, a photo Jan and Anna share (Jan's
@@ -436,6 +456,17 @@ void main() {
           'Dziecko z drugiego związku 1',
         ]);
         expect(familyClaims, 4); // two unions and two children's links
+        // ISSUE-025: the sex written and the second union's "Razem od" before its wedding come back.
+        expect(
+          people.firstWhere((p) => p.givenNames == 'Ojciec 1').sex,
+          Sex.male,
+        );
+        expect(
+          people.firstWhere((p) => p.givenNames == 'Dziecko 1').sex,
+          isNull,
+        );
+        expect(fatherFamilies.unions.last.together?.from.year, 1922);
+        expect(fatherFamilies.unions.last.married, isTrue);
         expect(mother.map((p) => p.relativePath), [
           'wymyslone/portret-1.png',
           'wymyslone/slub-1.png',
@@ -1522,6 +1553,77 @@ void main() {
       expect(father.unions.map((u) => u.children.single.id), [3, 5]);
       expect(links.map((l) => l.id), [1, 2]);
       expect(broken, isEmpty);
+    },
+  );
+
+  test(
+    'ISSUE-025 AC-4 — a v6 backup restores into the v7 app: every v6 table and count kept, the people come '
+    'without a sex, the unions without "Razem od", the one with a wedding married and the other not',
+    () async {
+      final File v6File = File('${tmp.path}/v6.db');
+      final v6.DatabaseAtV6 old = v6.DatabaseAtV6(NativeDatabase(v6File));
+      for (final String row in _v6Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 6');
+      final DataState v6State = await readDataState(
+        old,
+        mediaDir: Directory('${tmp.path}/v6-media'),
+      );
+      expect(v6State.schemaVersion, 6);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v6-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v6-snapshot.db').readAsBytesSync(),
+        ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v6.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 6,
+              'record_counts': v6State.rowCounts,
+              'data_fingerprint': v6State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v7');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (6, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(after.rowCounts, v6State.rowCounts);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<Person> persons = await reopened
+          .select(reopened.persons)
+          .get();
+      final PersonRelations father = await loadRelations(reopened, 1);
+      await reopened.close();
+      expect(persons.map((p) => p.sex), everyElement(isNull));
+      expect(father.unions.map((u) => u.partner!.id), [2, 4]);
+      expect(father.unions.map((u) => u.together), [null, null]);
+      expect(father.unions.map((u) => u.married), [true, false]);
+      expect(father.unions.first.marriage?.from.year, 1920);
     },
   );
 

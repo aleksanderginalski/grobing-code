@@ -129,6 +129,8 @@ class DateBlock extends StatelessWidget {
     required this.input,
     required this.onChanged,
     this.note,
+    this.onDone,
+    this.error,
   });
 
   final DateInput input;
@@ -136,6 +138,14 @@ class DateBlock extends StatelessWidget {
 
   /// A line under the label — "np. rozwód albo rozstanie…" at the end of a union (05_DESIGN/rodzina.md A6').
   final String? note;
+
+  /// A block that is a step of its own (the family wizard, rodzina.md C3a): the keyboard's key on the last
+  /// field is `done`, and it does the step's button. Without it the key is `next`, from date to date.
+  final VoidCallback? onDone;
+
+  /// An error from outside the block — the order of a union's dates (rodzina.md C3a): said under the block,
+  /// and the first field's frame in the error colour, as the block's own errors.
+  final String? error;
 
   DateInput get d => input;
 
@@ -154,10 +164,11 @@ class DateBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     if (d.readOnly) return _readOnly();
     final DateRead r = d.read();
-    final bool fromBad = d.showError && r.error != null && !r.toBad;
+    final String? shownError = d.showError && r.error != null ? r.error : error;
+    final bool fromBad = shownError != null && (error != null || !r.toBad);
     final bool toBad = d.showError && r.error != null && r.toBad;
     return _RevealOnError(
-      showing: d.showError && r.error != null,
+      showing: shownError != null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -185,18 +196,21 @@ class DateBlock extends StatelessWidget {
                   d.fromNode,
                   fromBad,
                   d.between ? 'od' : 'rok albo dd.mm.rrrr',
+                  last: !d.between,
                 ),
               ),
               if (d.between) ...[
                 const SizedBox(width: 8),
-                Expanded(child: _field(d.to, d.toNode, toBad, 'do')),
+                Expanded(
+                  child: _field(d.to, d.toNode, toBad, 'do', last: true),
+                ),
               ],
             ],
           ),
-          if (d.showError && r.error != null)
+          if (shownError != null)
             Padding(
               padding: const EdgeInsets.only(top: 5),
-              child: ErrorLine(r.error!),
+              child: ErrorLine(shownError),
             )
           else if (r.date != null)
             Padding(
@@ -271,8 +285,9 @@ class DateBlock extends StatelessWidget {
     TextEditingController controller,
     FocusNode node,
     bool bad,
-    String hint,
-  ) => TextField(
+    String hint, {
+    required bool last,
+  }) => TextField(
     controller: controller,
     focusNode: node,
     // Digits and a separator without switching keyboards (05_DESIGN/wpis-osoby.md → Open 2).
@@ -284,7 +299,10 @@ class DateBlock extends StatelessWidget {
       FilteringTextInputFormatter.allow(RegExp(r'[0-9./-]')),
       LengthLimitingTextInputFormatter(10),
     ],
-    textInputAction: TextInputAction.next,
+    textInputAction: last && onDone != null
+        ? TextInputAction.done
+        : TextInputAction.next,
+    onSubmitted: last && onDone != null ? (_) => onDone!() : null,
     style: inputTextStyle,
     onChanged: (_) => onChanged(),
     decoration: InputDecoration(

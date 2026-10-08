@@ -68,6 +68,7 @@ class PersonEntry {
     this.givenNames,
     this.surname,
     this.birthSurname,
+    this.sex,
     this.bio,
     this.bioSource,
     this.birth,
@@ -81,7 +82,10 @@ class PersonEntry {
   /// FR-005: the surname at birth.
   final String? birthSurname;
 
-  /// "Kim była" — a short biography, with one source line for the whole text (FR-001).
+  /// Null: not known (ISSUE-025).
+  final Sex? sex;
+
+  /// "Kim była" — a short biography. Its source line is kept in the data, never shown (SPIKE-004 D28).
   final String? bio;
   final String? bioSource;
   final QualifiedDate? birth;
@@ -91,7 +95,8 @@ class PersonEntry {
   final QualifiedDate? burial;
 }
 
-/// The source line "kim była" gets unless the user changes it (05_DESIGN/wpis-osoby.md, element 9).
+/// The source line "kim była" gets in the data; the form no longer shows or changes it (SPIKE-004 D28,
+/// 05_DESIGN/wpis-osoby.md v5.4).
 const String defaultBioSource = 'notatki';
 
 /// One grave on the cemetery screen (05_DESIGN/cmentarz.md, element 3).
@@ -162,6 +167,7 @@ class BuriedPerson {
     this.givenNames,
     this.surname,
     this.birthSurname,
+    this.sex,
     this.bio,
     this.bioSource,
     required this.birth,
@@ -175,6 +181,7 @@ class BuriedPerson {
   final String? givenNames;
   final String? surname;
   final String? birthSurname;
+  final Sex? sex;
   final String? bio;
   final String? bioSource;
   final DatedFact birth;
@@ -193,6 +200,7 @@ class BuriedPerson {
     givenNames: givenNames,
     surname: surname,
     birthSurname: birthSurname,
+    sex: sex,
     bio: bio,
     bioSource: bioSource,
     birth: birth.date,
@@ -390,6 +398,7 @@ Future<BuriedPerson> _buried(
   givenNames: p.givenNames,
   surname: p.surname,
   birthSurname: p.birthSurname,
+  sex: p.sex,
   bio: p.bio,
   bioSource: p.bioSource,
   birth: await _fact(db, p.id, EventType.birth),
@@ -512,6 +521,7 @@ Future<int> _addPerson(
           givenNames: Value(blankToNull(entry.givenNames)),
           surname: Value(blankToNull(entry.surname)),
           birthSurname: Value(blankToNull(entry.birthSurname)),
+          sex: Value(entry.sex),
           bio: Value(blankToNull(entry.bio)),
           bioSource: Value(_bioSource(entry)),
         ),
@@ -549,6 +559,7 @@ Future<void> updatePersonEntry(
           givenNames: Value(blankToNull(entry.givenNames)),
           surname: Value(blankToNull(entry.surname)),
           birthSurname: Value(blankToNull(entry.birthSurname)),
+          sex: Value(entry.sex),
           bio: Value(blankToNull(entry.bio)),
           bioSource: Value(_bioSource(entry)),
         ),
@@ -578,13 +589,15 @@ Future<void> updatePersonEntry(
   await alsoWrite?.call(personId);
 });
 
-/// One person to choose in "Kto jest na zdjęciu?" (05_DESIGN/zdjecie.md, D4–D5).
+/// One person to choose in "Kto jest na zdjęciu?" (05_DESIGN/zdjecie.md, D4–D5) and in the family
+/// wizard's "Z kim?" (05_DESIGN/rodzina.md C1).
 class PersonChoice {
   const PersonChoice({
     required this.id,
     this.givenNames,
     this.surname,
     this.birthSurname,
+    this.sex,
     this.birth,
     this.death,
     this.graveName,
@@ -595,6 +608,7 @@ class PersonChoice {
   final String? givenNames;
   final String? surname;
   final String? birthSurname;
+  final Sex? sex;
   final QualifiedDate? birth;
   final QualifiedDate? death;
 
@@ -641,6 +655,7 @@ Future<({List<PersonChoice> all, List<int> inGrave})> loadPersonChoices(
           givenNames: p.givenNames,
           surname: p.surname,
           birthSurname: p.birthSurname,
+          sex: p.sex,
           birth: await _firstDate(db, p.id, EventType.birth),
           death: await _firstDate(db, p.id, EventType.death),
           graveName: firstBurial[p.id]?.grave,
@@ -708,7 +723,7 @@ void _requireName(PersonEntry entry) {
   }
 }
 
-/// The source line of "kim była": none without a text, the notes unless said otherwise (FR-001).
+/// The source line of "kim była": none without a text, the notes unless one is already stored (FR-001).
 String? _bioSource(PersonEntry entry) {
   if (blankToNull(entry.bio) == null) return null;
   return blankToNull(entry.bioSource) ?? defaultBioSource;

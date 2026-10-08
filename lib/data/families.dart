@@ -4,9 +4,11 @@ import 'claims.dart';
 import 'database.dart';
 import 'graves.dart';
 
-// Families as the "Rodzina" section of the person form shows them and the family sheet writes them
-// (ISSUE-019; 05_DESIGN/rodzina.md, wpis-osoby.md v5.1). A family is a union, married or not, with its
-// children; a person in several unions is in several families (FR-002). Its source is a claim on the
+// Families as the "Rodzina" section of the person form shows them and the family wizard writes them
+// (ISSUE-019, ISSUE-025; 05_DESIGN/rodzina.md v2, wpis-osoby.md v5.6). A family is a union, married or not,
+// with its children; a person in several unions is in several families (FR-002). A union is a timeline:
+// together since → the wedding → the end, each an event of the family; a wedding or an end known to have
+// happened without a date is an event without one (GEDCOM 7's `Y`). Its source is a claim on the
 // family, and each child's link has its own (ADR-011). Writes go through drift's own API, so they notify
 // `tableUpdates` and ask for a background backup (ISSUE-010).
 
@@ -17,6 +19,7 @@ class FamilyMember {
     this.givenNames,
     this.surname,
     this.birthSurname,
+    this.sex,
     this.birth,
     this.death,
   });
@@ -26,19 +29,25 @@ class FamilyMember {
   final String? surname;
   final String? birthSurname;
 
+  /// Null: not known — the screens use the neutral role names (05_DESIGN/rodzina.md, Role names).
+  final Sex? sex;
+
   /// The first birth and death written (ADR-006 D3).
   final QualifiedDate? birth;
   final QualifiedDate? death;
 }
 
-/// One union of a person (05_DESIGN/wpis-osoby.md 9a d): the other partner — none in a family of one
-/// parent — the children of this pair, and the start and end of the union.
+/// One union of a person (05_DESIGN/wpis-osoby.md 9a c): the other partner — none in a family of one
+/// parent — the children of this pair, and the union's timeline.
 class PersonUnion {
   const PersonUnion({
     required this.familyId,
     this.partner,
     required this.children,
+    this.together,
+    this.married = false,
     this.marriage,
+    this.ended = false,
     this.end,
   });
 
@@ -47,7 +56,16 @@ class PersonUnion {
 
   /// By birth (GEDCOM 7: "chronological by birth"), those without a date last.
   final List<FamilyMember> children;
+
+  /// "Razem od" — the start of the union before or without a wedding (ISSUE-025).
+  final QualifiedDate? together;
+
+  /// A wedding is written, with or without a date: "Mąż", "Żona" instead of "Partner".
+  final bool married;
   final QualifiedDate? marriage;
+
+  /// An end is written, with or without a date.
+  final bool ended;
   final QualifiedDate? end;
 }
 
@@ -56,6 +74,7 @@ class PersonRelations {
   const PersonRelations({
     this.parentsFamilyId,
     required this.parents,
+    this.parentsUnion,
     required this.unions,
   });
 
@@ -63,17 +82,25 @@ class PersonRelations {
   final int? parentsFamilyId;
   final List<FamilyMember> parents;
 
-  /// By marriage date, those without one last, in the order written.
+  /// The parents' union — its timeline for "Rodzice · ślub ok. 1920" (wpis-osoby.md 9a b); its partner
+  /// is none and its children are the person's siblings with the person.
+  final PersonUnion? parentsUnion;
+
+  /// By the first date of the union — together since, else the wedding — those without one last, in the
+  /// order written.
   final List<PersonUnion> unions;
 }
 
-/// A family on the family sheet (05_DESIGN/rodzina.md A).
+/// A family as the wizard's summary corrects it (05_DESIGN/rodzina.md D).
 class FamilyDetail {
   const FamilyDetail({
     required this.id,
     required this.partners,
     required this.children,
+    required this.together,
+    required this.married,
     required this.marriage,
+    required this.ended,
     required this.end,
   });
 
@@ -85,13 +112,20 @@ class FamilyDetail {
   /// By birth, those without a date last (rodzina.md A8).
   final List<FamilyMember> children;
 
-  /// More than one claim — another source spoke too — and the sheet leaves the date alone, as the
+  /// More than one claim — another source spoke too — and the summary leaves the date alone, as the
   /// person form does (ISSUE-012 D1).
+  final DatedFact together;
+
+  /// A wedding is written, with or without a date.
+  final bool married;
   final DatedFact marriage;
+
+  /// An end is written, with or without a date.
+  final bool ended;
   final DatedFact end;
 }
 
-/// Someone on the family sheet: a person already in the app, or a new one typed there (rodzina.md A3').
+/// Someone in a family: a person already in the app, or a new one typed in the wizard (rodzina.md C1').
 sealed class MemberDraft {
   const MemberDraft();
 }
@@ -103,27 +137,43 @@ class ExistingMember extends MemberDraft {
 }
 
 class NewMember extends MemberDraft {
-  const NewMember({this.givenNames, this.surname});
+  const NewMember({this.givenNames, this.surname, this.sex});
 
   final String? givenNames;
   final String? surname;
+  final Sex? sex;
 }
 
-/// The family sheet as it is saved: a new family ([familyId] null) or a correction of one.
+/// A family as it is saved: a new family ([familyId] null) or a correction of one.
 class FamilyDraft {
   const FamilyDraft({
     this.familyId,
     required this.partners,
     required this.children,
+    this.together,
+    bool? married,
     this.marriage,
+    bool? ended,
     this.end,
-  });
+  }) : _married = married,
+       _ended = ended;
 
   final int? familyId;
   final List<MemberDraft> partners;
   final List<MemberDraft> children;
+
+  /// "Razem od" (ISSUE-025).
+  final QualifiedDate? together;
   final QualifiedDate? marriage;
   final QualifiedDate? end;
+  final bool? _married;
+  final bool? _ended;
+
+  /// A wedding happened — with [marriage] or without a date. Unless said, a date says it.
+  bool get married => _married ?? marriage != null;
+
+  /// The union ended — with [end] or without a date. Unless said, a date says it.
+  bool get ended => _ended ?? end != null;
 }
 
 /// The relations of [personId], again after every write to a table they read — the claims too: a
@@ -158,25 +208,44 @@ Future<PersonRelations> loadRelations(GrobingDatabase db, int personId) async {
     final FamilyMember? other = partners
         .where((p) => p.id != personId)
         .firstOrNull;
-    unions.add(
-      PersonUnion(
-        familyId: family,
-        partner: other,
-        children: await _children(db, family),
-        marriage: await _familyDate(db, family, EventType.marriage),
-        end: await _familyDate(db, family, EventType.end),
-      ),
-    );
+    unions.add(await _union(db, family, other));
   }
   // Mergesort keeps the order written among those with the same key.
-  _stableSortBy(
-    unions,
-    (PersonUnion u) => u.marriage == null ? null : _dateKey(u.marriage!),
-  );
+  _stableSortBy(unions, (PersonUnion u) {
+    final QualifiedDate? start = u.together ?? u.marriage;
+    return start == null ? null : _dateKey(start);
+  });
   return PersonRelations(
     parentsFamilyId: asChild?.familyId,
     parents: asChild == null ? const [] : await _partners(db, asChild.familyId),
+    parentsUnion: asChild == null
+        ? null
+        : await _union(db, asChild.familyId, null),
     unions: unions,
+  );
+}
+
+/// [family] as a union seen from one of its people: [partner] is the other one, if any.
+Future<PersonUnion> _union(
+  GrobingDatabase db,
+  int family,
+  FamilyMember? partner,
+) async {
+  final Event? marriage = await _firstFamilyEvent(
+    db,
+    family,
+    EventType.marriage,
+  );
+  final Event? end = await _firstFamilyEvent(db, family, EventType.end);
+  return PersonUnion(
+    familyId: family,
+    partner: partner,
+    children: await _children(db, family),
+    together: await _familyDate(db, family, EventType.together),
+    married: marriage != null,
+    marriage: marriage == null ? null : QualifiedDate.ofEvent(marriage),
+    ended: end != null,
+    end: end == null ? null : QualifiedDate.ofEvent(end),
   );
 }
 
@@ -190,7 +259,10 @@ Future<FamilyDetail?> loadFamily(GrobingDatabase db, int familyId) async {
     id: familyId,
     partners: await _partners(db, familyId),
     children: await _children(db, familyId),
+    together: await _familyFact(db, familyId, EventType.together),
+    married: await _firstFamilyEvent(db, familyId, EventType.marriage) != null,
     marriage: await _familyFact(db, familyId, EventType.marriage),
+    ended: await _firstFamilyEvent(db, familyId, EventType.end) != null,
     end: await _familyFact(db, familyId, EventType.end),
   );
 }
@@ -211,12 +283,13 @@ Future<Set<int>> peopleWithParents(
     c.personId,
 };
 
-/// Writes the family sheet, all or nothing (05_DESIGN/rodzina.md → "Zapis jest całością"); returns the
-/// family's id. New people are written with their names only (D4). A new family gets a claim from the
+/// Writes a family, all or nothing (05_DESIGN/rodzina.md → "Zapis jest całością"); returns the family's
+/// id. New people are written with their names and sex (D4, C1'). A new family gets a claim from the
 /// notes; so does one from before v6, which had none (ADR-011). A child's new link gets its own claim;
-/// a link that goes takes its claims with it. The marriage and end dates are corrected in place, as the
-/// person form corrects a person's (ISSUE-012 D1): a date with more than one claim stays as it is, a
-/// cleared one goes with its only claim.
+/// a link that goes takes its claims with it. The union's dates — together since, the wedding, the end —
+/// are corrected in place, as the person form corrects a person's (ISSUE-012 D1): a date with more than
+/// one claim stays as it is. A wedding or an end that happened keeps its event without a date (GEDCOM 7's
+/// `Y`); one that did not goes with its only claim, and so does a cleared "together since".
 ///
 /// The rules of the sheet hold here too, not only on the screen (ISSUE-019 F5): one or two partners,
 /// at least two people, no one twice, and a child in one family of parents (D5, D6).
@@ -252,8 +325,12 @@ Future<int> saveFamily(
 
   Future<int> idOf(MemberDraft m) async => switch (m) {
     ExistingMember(:final int personId) => personId,
-    NewMember(:final String? givenNames, :final String? surname) =>
-      await _addPerson(db, givenNames, surname),
+    NewMember(
+      :final String? givenNames,
+      :final String? surname,
+      :final Sex? sex,
+    ) =>
+      await _addPerson(db, givenNames, surname, sex),
   };
   final List<int> partners = [
     for (final MemberDraft m in draft.partners) await idOf(m),
@@ -336,34 +413,42 @@ Future<int> saveFamily(
     }
   }
 
-  for (final (EventType type, QualifiedDate? date) in [
-    (EventType.marriage, draft.marriage),
-    (EventType.end, draft.end),
+  for (final (EventType type, bool happened, QualifiedDate? date) in [
+    (EventType.together, draft.together != null, draft.together),
+    (EventType.marriage, draft.married, draft.marriage),
+    (EventType.end, draft.ended, draft.end),
   ]) {
+    if (date != null && !happened) {
+      throw ArgumentError(
+        'A ${type.name} date for an event that did not happen',
+      );
+    }
     if (!(await _familyFact(db, family, type)).correctable) continue;
     final Event? existingEvent = await _firstFamilyEvent(db, family, type);
+    final EventsCompanion values = date == null
+        ? _noDate
+        : qualifiedDateValues(date);
     if (existingEvent == null) {
-      if (date != null) {
+      if (happened) {
         await addEventWithClaim(
           db,
-          qualifiedDateValues(
-            date,
-          ).copyWith(type: Value(type), familyId: Value(family)),
+          values.copyWith(type: Value(type), familyId: Value(family)),
           clock: clock,
         );
       }
-    } else if (date == null) {
+    } else if (!happened) {
       await _deleteEvent(db, existingEvent.id);
     } else if (QualifiedDate.ofEvent(existingEvent) != date) {
-      await (db.update(db.events)..where((e) => e.id.equals(existingEvent.id)))
-          .write(qualifiedDateValues(date));
+      await (db.update(
+        db.events,
+      )..where((e) => e.id.equals(existingEvent.id))).write(values);
     }
   }
   return family;
 });
 
-/// "Usuń rodzinę" (05_DESIGN/rodzina.md D8): the family, its links, its marriage and end with their
-/// claims, and its own claims go, all or nothing. The people stay.
+/// "Usuń związek" (05_DESIGN/rodzina.md D, D8): the family, its links, its events with their claims, and
+/// its own claims go, all or nothing. The people stay.
 Future<void> deleteFamily(GrobingDatabase db, int familyId) =>
     db.transaction(() async {
       final List<FamilyChildrenData> links = await (db.select(
@@ -398,6 +483,7 @@ Future<int> _addPerson(
   GrobingDatabase db,
   String? givenNames,
   String? surname,
+  Sex? sex,
 ) {
   final String? given = blankToNull(givenNames), last = blankToNull(surname);
   if (given == null && last == null) {
@@ -406,9 +492,24 @@ Future<int> _addPerson(
   return db
       .into(db.persons)
       .insert(
-        PersonsCompanion.insert(givenNames: Value(given), surname: Value(last)),
+        PersonsCompanion.insert(
+          givenNames: Value(given),
+          surname: Value(last),
+          sex: Value(sex),
+        ),
       );
 }
+
+/// The date columns of an event that happened on a date nobody knows.
+const EventsCompanion _noDate = EventsCompanion(
+  qualifier: Value(null),
+  year: Value(null),
+  month: Value(null),
+  day: Value(null),
+  yearTo: Value(null),
+  monthTo: Value(null),
+  dayTo: Value(null),
+);
 
 Future<void> _addLinkClaim(
   GrobingDatabase db,
@@ -476,6 +577,7 @@ Future<FamilyMember> loadFamilyMember(GrobingDatabase db, int personId) async {
     givenNames: p.givenNames,
     surname: p.surname,
     birthSurname: p.birthSurname,
+    sex: p.sex,
     birth: await date(EventType.birth),
     death: await date(EventType.death),
   );

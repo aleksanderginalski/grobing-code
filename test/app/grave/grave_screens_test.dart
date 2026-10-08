@@ -224,6 +224,10 @@ void main() {
       expect(tester.widget<TextField>(_field(0)).focusNode!.hasFocus, isTrue);
 
       await tester.enterText(_field(0), 'Jan');
+      await tester.pump();
+      // ISSUE-025 AC-1: the sex is suggested from the given name — ♂ checked, ♀ not.
+      _expectSex(tester, 'Mężczyzna', checked: true);
+      _expectSex(tester, 'Kobieta', checked: false);
       await tester.enterText(_field(1), 'Wymyślony');
       await chooseQualifier(tester, 0, 'około');
       // The chosen qualifier carries a check, not only the accent (ui review, SC 1.4.1).
@@ -248,11 +252,10 @@ void main() {
       expect(find.text('Pochówek'), findsNothing);
       await tester.enterText(_field(5), 'Kowal, wymyślony do testów.');
       await tester.pump();
-      expect(find.text('Źródło: notatki'), findsOneWidget);
-      expect(
-        find.text('Daty i miejsce pochówku zapiszą się ze źródłem: notatki.'),
-        findsOneWidget,
-      );
+      // ISSUE-025 AC-5: no source on the screen — neither by "kim była" nor by the dates (SPIKE-004 D28).
+      expect(find.textContaining('Źródło'), findsNothing);
+      expect(find.textContaining('ze źródłem'), findsNothing);
+      expect(find.text('Zmień'), findsNothing);
       await save(tester, GraveScreen);
 
       await _pumpUntil(
@@ -274,6 +277,8 @@ void main() {
         findsOneWidget,
       );
       await tester.enterText(_field(0), 'Anna');
+      await tester.pump();
+      _expectSex(tester, 'Kobieta', checked: true); // AC-1: "Anna" → ♀
       await tester.testTextInput.receiveAction(TextInputAction.next);
       await tester.pumpAndSettle();
       final TextEditingController surname = tester
@@ -329,6 +334,8 @@ void main() {
         });
         final List<Person> people = await db.select(db.persons).get();
         expect(people.map((p) => p.bioSource), ['notatki', null]);
+        // ISSUE-025 AC-1: the suggested sex is saved with the person.
+        expect(people.map((p) => p.sex), [Sex.male, Sex.female]);
       });
       await cleanUp(tester);
     },
@@ -531,20 +538,15 @@ void main() {
       await tester.tap(find.text('Jan Wymyślony'));
       await tester.pumpAndSettle();
       expect(find.text('Poprawa wpisu'), findsOneWidget);
-      // Read against the notes first: no keyboard; the dates keep their source (ui review).
+      // Read against the notes first: no keyboard (ui review). No line about the dates' source any more
+      // (ISSUE-025 AC-5, SPIKE-004 D28).
       expect(
         find.byWidgetPredicate(
           (w) => w is EditableText && w.focusNode.hasFocus,
         ),
         findsNothing,
       );
-      expect(
-        find.text(
-          'Poprawa nie zmienia źródła dat. Nowa data zapisze się ze '
-          'źródłem: notatki.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Poprawa nie zmienia źródła'), findsNothing);
       expect(
         find.text('Kilka źródeł — tej daty tu nie poprawisz.'),
         findsOneWidget,
@@ -569,4 +571,98 @@ void main() {
       await cleanUp(tester);
     },
   );
+
+  testWidgets(
+    'ISSUE-025 AC-1, D-płeć — a correction of someone without a sex starts from the suggestion, so back '
+    'with nothing changed asks nothing; a sex written is never changed by typing a name',
+    (tester) async {
+      await withCemetery(tester);
+      late ({
+        BuriedPerson person,
+        int? graveId,
+        String? graveTitle,
+        int peopleCount,
+      }) maria,
+          kuba;
+      await tester.runAsync(() async {
+        final int grave = await addPersonToNewGrave(
+          db,
+          cemeteryId: cemetery,
+          entry: const PersonEntry(givenNames: 'Maria', surname: 'Wymyślona'),
+        );
+        await addPersonToGrave(
+          db,
+          graveId: grave,
+          entry: const PersonEntry(
+            givenNames: 'Kuba',
+            surname: 'Wymyślony',
+            sex: Sex.male,
+          ),
+        );
+        final List<Person> people = await db.select(db.persons).get();
+        maria = (await loadPersonForCorrection(db, people[0].id))!;
+        kuba = (await loadPersonForCorrection(db, people[1].id))!;
+      });
+      expect(maria.person.sex, isNull);
+
+      Widget opener(
+        ({
+          BuriedPerson person,
+          int? graveId,
+          String? graveTitle,
+          int peopleCount,
+        })
+        p,
+      ) => Builder(
+        builder: (context) => Center(
+          child: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => PersonFormScreen(
+                  database: db,
+                  mode: Correction(
+                    person: p.person,
+                    graveTitle: p.graveTitle,
+                    peopleCount: p.peopleCount,
+                    graveId: p.graveId,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('otwórz'),
+          ),
+        ),
+      );
+
+      // Maria, no sex written: ♀ suggested from her name; back with nothing changed just leaves.
+      await pumpScreen(tester, opener(maria));
+      await tester.tap(find.text('otwórz'));
+      await tester.pumpAndSettle();
+      _expectSex(tester, 'Kobieta', checked: true);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Odrzucić wpis?'), findsNothing);
+      expect(find.byType(PersonFormScreen), findsNothing);
+
+      // Kuba, ♂ written: a name that would suggest ♀ does not change it.
+      await pumpScreen(tester, opener(kuba));
+      await tester.tap(find.text('otwórz'));
+      await tester.pumpAndSettle();
+      _expectSex(tester, 'Mężczyzna', checked: true);
+      await tester.enterText(_field(0), 'Kunegunda');
+      await tester.pump();
+      _expectSex(tester, 'Mężczyzna', checked: true);
+      _expectSex(tester, 'Kobieta', checked: false);
+
+      await cleanUp(tester);
+    },
+  );
 }
+
+/// ISSUE-025 AC-1: the sex icon named [label] ("Kobieta", "Mężczyzna") is chosen — or not — as the screen
+/// reader hears it, and it can be pressed (Switch Access, ISSUE-021).
+void _expectSex(WidgetTester tester, String label, {required bool checked}) =>
+    expect(
+      tester.getSemantics(find.bySemanticsLabel(label)),
+      isSemantics(isChecked: checked, hasTapAction: true),
+    );

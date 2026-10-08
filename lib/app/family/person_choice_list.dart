@@ -8,7 +8,7 @@ import '../photo/photo_people_screen.dart' show PeopleSectionHeader;
 import '../polish.dart';
 import '../theme.dart';
 
-/// What the person picker gives back: someone already in the app, or a new person to type on the sheet.
+/// What the person list gives back: someone already in the app, or a new person to type.
 sealed class PickedMember {
   const PickedMember();
 }
@@ -26,43 +26,41 @@ class PickedNew extends PickedMember {
   final String text;
 }
 
-/// B, the person picker of the family sheet (05_DESIGN/rodzina.md): search first, then create (D3) —
-/// the field takes the keyboard at once, "Nowa osoba" stands over the list, and this grave's people come
-/// first. Someone who cannot be chosen says why in words, never in the colour alone (SC 1.4.1). Pops a
-/// [PickedMember]; back pops nothing.
-class PersonPickerScreen extends StatefulWidget {
-  const PersonPickerScreen({
+/// B of 05_DESIGN/rodzina.md — the "Z kim?" step of the family wizard and the list of "Dodaj dziecko"
+/// (rodzina.md v2, C1 and E): search first, then create (D3) — the field takes the keyboard at once,
+/// "Nowa osoba" stands over the list, and this grave's people come first. Someone who cannot be chosen
+/// says why in words, never in the colour alone (SC 1.4.1).
+class PersonChoiceList extends StatefulWidget {
+  const PersonChoiceList({
     super.key,
     required this.database,
-    required this.title,
-    required this.inFamily,
+    required this.onPicked,
+    this.unavailable = const {},
     this.graveId,
     this.forChild = false,
     this.familyId,
   });
 
   final GrobingDatabase database;
+  final ValueChanged<PickedMember> onPicked;
 
-  /// "Dodaj do pary" or "Dodaj dziecko".
-  final String title;
+  /// Who cannot be chosen here, and why — "ta osoba", "już partner tej osoby", "już w tej rodzinie".
+  final Map<int, String> unavailable;
 
-  /// Who is on the sheet already — "już w tej rodzinie".
-  final Set<int> inFamily;
-
-  /// The grave of the person the sheet was opened from: "W tym grobie" (B4).
+  /// The grave of the person the wizard was opened from: "W tym grobie" (B4).
   final int? graveId;
 
   /// A child has one family of parents (D5): someone with parents elsewhere is "ma już rodziców".
   final bool forChild;
 
-  /// The family on the sheet — its own children do not count as "ma już rodziców".
+  /// The family the child joins — its own children do not count as "ma już rodziców".
   final int? familyId;
 
   @override
-  State<PersonPickerScreen> createState() => _PersonPickerScreenState();
+  State<PersonChoiceList> createState() => _PersonChoiceListState();
 }
 
-class _PersonPickerScreenState extends State<PersonPickerScreen> {
+class _PersonChoiceListState extends State<PersonChoiceList> {
   final TextEditingController _filter = TextEditingController();
 
   late final Future<
@@ -110,67 +108,33 @@ class _PersonPickerScreenState extends State<PersonPickerScreen> {
       matchesQuery(_filter.text, [c.givenNames, c.surname, c.birthSurname]);
 
   @override
-  Widget build(BuildContext context) => Theme(
-    data: Theme.of(context).copyWith(inputDecorationTheme: GrobingTheme.fields),
-    child: Scaffold(
-      backgroundColor: GrobingColors.background,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // B1.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 16, 4),
-              child: Row(
-                children: [
-                  const BackButton(color: GrobingColors.text),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      style: const TextStyle(
-                        color: GrobingColors.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // B2: the keyboard at once — searching is the way in (D3).
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: TextField(
-                controller: _filter,
-                autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.done,
-                style: const TextStyle(color: GrobingColors.text, fontSize: 16),
-                decoration: const InputDecoration(
-                  hintText: 'Szukaj osoby albo wpisz nową',
-                  prefixIcon: Icon(
-                    Icons.search,
-                    color: GrobingColors.textMuted,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: FutureBuilder(
-                future: _choices,
-                builder: (context, snapshot) {
-                  // B — wczytywanie: the background only, the read takes a moment.
-                  final data = snapshot.data;
-                  if (data == null) return const SizedBox.shrink();
-                  return _list(data);
-                },
-              ),
-            ),
-          ],
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // B2: the keyboard at once — searching is the way in (D3).
+      TextField(
+        controller: _filter,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(color: GrobingColors.text, fontSize: 16),
+        decoration: const InputDecoration(
+          hintText: 'Szukaj osoby albo wpisz nową',
+          prefixIcon: Icon(Icons.search, color: GrobingColors.textMuted),
         ),
       ),
-    ),
+      Expanded(
+        child: FutureBuilder(
+          future: _choices,
+          builder: (context, snapshot) {
+            // B — wczytywanie: the background only, the read takes a moment.
+            final data = snapshot.data;
+            if (data == null) return const SizedBox.shrink();
+            return _list(data);
+          },
+        ),
+      ),
+    ],
   );
 
   Widget _list(
@@ -189,19 +153,16 @@ class _PersonPickerScreenState extends State<PersonPickerScreen> {
     ]..sort(_compare);
     final String typed = _filter.text.trim();
     String? reason(PersonChoice c) {
-      if (widget.inFamily.contains(c.id)) return 'już w tej rodzinie';
+      if (widget.unavailable[c.id] case final String why) return why;
       if (data.withParents.contains(c.id)) return 'ma już rodziców';
       return null;
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
       children: [
         // B3: always there, first.
-        _NewRow(
-          typed: typed,
-          onTap: () => Navigator.of(context).pop(PickedNew(typed)),
-        ),
+        _NewRow(typed: typed, onTap: () => widget.onPicked(PickedNew(typed))),
         if (inGrave.isNotEmpty) ...[
           const PeopleSectionHeader('W tym grobie'),
           for (final PersonChoice c in inGrave) _row(c, reason(c)),
@@ -237,9 +198,7 @@ class _PersonPickerScreenState extends State<PersonPickerScreen> {
         button: true,
         enabled: enabled,
         child: InkWell(
-          onTap: enabled
-              ? () => Navigator.of(context).pop(PickedPerson(c))
-              : null,
+          onTap: enabled ? () => widget.onPicked(PickedPerson(c)) : null,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 56),
             child: Padding(
@@ -280,7 +239,7 @@ class _PersonPickerScreenState extends State<PersonPickerScreen> {
   }
 }
 
-/// B3: "Nowa osoba", with what is typed — „Nowa osoba: „Anna”” — so the sheet starts from it.
+/// B3: "Nowa osoba", with what is typed — „Nowa osoba: „Anna”” — so the new person starts from it.
 class _NewRow extends StatelessWidget {
   const _NewRow({required this.typed, required this.onTap});
 

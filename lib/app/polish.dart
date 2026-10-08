@@ -2,6 +2,8 @@
 // endings (05_DESIGN/cmentarze.md D3; style-b.md rule 6). One place, because every later screen needs
 // the same rules.
 
+import '../data/database.dart' show Sex;
+
 /// The form of a noun after [n]: 1 grób · 2–4 groby (but 12–14 grobów) · 0, 5+ grobów.
 String plural(int n, String one, String few, String many) {
   if (n == 1) return one;
@@ -116,6 +118,29 @@ int _rank(String ch) {
   final int i = _alphabet.indexOf(ch);
   // Digits, spaces and punctuation before letters, in their own order.
   return i >= 0 ? 1000 + i : ch.codeUnitAt(0);
+}
+
+/// Men's names ending in "-a" — the rule's mistakes among the dead in the PESEL register's first names
+/// (ISSUE-019 → Prior art: 0.066%).
+const Set<String> _menOnA = {
+  'kuba',
+  'bonawentura',
+  'dyzma',
+  'kosma',
+  'jarema',
+  'kuźma',
+  'barnaba',
+};
+
+/// The sex the form suggests from the first given name (05_DESIGN/wpis-osoby.md D-płeć): "-a" is a woman,
+/// anything else a man, but for [_menOnA]; no given names, no suggestion. A suggestion is shown before it
+/// is saved, and a touch changes it.
+Sex? suggestSex(String? givenNames) {
+  final List<String> words = (givenNames ?? '').trim().split(RegExp(r'\s+'));
+  final String first = words.first.toLowerCase();
+  if (first.isEmpty) return null;
+  if (_menOnA.contains(first)) return Sex.male;
+  return first.endsWith('a') ? Sex.female : Sex.male;
 }
 
 /// Each word with a capital first letter: "cmentarz leśny" → "Cmentarz Leśny" (the name field's own

@@ -26,10 +26,10 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 6, zero rows in every table, no photos', () async {
+  test('empty database: schema 7, zero rows in every table, no photos', () async {
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 6);
+    expect(state.schemaVersion, 7);
     // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
     expect(state.rowCounts, hasLength(12));
     expect(state.rowCounts, contains('person_media'));
@@ -51,10 +51,11 @@ void main() {
     expect(state.rowCounts['family_children'], 2);
     expect(state.rowCounts['burials'], 3);
     // One made-up dispute: the father's birth from the notes and from the grandmother (ISSUE-011); the
-    // first union's marriage and end, the second's marriage, the second child's birth (ISSUE-019).
-    expect(state.rowCounts['events'], 8);
+    // first union's marriage and end, the second's marriage, the second child's birth (ISSUE-019); the
+    // second union's "Razem od" before its wedding (ISSUE-025).
+    expect(state.rowCounts['events'], 9);
     // A claim on each event and burial, on each family and on each child's link (ADR-011).
-    expect(state.rowCounts['assertions'], 15);
+    expect(state.rowCounts['assertions'], 16);
     // The gravestone, a portrait and a shared "wedding photo" (ISSUE-017): three rows, three files, and
     // three person links — the shared photo is one row and one file with two links.
     expect(state.rowCounts['media'], 3);

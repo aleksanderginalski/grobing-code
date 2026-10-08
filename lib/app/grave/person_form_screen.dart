@@ -12,6 +12,7 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
+import '../widgets/sex_toggle.dart';
 import 'grave_screen.dart';
 
 /// Where the form was opened from, and so what it writes (05_DESIGN/wpis-osoby.md → Navigation).
@@ -141,13 +142,15 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
   late final TextEditingController _bio = TextEditingController(
     text: _initial.bio,
   );
-  late final TextEditingController _bioSource = TextEditingController(
-    text: _initial.bioSource ?? defaultBioSource,
-  );
 
   final FocusNode _givenNode = FocusNode();
   final FocusNode _surnameNode = FocusNode();
-  final FocusNode _bioSourceNode = FocusNode();
+
+  /// Element 4a (v5.6): the sex written, or the one suggested from the given names. A correction of
+  /// someone with a sex keeps it — the form never changes it by itself; without one, the suggestion is
+  /// where the form starts, so going back unchanged asks nothing (D-płeć).
+  late Sex? _sex = _initial.sex ?? suggestSex(_initial.givenNames);
+  late bool _sexTouched = _initial.sex != null;
 
   late final List<DateInput> _dates = [
     DateInput(
@@ -162,9 +165,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 
   /// The suggested surname is selected, so typing replaces it, until it is touched.
   bool _surnameTouched = false;
-  bool _editingSource = false;
   bool _nameMissing = false;
-  bool _sourceMissing = false;
   bool _saving = false;
   bool _saveFailed = false;
   bool _done = false;
@@ -220,11 +221,10 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       _surname,
       _birthSurname,
       _bio,
-      _bioSource,
     ]) {
       c.dispose();
     }
-    for (final FocusNode n in [_givenNode, _surnameNode, _bioSourceNode]) {
+    for (final FocusNode n in [_givenNode, _surnameNode]) {
       n.dispose();
     }
     for (final DateInput d in _dates) {
@@ -254,7 +254,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     _surname.text,
     _birthSurname.text,
     _bio.text,
-    _bioSource.text,
+    _sex?.name ?? '',
     for (final DateInput d in _dates) ...[
       d.qualifier.name,
       d.from.text,
@@ -306,12 +306,6 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       d.showError = r.error != null;
       if (r.error != null) first ??= r.toBad ? d.toNode : d.fromNode;
     }
-    _sourceMissing =
-        _bio.text.trim().isNotEmpty && _bioSource.text.trim().isEmpty;
-    if (_sourceMissing) {
-      _editingSource = true;
-      first ??= _bioSourceNode;
-    }
     return first;
   }
 
@@ -320,7 +314,10 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     surname: _surname.text,
     birthSurname: _birthSurname.text,
     bio: _bio.text,
-    bioSource: _bioSource.text,
+    // The source of "kim była" is not on the screen any more (v5.4, SPIKE-004 D28): a correction keeps
+    // the one stored, a new text gets the notes'.
+    bioSource: _initial.bioSource,
+    sex: _sex,
     birth: _dates[0].read().date,
     death: _dates[1].read().date,
     // The form has no burial date (D7): a correction leaves the one a person has as it is.
@@ -545,25 +542,42 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           ),
           const SizedBox(height: 24),
         ],
-        // Elements 2–4.
-        TextField(
-          controller: _given,
-          focusNode: _givenNode,
-          // A correction is first read against the notes, so no keyboard covers it (ui review).
-          autofocus: widget.mode is! Correction,
-          textCapitalization: TextCapitalization.words,
-          textInputAction: TextInputAction.next,
-          style: inputTextStyle,
-          onChanged: (_) {
-            if (_nameMissing) setState(() => _nameMissing = false);
-          },
-          decoration: InputDecoration(
-            labelText: 'Imiona',
-            error: _nameMissing
-                ? const ErrorLine('Podaj imiona albo nazwisko.')
-                : null,
-          ),
+        // Elements 2 and 4a (v5.6): the given names, and the sex beside them, suggested from them.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _given,
+                focusNode: _givenNode,
+                // A correction is first read against the notes, so no keyboard covers it (ui review).
+                autofocus: widget.mode is! Correction,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                style: inputTextStyle,
+                onChanged: (text) => setState(() {
+                  _nameMissing = false;
+                  if (!_sexTouched) _sex = suggestSex(text);
+                }),
+                decoration: InputDecoration(
+                  labelText: 'Imiona',
+                  error: _nameMissing
+                      ? const ErrorLine('Podaj imiona albo nazwisko.')
+                      : null,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            SexToggle(
+              value: _sex,
+              onChanged: (sex) => setState(() {
+                _sex = sex;
+                _sexTouched = true;
+              }),
+            ),
+          ],
         ),
+        // Element 4a stood here in v5.5 (a segment under the birth surname).
         const SizedBox(height: 16),
         TextField(
           controller: _surname,
@@ -603,9 +617,6 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           minLines: 3,
           maxLines: 6,
           style: inputTextStyle,
-          onChanged: (_) {
-            if (_sourceMissing) setState(() => _sourceMissing = false);
-          },
           decoration: const InputDecoration(
             labelText: 'Kim była',
             hintText:
@@ -615,15 +626,15 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             alignLabelWithHint: true,
           ),
         ),
-        _sourceLine(),
-        // Element 9a (v5): the person's families — in a correction only: the family sheet points at
+        // Element 9 ("Źródło: notatki · Zmień") is gone, and so is element 10 below: no sources in the app
+        // (v5.4, SPIKE-004 D28). The data keeps them, written with the notes' by default.
+        // Element 9a (v5.6): the person's families — in a correction only: the family sheet points at
         // "ta osoba", so the person must be written first (rodzina.md D2). Outside the `next` order.
         if (widget.mode case Correction(:final BuriedPerson person)) ...[
           const SizedBox(height: 24),
           FamilySection(
             database: widget.database,
             personId: person.id,
-            personName: () => _nameNow(withBirthSurname: true),
             graveId: switch (widget.mode) {
               Correction(:final int? graveId) => graveId,
               _ => null,
@@ -631,73 +642,9 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             photos: widget.photos,
           ),
         ],
-        const SizedBox(height: 16),
-        // Element 10: the dates' source is shown, not asked (FR-001 cost decision). In a correction a
-        // date keeps its claim and the grave does not change (D1), so the line says what is true
-        // there (ui review).
-        Text(
-          widget.mode is Correction
-              ? 'Poprawa nie zmienia źródła dat. Nowa data zapisze się ze '
-                    'źródłem: notatki.'
-              : 'Daty i miejsce pochówku zapiszą się ze źródłem: notatki.',
-          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
-        ),
       ],
     ),
   );
-
-  /// Element 9: the one source line of "kim była" — shown, and changed only when asked.
-  Widget _sourceLine() {
-    if (!_editingSource) {
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Źródło: ${_bioSource.text.trim()}',
-              style: const TextStyle(
-                color: GrobingColors.textMuted,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() => _editingSource = true);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _bioSourceNode.requestFocus();
-                _bioSource.selection = TextSelection(
-                  baseOffset: 0,
-                  extentOffset: _bioSource.text.length,
-                );
-              });
-            },
-            child: const Text('Zmień'),
-          ),
-        ],
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: TextField(
-        controller: _bioSource,
-        focusNode: _bioSourceNode,
-        textCapitalization: TextCapitalization.sentences,
-        textInputAction: TextInputAction.done,
-        style: inputTextStyle,
-        onChanged: (_) {
-          if (_sourceMissing) setState(() => _sourceMissing = false);
-        },
-        decoration: InputDecoration(
-          labelText: 'Źródło „kim była”',
-          error: _sourceMissing
-              ? const ErrorLine(
-                  'Podaj źródło — kto to powiedział albo skąd to wiesz.',
-                )
-              : null,
-        ),
-      ),
-    );
-  }
 
   /// Element 11: "Zapisz", pinned above the keyboard; a failed save says so above it.
   Widget _bottom() => Padding(

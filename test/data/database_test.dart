@@ -8,9 +8,9 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-// v6 (ISSUE-019) has the tables of v5; family_children got an id and assertions may cite a family or a
-// child's link (ADR-011).
-const List<String> _v6Tables = [
+// v7 (ISSUE-025) has the tables of v6 — persons got a sex; v6 (ISSUE-019) gave family_children an id and
+// let assertions cite a family or a child's link (ADR-011).
+const List<String> _v7Tables = [
   'assertions',
   'burials',
   'cemeteries',
@@ -39,15 +39,15 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 6, integrity ok, exactly the v6 tables, foreign keys on, the crop on the photo link, '
-      'claims on families and on children\'s links',
+      'user_version 7, integrity ok, exactly the v7 tables, foreign keys on, the crop on the photo link, '
+      'claims on families and on children\'s links, a person\'s sex',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 6);
+        expect(await _single(db, 'PRAGMA user_version'), 7);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -60,7 +60,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v6Tables);
+        expect(tables, _v7Tables);
         final List<String> linkColumns =
             (await db.customSelect('PRAGMA table_info(person_media)').get())
                 .map((r) => r.read<String>('name'))
@@ -82,6 +82,7 @@ void main() {
           await columns('assertions'),
           containsAll(['family_id', 'family_child_id']),
         );
+        expect(await columns('persons'), contains('sex'));
       },
     );
 

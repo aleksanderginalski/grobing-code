@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/polish.dart';
+import 'package:grobing/data/database.dart' show Sex;
 
 // ISSUE-014: Polish text on the home screen — plural forms (style-b.md rule 6), matching without
 // diacritics and endings (05_DESIGN/cmentarze.md D3, AC-3), the Polish alphabet (element 11).
@@ -115,6 +116,26 @@ void main() {
       expect(matchesWordStart('zmys', ['Ewa', 'Przezmyślonek']), isFalse);
       expect(matchesWordStart('lod', ['Łódź']), isTrue);
       expect(matchesWordStart('test', [null, 'Testowski']), isTrue);
+    },
+  );
+
+  test(
+    'ISSUE-025 AC-1 — suggestSex: the first given name on "-a" is a woman, any other a man, the men on '
+    '"-a" from the PESEL measurement are men; no given names, no suggestion',
+    () {
+      expect(suggestSex('Maria'), Sex.female);
+      expect(suggestSex('Anna Zofia'), Sex.female);
+      expect(suggestSex('Jan'), Sex.male);
+      expect(
+        suggestSex('Józef Maria'),
+        Sex.male,
+        reason: 'the first name counts',
+      );
+      expect(suggestSex('Kuba'), Sex.male);
+      expect(suggestSex('Barnaba'), Sex.male);
+      expect(suggestSex('  KUBA '), Sex.male);
+      expect(suggestSex(''), isNull);
+      expect(suggestSex(null), isNull);
     },
   );
 }

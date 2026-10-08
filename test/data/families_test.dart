@@ -621,4 +621,223 @@ void main() {
       await view.cancel();
     },
   );
+
+  // ISSUE-025 — the union as a timeline (together since → wedding → end) and a new person's sex.
+
+  test(
+    'ISSUE-025 AC-3 — "Razem od" 1980 and the wedding 1985 are both written, '
+    'each with its claim, and read back as the union of each partner',
+    () async {
+      final int jan = await person('Jan'), maria = await person('Maria');
+      final int family = await saveFamily(
+        db,
+        FamilyDraft(
+          partners: [ExistingMember(maria), ExistingMember(jan)],
+          children: const [],
+          together: const QualifiedDate(DateQualifier.exact, PartialDate(1980)),
+          marriage: const QualifiedDate(DateQualifier.exact, PartialDate(1985)),
+        ),
+        clock: _clock,
+      );
+      final List<Event> events = await (db.select(
+        db.events,
+      )..where((e) => e.familyId.equals(family))).get();
+      expect(events.map((e) => (e.type, e.year)), [
+        (EventType.together, 1980),
+        (EventType.marriage, 1985),
+      ]);
+      for (final Event e in events) {
+        expect(
+          await (db.select(
+            db.assertions,
+          )..where((a) => a.eventId.equals(e.id))).get(),
+          hasLength(1),
+          reason: '${e.type} has its claim',
+        );
+      }
+      final PersonUnion union = (await loadRelations(db, maria)).unions.single;
+      expect(union.together?.from.year, 1980);
+      expect(union.married, isTrue);
+      expect(union.marriage?.from.year, 1985);
+      expect(union.ended, isFalse);
+      final FamilyDetail detail = (await loadFamily(db, family))!;
+      expect(detail.together.date?.from.year, 1980);
+      expect(detail.married, isTrue);
+    },
+  );
+
+  test('ISSUE-025 — a wedding without a date is an event without a date, with '
+      'its claim (GEDCOM MARR Y); it survives a later save, and "To nie było '
+      'małżeństwo" takes it away with its claim', () async {
+    final int jan = await person('Jan'), maria = await person('Maria');
+    final int family = await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [ExistingMember(maria), ExistingMember(jan)],
+        children: const [],
+        married: true,
+      ),
+    );
+    Future<List<Event>> weddings() =>
+        (db.select(db.events)
+              ..where((e) => e.familyId.equals(family))
+              ..where((e) => e.type.equalsValue(EventType.marriage)))
+            .get();
+    expect((await weddings()).single.year, isNull);
+    expect(await count('assertions'), 2, reason: 'the family and the wedding');
+    expect((await loadRelations(db, maria)).unions.single.married, isTrue);
+
+    // A later save of another row of the summary keeps the dateless wedding.
+    await saveFamily(
+      db,
+      FamilyDraft(
+        familyId: family,
+        partners: [ExistingMember(maria), ExistingMember(jan)],
+        children: const [],
+        together: const QualifiedDate(DateQualifier.about, PartialDate(1946)),
+        married: true,
+      ),
+    );
+    expect(await weddings(), hasLength(1));
+    expect((await loadFamily(db, family))!.married, isTrue);
+
+    await saveFamily(
+      db,
+      FamilyDraft(
+        familyId: family,
+        partners: [ExistingMember(maria), ExistingMember(jan)],
+        children: const [],
+        together: const QualifiedDate(DateQualifier.about, PartialDate(1946)),
+        married: false,
+      ),
+    );
+    expect(await weddings(), isEmpty);
+    expect(await count('assertions'), 2, reason: 'the family and "razem od"');
+    expect((await loadRelations(db, maria)).unions.single.married, isFalse);
+  });
+
+  test(
+    'ISSUE-025 — a dated wedding cleared to "Nie znam daty" keeps the event '
+    'and loses its date; an end without a date is written the same way',
+    () async {
+      final int jan = await person('Jan'), maria = await person('Maria');
+      final int family = await saveFamily(
+        db,
+        FamilyDraft(
+          partners: [ExistingMember(maria), ExistingMember(jan)],
+          children: const [],
+          marriage: _about1948,
+        ),
+      );
+      await saveFamily(
+        db,
+        FamilyDraft(
+          familyId: family,
+          partners: [ExistingMember(maria), ExistingMember(jan)],
+          children: const [],
+          married: true,
+          ended: true,
+        ),
+      );
+      final FamilyDetail f = (await loadFamily(db, family))!;
+      expect(f.married, isTrue);
+      expect(f.marriage.date, isNull);
+      expect(f.ended, isTrue);
+      expect(f.end.date, isNull);
+      final List<Event> events = await (db.select(
+        db.events,
+      )..where((e) => e.familyId.equals(family))).get();
+      expect(events.map((e) => (e.type, e.year, e.qualifier)), [
+        (EventType.marriage, null, null),
+        (EventType.end, null, null),
+      ]);
+    },
+  );
+
+  test(
+    'ISSUE-025 — a date for a wedding that did not happen is refused',
+    () async {
+      final int jan = await person('Jan'), maria = await person('Maria');
+      await expectLater(
+        saveFamily(
+          db,
+          FamilyDraft(
+            partners: [ExistingMember(maria), ExistingMember(jan)],
+            children: const [],
+            married: false,
+            marriage: _about1948,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(await count('families'), 0, reason: 'all or nothing');
+    },
+  );
+
+  test('ISSUE-025 — a new person keeps the sex chosen in the wizard; their '
+      'relatives read it back', () async {
+    final int maria = await person('Maria');
+    final int family = await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [
+          ExistingMember(maria),
+          const NewMember(
+            givenNames: 'Kuba',
+            surname: 'Testowy',
+            sex: Sex.male,
+          ),
+        ],
+        children: const [
+          NewMember(givenNames: 'Anna', surname: 'Testowa', sex: Sex.female),
+        ],
+      ),
+    );
+    final FamilyDetail f = (await loadFamily(db, family))!;
+    expect(
+      f.partners.map((p) => (p.givenNames, p.sex)),
+      containsAll([('Kuba', Sex.male)]),
+    );
+    expect(f.children.single.sex, Sex.female);
+    final PersonUnion u = (await loadRelations(db, maria)).unions.single;
+    expect(u.partner?.sex, Sex.male);
+    expect(u.married, isFalse, reason: 'no wedding written — "Partner"');
+  });
+
+  test('ISSUE-025 — unions in order of their first date: "Razem od" before the '
+      'wedding; the parents\' union comes with its own timeline', () async {
+    final int maria = await person('Maria');
+    final int jan = await person('Jan'), kuba = await person('Kuba');
+    final int mama = await person('Zofia');
+    await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [ExistingMember(maria), ExistingMember(kuba)],
+        children: const [],
+        marriage: const QualifiedDate(DateQualifier.exact, PartialDate(1960)),
+      ),
+    );
+    await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [ExistingMember(maria), ExistingMember(jan)],
+        children: const [],
+        together: const QualifiedDate(DateQualifier.exact, PartialDate(1946)),
+        marriage: const QualifiedDate(DateQualifier.exact, PartialDate(1970)),
+      ),
+    );
+    await saveFamily(
+      db,
+      FamilyDraft(
+        partners: [ExistingMember(mama)],
+        children: [ExistingMember(maria)],
+        married: true,
+      ),
+    );
+    final PersonRelations r = await loadRelations(db, maria);
+    expect(r.unions.map((u) => u.partner?.givenNames), ['Jan', 'Kuba']);
+    expect(r.parentsUnion?.married, isTrue);
+    expect(r.parentsUnion?.marriage, isNull);
+    expect(r.parents.single.givenNames, 'Zofia');
+  });
 }

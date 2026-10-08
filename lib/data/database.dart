@@ -8,14 +8,23 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v6 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
-// ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018)
-// and claims on families and children's links (ISSUE-019), still without the grave fee (S4) and the
-// cemetery offline-map status (SPIKE-001). No sex: the author's decision at stop #1 of ISSUE-019. Enums are
+// Schema v7 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
+// claims on families and children's links (ISSUE-019) and a person's sex with the start of a union
+// (ISSUE-025), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
 // stored by name, not index: data lives for decades and a reordered enum must not silently change
-// meaning. Renaming an enum value is a schema change and needs a migration.
+// meaning. Renaming an enum value is a schema change and needs a migration; a new value at the end is not.
 
-enum EventType { birth, death, burial, marriage, end }
+/// A family's events — `marriage`, `end` and `together` — and a person's. `together` is the start of a
+/// union before or without a wedding ("Razem od", ISSUE-025): GEDCOM 7 has no tag for it, so an export
+/// writes it as `EVEN` with a `TYPE`. A `marriage` with no date says the wedding happened, date unknown
+/// (GEDCOM 7's `MARR Y`: "the event is known to have occurred").
+enum EventType { birth, death, burial, marriage, end, together }
+
+/// GEDCOM 7's `SEX` at birth: `F` and `M`. None written is `U` — "cannot be determined from available
+/// sources" (ISSUE-025; ISSUE-019 D2). `X` has no case in the notes; as a new value at the end it would
+/// need no migration.
+enum Sex { female, male }
 
 /// FR-004: a date is a value plus a qualifier; `between` uses both bounds.
 enum DateQualifier { exact, about, before, after, between }
@@ -36,6 +45,9 @@ class Persons extends Table {
 
   /// FR-005: surname at birth, next to the married one.
   TextColumn get birthSurname => text().nullable()();
+
+  /// Null: not known (ISSUE-025). The form suggests it from the given names, never the database.
+  TextColumn get sex => textEnum<Sex>().nullable()();
 
   /// "Kim była" — free text with one source line for the whole text (FR-001 cost decision).
   TextColumn get bio => text().nullable()();
@@ -270,7 +282,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 6;
+  static const int currentSchemaVersion = 7;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -296,6 +308,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from3To4: _from3To4,
             from4To5: _from4To5,
             from5To6: _from5To6,
+            from6To7: _from6To7,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -407,6 +420,12 @@ class GrobingDatabase extends _$GrobingDatabase {
       throw StateError('Schema v6: ${broken.length} broken references');
     }
   }
+
+  /// ISSUE-025: a person's sex. A new nullable column: no row changes, nothing dropped, and every v6
+  /// person has none — the form suggests one at the next correction. The new event type `together`
+  /// needs no step: the type is stored by name, without a CHECK on its values.
+  Future<void> _from6To7(Migrator m, Schema7 schema) =>
+      m.addColumn(schema.persons, schema.persons.sex);
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

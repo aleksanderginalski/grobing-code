@@ -54,6 +54,15 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<Sex?, String> sex =
+      GeneratedColumn<String>(
+        'sex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<Sex?>($PersonsTable.$convertersexn);
   static const VerificationMeta _bioMeta = const VerificationMeta('bio');
   @override
   late final GeneratedColumn<String> bio = GeneratedColumn<String>(
@@ -95,6 +104,7 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     givenNames,
     surname,
     birthSurname,
+    sex,
     bio,
     bioSource,
     isLiving,
@@ -178,6 +188,12 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
         DriftSqlType.string,
         data['${effectivePrefix}birth_surname'],
       ),
+      sex: $PersonsTable.$convertersexn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}sex'],
+        ),
+      ),
       bio: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}bio'],
@@ -197,6 +213,11 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
   $PersonsTable createAlias(String alias) {
     return $PersonsTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<Sex, String, String> $convertersex =
+      const EnumNameConverter<Sex>(Sex.values);
+  static JsonTypeConverter2<Sex?, String?, String?> $convertersexn =
+      JsonTypeConverter2.asNullable($convertersex);
 }
 
 class Person extends DataClass implements Insertable<Person> {
@@ -207,6 +228,9 @@ class Person extends DataClass implements Insertable<Person> {
   /// FR-005: surname at birth, next to the married one.
   final String? birthSurname;
 
+  /// Null: not known (ISSUE-025). The form suggests it from the given names, never the database.
+  final Sex? sex;
+
   /// "Kim była" — free text with one source line for the whole text (FR-001 cost decision).
   final String? bio;
   final String? bioSource;
@@ -216,6 +240,7 @@ class Person extends DataClass implements Insertable<Person> {
     this.givenNames,
     this.surname,
     this.birthSurname,
+    this.sex,
     this.bio,
     this.bioSource,
     required this.isLiving,
@@ -232,6 +257,9 @@ class Person extends DataClass implements Insertable<Person> {
     }
     if (!nullToAbsent || birthSurname != null) {
       map['birth_surname'] = Variable<String>(birthSurname);
+    }
+    if (!nullToAbsent || sex != null) {
+      map['sex'] = Variable<String>($PersonsTable.$convertersexn.toSql(sex));
     }
     if (!nullToAbsent || bio != null) {
       map['bio'] = Variable<String>(bio);
@@ -255,6 +283,7 @@ class Person extends DataClass implements Insertable<Person> {
       birthSurname: birthSurname == null && nullToAbsent
           ? const Value.absent()
           : Value(birthSurname),
+      sex: sex == null && nullToAbsent ? const Value.absent() : Value(sex),
       bio: bio == null && nullToAbsent ? const Value.absent() : Value(bio),
       bioSource: bioSource == null && nullToAbsent
           ? const Value.absent()
@@ -273,6 +302,9 @@ class Person extends DataClass implements Insertable<Person> {
       givenNames: serializer.fromJson<String?>(json['givenNames']),
       surname: serializer.fromJson<String?>(json['surname']),
       birthSurname: serializer.fromJson<String?>(json['birthSurname']),
+      sex: $PersonsTable.$convertersexn.fromJson(
+        serializer.fromJson<String?>(json['sex']),
+      ),
       bio: serializer.fromJson<String?>(json['bio']),
       bioSource: serializer.fromJson<String?>(json['bioSource']),
       isLiving: serializer.fromJson<bool>(json['isLiving']),
@@ -286,6 +318,9 @@ class Person extends DataClass implements Insertable<Person> {
       'givenNames': serializer.toJson<String?>(givenNames),
       'surname': serializer.toJson<String?>(surname),
       'birthSurname': serializer.toJson<String?>(birthSurname),
+      'sex': serializer.toJson<String?>(
+        $PersonsTable.$convertersexn.toJson(sex),
+      ),
       'bio': serializer.toJson<String?>(bio),
       'bioSource': serializer.toJson<String?>(bioSource),
       'isLiving': serializer.toJson<bool>(isLiving),
@@ -297,6 +332,7 @@ class Person extends DataClass implements Insertable<Person> {
     Value<String?> givenNames = const Value.absent(),
     Value<String?> surname = const Value.absent(),
     Value<String?> birthSurname = const Value.absent(),
+    Value<Sex?> sex = const Value.absent(),
     Value<String?> bio = const Value.absent(),
     Value<String?> bioSource = const Value.absent(),
     bool? isLiving,
@@ -305,6 +341,7 @@ class Person extends DataClass implements Insertable<Person> {
     givenNames: givenNames.present ? givenNames.value : this.givenNames,
     surname: surname.present ? surname.value : this.surname,
     birthSurname: birthSurname.present ? birthSurname.value : this.birthSurname,
+    sex: sex.present ? sex.value : this.sex,
     bio: bio.present ? bio.value : this.bio,
     bioSource: bioSource.present ? bioSource.value : this.bioSource,
     isLiving: isLiving ?? this.isLiving,
@@ -319,6 +356,7 @@ class Person extends DataClass implements Insertable<Person> {
       birthSurname: data.birthSurname.present
           ? data.birthSurname.value
           : this.birthSurname,
+      sex: data.sex.present ? data.sex.value : this.sex,
       bio: data.bio.present ? data.bio.value : this.bio,
       bioSource: data.bioSource.present ? data.bioSource.value : this.bioSource,
       isLiving: data.isLiving.present ? data.isLiving.value : this.isLiving,
@@ -332,6 +370,7 @@ class Person extends DataClass implements Insertable<Person> {
           ..write('givenNames: $givenNames, ')
           ..write('surname: $surname, ')
           ..write('birthSurname: $birthSurname, ')
+          ..write('sex: $sex, ')
           ..write('bio: $bio, ')
           ..write('bioSource: $bioSource, ')
           ..write('isLiving: $isLiving')
@@ -345,6 +384,7 @@ class Person extends DataClass implements Insertable<Person> {
     givenNames,
     surname,
     birthSurname,
+    sex,
     bio,
     bioSource,
     isLiving,
@@ -357,6 +397,7 @@ class Person extends DataClass implements Insertable<Person> {
           other.givenNames == this.givenNames &&
           other.surname == this.surname &&
           other.birthSurname == this.birthSurname &&
+          other.sex == this.sex &&
           other.bio == this.bio &&
           other.bioSource == this.bioSource &&
           other.isLiving == this.isLiving);
@@ -367,6 +408,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
   final Value<String?> givenNames;
   final Value<String?> surname;
   final Value<String?> birthSurname;
+  final Value<Sex?> sex;
   final Value<String?> bio;
   final Value<String?> bioSource;
   final Value<bool> isLiving;
@@ -375,6 +417,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     this.givenNames = const Value.absent(),
     this.surname = const Value.absent(),
     this.birthSurname = const Value.absent(),
+    this.sex = const Value.absent(),
     this.bio = const Value.absent(),
     this.bioSource = const Value.absent(),
     this.isLiving = const Value.absent(),
@@ -384,6 +427,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     this.givenNames = const Value.absent(),
     this.surname = const Value.absent(),
     this.birthSurname = const Value.absent(),
+    this.sex = const Value.absent(),
     this.bio = const Value.absent(),
     this.bioSource = const Value.absent(),
     this.isLiving = const Value.absent(),
@@ -393,6 +437,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     Expression<String>? givenNames,
     Expression<String>? surname,
     Expression<String>? birthSurname,
+    Expression<String>? sex,
     Expression<String>? bio,
     Expression<String>? bioSource,
     Expression<bool>? isLiving,
@@ -402,6 +447,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
       if (givenNames != null) 'given_names': givenNames,
       if (surname != null) 'surname': surname,
       if (birthSurname != null) 'birth_surname': birthSurname,
+      if (sex != null) 'sex': sex,
       if (bio != null) 'bio': bio,
       if (bioSource != null) 'bio_source': bioSource,
       if (isLiving != null) 'is_living': isLiving,
@@ -413,6 +459,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     Value<String?>? givenNames,
     Value<String?>? surname,
     Value<String?>? birthSurname,
+    Value<Sex?>? sex,
     Value<String?>? bio,
     Value<String?>? bioSource,
     Value<bool>? isLiving,
@@ -422,6 +469,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
       givenNames: givenNames ?? this.givenNames,
       surname: surname ?? this.surname,
       birthSurname: birthSurname ?? this.birthSurname,
+      sex: sex ?? this.sex,
       bio: bio ?? this.bio,
       bioSource: bioSource ?? this.bioSource,
       isLiving: isLiving ?? this.isLiving,
@@ -443,6 +491,11 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     if (birthSurname.present) {
       map['birth_surname'] = Variable<String>(birthSurname.value);
     }
+    if (sex.present) {
+      map['sex'] = Variable<String>(
+        $PersonsTable.$convertersexn.toSql(sex.value),
+      );
+    }
     if (bio.present) {
       map['bio'] = Variable<String>(bio.value);
     }
@@ -462,6 +515,7 @@ class PersonsCompanion extends UpdateCompanion<Person> {
           ..write('givenNames: $givenNames, ')
           ..write('surname: $surname, ')
           ..write('birthSurname: $birthSurname, ')
+          ..write('sex: $sex, ')
           ..write('bio: $bio, ')
           ..write('bioSource: $bioSource, ')
           ..write('isLiving: $isLiving')
@@ -4661,6 +4715,7 @@ typedef $$PersonsTableCreateCompanionBuilder =
       Value<String?> givenNames,
       Value<String?> surname,
       Value<String?> birthSurname,
+      Value<Sex?> sex,
       Value<String?> bio,
       Value<String?> bioSource,
       Value<bool> isLiving,
@@ -4671,6 +4726,7 @@ typedef $$PersonsTableUpdateCompanionBuilder =
       Value<String?> givenNames,
       Value<String?> surname,
       Value<String?> birthSurname,
+      Value<Sex?> sex,
       Value<String?> bio,
       Value<String?> bioSource,
       Value<bool> isLiving,
@@ -4822,6 +4878,12 @@ class $$PersonsTableFilterComposer
     column: $table.birthSurname,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<Sex?, Sex, String> get sex =>
+      $composableBuilder(
+        column: $table.sex,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
 
   ColumnFilters<String> get bio => $composableBuilder(
     column: $table.bio,
@@ -5018,6 +5080,11 @@ class $$PersonsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sex => $composableBuilder(
+    column: $table.sex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get bio => $composableBuilder(
     column: $table.bio,
     builder: (column) => ColumnOrderings(column),
@@ -5058,6 +5125,9 @@ class $$PersonsTableAnnotationComposer
     column: $table.birthSurname,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<Sex?, String> get sex =>
+      $composableBuilder(column: $table.sex, builder: (column) => column);
 
   GeneratedColumn<String> get bio =>
       $composableBuilder(column: $table.bio, builder: (column) => column);
@@ -5258,6 +5328,7 @@ class $$PersonsTableTableManager
                 Value<String?> givenNames = const Value.absent(),
                 Value<String?> surname = const Value.absent(),
                 Value<String?> birthSurname = const Value.absent(),
+                Value<Sex?> sex = const Value.absent(),
                 Value<String?> bio = const Value.absent(),
                 Value<String?> bioSource = const Value.absent(),
                 Value<bool> isLiving = const Value.absent(),
@@ -5266,6 +5337,7 @@ class $$PersonsTableTableManager
                 givenNames: givenNames,
                 surname: surname,
                 birthSurname: birthSurname,
+                sex: sex,
                 bio: bio,
                 bioSource: bioSource,
                 isLiving: isLiving,
@@ -5276,6 +5348,7 @@ class $$PersonsTableTableManager
                 Value<String?> givenNames = const Value.absent(),
                 Value<String?> surname = const Value.absent(),
                 Value<String?> birthSurname = const Value.absent(),
+                Value<Sex?> sex = const Value.absent(),
                 Value<String?> bio = const Value.absent(),
                 Value<String?> bioSource = const Value.absent(),
                 Value<bool> isLiving = const Value.absent(),
@@ -5284,6 +5357,7 @@ class $$PersonsTableTableManager
                 givenNames: givenNames,
                 surname: surname,
                 birthSurname: birthSurname,
+                sex: sex,
                 bio: bio,
                 bioSource: bioSource,
                 isLiving: isLiving,

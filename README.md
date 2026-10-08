@@ -109,8 +109,7 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   (`lib/app/photo/crop_geometry.dart`), bo wymiarów zdjęcia nie ma w bazie; okrąg i tak przycina kadr do
   obrazu.
 - **Rodzina (schemat v6, ISSUE-019, ADR-011 w vaulcie).** Rodzina to związek (małżeństwo albo nie) z dziećmi:
-  1–2 osoby w parze, ślub i koniec jako zdarzenia rodziny. Osoba w kilku związkach jest w kilku rodzinach. Płci
-  w modelu nie ma (decyzja autora).
+  1–2 osoby w parze, ślub i koniec jako zdarzenia rodziny. Osoba w kilku związkach jest w kilku rodzinach.
   - **Twierdzenie o relacji stoi przy rodzinie (związek pary) i przy łączu każdego dziecka**, nie przy partnerze.
     GEDCOM 7 cytuje źródło przy `FAM`, a Gramps przy łączu dziecka (`ChildRef`). `family_children` ma więc `id`, a
     `assertions` cytuje dokładnie jedno: zdarzenie, pochówek, rodzinę albo łącze dziecka (`CHECK`).
@@ -122,7 +121,14 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
     odtworzenie każdej kopii v5 z rodzinami by odmówiło. Rodziny przed v6 pisały tylko wymyślone dane debug, a
     twierdzenie dostają przy pierwszym zapisie w arkuszu rodziny.
   - **Dzieci według daty urodzenia** (GEDCOM 7: *„chronological by birth”*), bez daty na końcu; związki osoby
-    według daty ślubu.
+    według pierwszej daty związku (od v7: „Razem od”, a bez niej ślub).
+- **Płeć i oś czasu związku (schemat v7, ISSUE-025).** Kolumna `persons.sex` (`female` / `male`, pusta = nieznana —
+  `U` w GEDCOM 7); formularz podpowiada ją z imienia, baza nigdy. Związek to oś czasu z trzech zdarzeń rodziny:
+  `together` („Razem od”, nowy typ — GEDCOM nie ma na to znacznika, eksport jako `EVEN` z `TYPE`), `marriage` i `end`.
+  **Ślub albo koniec bez daty to zdarzenie bez daty** (`MARR Y` w GEDCOM 7: „wiadomo, że było”) — z twierdzeniem jak
+  każde inne. `saveFamily` dostaje `married` / `ended` obok dat: bez nich decyduje sama data, jak przed v7. Migracja
+  v6→v7 tylko dodaje kolumnę (`addColumn`); nowy typ zdarzenia nie potrzebuje kroku, bo typ jest zapisany nazwą, bez
+  `CHECK` na wartościach. Osoby sprzed v7 nie mają płci, a rodziny bez ślubu są „Razem”.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.

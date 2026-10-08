@@ -83,31 +83,39 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
         );
 
     // The surname in the form that fits the made-up name, as in the tests — "Wymyślona" on the father read
-    // as a declension error on the screens (ISSUE-021, D2). The model has no sex; a surname is just text.
-    Future<int> person(String given, String surname, {String? birthSurname}) =>
-        db
-            .into(db.persons)
-            .insert(
-              PersonsCompanion.insert(
-                givenNames: Value('$given $batch'),
-                surname: Value(surname),
-                birthSurname: Value(birthSurname),
-                bio: const Value('Osoba wymyślona do testów.'),
-                bioSource: const Value('dane testowe'),
-              ),
-            );
+    // as a declension error on the screens (ISSUE-021, D2). The child has no sex, so the screens show the
+    // neutral role names too (ISSUE-025).
+    Future<int> person(
+      String given,
+      String surname, {
+      String? birthSurname,
+      Sex? sex,
+    }) => db
+        .into(db.persons)
+        .insert(
+          PersonsCompanion.insert(
+            givenNames: Value('$given $batch'),
+            surname: Value(surname),
+            birthSurname: Value(birthSurname),
+            sex: Value(sex),
+            bio: const Value('Osoba wymyślona do testów.'),
+            bioSource: const Value('dane testowe'),
+          ),
+        );
 
-    final int father = await person('Ojciec', 'Wymyślony');
+    final int father = await person('Ojciec', 'Wymyślony', sex: Sex.male);
     final int mother = await person(
       'Matka',
       'Wymyślona',
       birthSurname: 'Zmyślona',
+      sex: Sex.female,
     );
     final int child = await person('Dziecko', 'Wymyślone');
 
     // Two unions of the father, each a family with its claims (ISSUE-019, ADR-011): the first with the
     // mother, ended by a parting; the second with a partner and a child buried nowhere — the author's
-    // case at stop #1 ("rozstali się lub owdowieli i mieli nowe związki i dzieci").
+    // case at stop #1 ("rozstali się lub owdowieli i mieli nowe związki i dzieci"). The second began
+    // before the wedding — "Razem od" (ISSUE-025: "związek może »ewoluować« w małżeństwo").
     await saveFamily(
       db,
       FamilyDraft(
@@ -122,9 +130,14 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
       FamilyDraft(
         partners: [
           ExistingMember(father),
-          NewMember(givenNames: 'Partnerka $batch', surname: 'Zmyślona'),
+          NewMember(
+            givenNames: 'Partnerka $batch',
+            surname: 'Zmyślona',
+            sex: Sex.female,
+          ),
         ],
         children: [NewMember(givenNames: 'Dziecko z drugiego związku $batch')],
+        together: const QualifiedDate(DateQualifier.about, PartialDate(1922)),
         marriage: const QualifiedDate(DateQualifier.exact, PartialDate(1925)),
       ),
     );
