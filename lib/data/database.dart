@@ -8,12 +8,13 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v8 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v10 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
 // claims on families and children's links (ISSUE-019), a person's sex with the start of a union
-// (ISSUE-025) and a person's background photo (ISSUE-024), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
-// stored by name, not index: data lives for decades and a reordered enum must not silently change
-// meaning. Renaming an enum value is a schema change and needs a migration; a new value at the end is not.
+// (ISSUE-025), a person's background photo (ISSUE-024), a cemetery's photo (ISSUE-023) and its plan
+// (ISSUE-027, ADR-015), still without the grave fee (S4). Enums are stored by name, not index: data lives
+// for decades and a reordered enum must not silently change meaning. Renaming an enum value is a schema
+// change and needs a migration; a new value at the end is not.
 
 /// A family's events — `marriage`, `end` and `together` — and a person's. `together` is the start of a
 /// union before or without a wedding ("Razem od", ISSUE-025): GEDCOM 7 has no tag for it, so an export
@@ -37,6 +38,11 @@ enum SourceKind { gravestone, notes, grandmother, relative, record }
 
 /// FR-001: how strong a claim is, not whether it is true. `contradicted` is a result, never deleted.
 enum AssertionStatus { claimed, confirmed, contradicted, unknown }
+
+/// What the download of a cemetery's plan found (ISSUE-027, ADR-015): the plan, or that OpenStreetMap has
+/// no outline around the cemetery's point — kept, so the app does not ask the server at every start
+/// (05_DESIGN/cmentarz.md, element 2a (d)). A failed download writes nothing: it is tried again.
+enum PlanStatus { ok, notInOsm }
 
 class Persons extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -121,6 +127,31 @@ class Cemeteries extends Table {
   RealColumn get centerLat => real().nullable()();
   RealColumn get centerLon => real().nullable()();
   TextColumn get grobonetUrl => text().nullable()();
+}
+
+/// A cemetery's schematic plan from OpenStreetMap (ISSUE-027, ADR-015; ADR-003 pkt 1): its outline and
+/// paths, downloaded once and kept, so the plan works without signal and comes back with a restore. One row
+/// per cemetery; no row means not downloaded yet, and a new point of the cemetery deletes it
+/// (`cemeteries.dart`). Coordinates only — no names and no tags of OpenStreetMap: what the app keeps is the
+/// shape of a public place (`cemetery_plans.dart` has the JSON of both columns and the plan the screens
+/// read, hence the row's own name).
+@DataClassName('CemeteryPlanRow')
+class CemeteryPlans extends Table {
+  IntColumn get cemeteryId => integer().references(Cemeteries, #id)();
+  TextColumn get status => textEnum<PlanStatus>()();
+
+  /// The outline's polygons with their holes; null when [status] is `notInOsm`.
+  TextColumn get outline => text().nullable()();
+
+  /// The paths inside the outline, each main or side; null when [status] is `notInOsm`.
+  TextColumn get paths => text().nullable()();
+  DateTimeColumn get fetchedAt => dateTime()();
+
+  /// The host that answered — which server knows the cemetery's area (ADR-003 → Consequences).
+  TextColumn get server => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {cemeteryId};
 }
 
 /// The manager's address (sector / row / plot) is the truth, the pin is a help. Everything except the
@@ -285,6 +316,7 @@ class DataLocation {
     Media,
     PersonMedia,
     Settings,
+    CemeteryPlans,
   ],
 )
 class GrobingDatabase extends _$GrobingDatabase {
@@ -296,7 +328,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 9;
+  static const int currentSchemaVersion = 10;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -325,6 +357,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from6To7: _from6To7,
             from7To8: _from7To8,
             from8To9: _from8To9,
+            from9To10: _from9To10,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -456,6 +489,12 @@ class GrobingDatabase extends _$GrobingDatabase {
   /// cemeteries without photos.
   Future<void> _from8To9(Migrator m, Schema9 schema) =>
       m.addColumn(schema.media, schema.media.cemeteryId);
+
+  /// ISSUE-027 (ADR-015): cemeteries' plans. A new empty table: no row changes, nothing dropped — a restored
+  /// v9 backup has no plans, and each cemetery with a point gets its plan once the phone is online
+  /// (`plan_downloads.dart`).
+  Future<void> _from9To10(Migrator m, Schema10 schema) =>
+      m.createTable(schema.cemeteryPlans);
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

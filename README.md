@@ -141,6 +141,12 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   tylko wiersz. **Pułapka:** `applyPersonPhotoEdits` sprząta wiersze `media` bez właściciela — warunek obejmuje grób,
   cmentarz i łącze osoby; bez cmentarza każde „Zapisz” przy zdjęciach osoby kasowałoby zdjęcia cmentarzy. Migracja v8→v9
   tylko dodaje kolumnę (`addColumn`), więc kopia v8 odtwarza się z cmentarzami bez zdjęć.
+- **Plan cmentarza (schemat v10, ISSUE-027, ADR-015 w vaulcie).** Tabela `cemetery_plans`: jeden wiersz na cmentarz,
+  status (`ok` albo `notInOsm` — OpenStreetMap nie ma obrysu przy punkcie), obrys i alejki jako JSON samych współrzędnych
+  (bez nazw i znaczników OSM, `lib/data/cemetery_plans.dart`), czas pobrania i serwer. Brak wiersza = plan jeszcze nie
+  pobrany. **Nowy punkt cmentarza kasuje jego plan** w tej samej transakcji (`updateCemetery`), bo obrys wybiera punkt.
+  Plan jest w bazie, więc wchodzi do kopii i odcisku bez zmian w kodzie kopii (tabele z `sqlite_master`). Migracja v9→v10
+  to sam `createTable`: kopia v9 odtwarza się bez planów, a plany pobierają się, gdy telefon ma internet.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
@@ -150,7 +156,9 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   **Zmiana tej definicji unieważnia wszystkie wcześniej zapisane odciski.**
 - **Wymyślone dane** (`lib/dev/`) są dostępne tylko w buildzie debug: przycisk na ekranie „Stan danych”.
   W buildzie release tego kodu nie ma. Wymyślone cmentarze mają wymyślone punkty w Polsce: partie 1 i 2
-  stoją w jednym miejscu (znicz z liczbą), co trzecia partia jest bez punktu.
+  stoją w jednym miejscu (znicz z liczbą), co trzecia partia jest bez punktu. Drugi przycisk, **„Wymyślone pinezki na
+  planach”**, stawia wymyślone pinezki grobom na cmentarzach z pobranym planem (co trzeci grób zostaje bez) — do US-008
+  to jedyny sposób, żeby zobaczyć znicze na mapie cmentarza.
 
 ## Mapa
 
@@ -175,13 +183,42 @@ Ekran główny to mapa Polski (ISSUE-014, ADR-007 w vaulcie), od ISSUE-023 jak R
   tak, że Polska stoi nad arkuszem, a zamknięcie wraca na środek; przy przybliżeniu — znicz nad arkuszem. Na emulatorze
   z oknem w tle zrzuty potrafią złapać stan pośredni (klatki przychodzą z opóźnieniem) — pozycję końcową sprawdza
   przełącznik „Usuń animacje” (`settings put global transition_animation_scale 0`), płynność — oko.
-- **`flutter_map` 8.3.2 i `latlong2` 0.10.1 są przypięte dokładnie.** Paczka zależy od `http`, ale używa
-  go tylko warstwa kafelków, której tu nie ma. Aplikacja nie ma uprawnienia `INTERNET`.
+- **`flutter_map` 8.3.2 i `latlong2` 0.10.1 są przypięte dokładnie.** Paczka zależy od `http`, którego używa tylko warstwa
+  kafelków — od ISSUE-027 zdjęcie z góry na mapie cmentarza (*Sieć* niżej). Mapa Polski dalej nie ma kafelków ani sieci.
 - **Pułapka:** ruch mapy ogranicza `CameraConstraint.containCenter`, a nie `contain`. Na pionowym ekranie
   cała szerokość Polski daje widok wyższy niż Polska, więc „wszystkie krawędzie w granicach” nie da się
   spełnić i mapa jest pusta (zmierzone przy planie ISSUE-014).
 - **Znicze, które nachodzą na siebie** (cel dotyku 48 dp), łączą się w jeden znicz z liczbą
   (`lib/app/home/pin_groups.dart`). Ikona znicza jest jedna na całą aplikację: `lib/app/widgets/candle.dart`.
+
+## Mapa cmentarza i sieć
+
+Od ISSUE-027 (ADR-003 w vaulcie) aplikacja ma uprawnienie `INTERNET` — **wyłącznie** do dwóch rzeczy:
+- **plan cmentarza z OpenStreetMap**: obrys i alejki, pobierane raz i trzymane w bazie (`lib/net/overpass_plan_source.dart`,
+  czyste funkcje w `lib/net/osm_plan.dart`). Zapytanie łączy `is_in` (obrys zawierający punkt — środek dużego cmentarza bywa
+  dalej niż 300 m od krawędzi) z `around:300` (obrys obok punktu postawionego przy bramie). Wybór: największy obrys z punktem,
+  inaczej najbliższy do 100 m, inaczej „brak w OSM”. Alejki: odcinek zostaje, gdy jego środek leży w obrysie;
+- **zdjęcie z góry GUGiK** (WMTS `StandardResolution`, EPSG:3857, do z19), tylko na ekranie, **bez zapisu w telefonie**.
+
+**Wszystkie adresy są w `lib/net/hosts.dart`**, tylko `https`. Nowy adres to decyzja autora, nie linia kodu (NFR-005: od
+`INTERNET` własność „dane nie opuszczają telefonu” pilnuje kod, a nie system). Sprawdzenie na APK:
+`aapt dump permissions build/app/outputs/flutter-apk/app-x86_64-release.apk` — z nowych tylko `INTERNET`.
+
+- **Pułapka: `flutter_map` 8.3.2 domyślnie zapisuje kafelki na dysk** (`BuiltInMapCachingProvider` w katalogu cache
+  aplikacji). Warstwa zdjęcia ma `cachingProvider: const DisabledMapCachingProvider()` (`orthophotoTileProvider` w
+  `lib/app/map/plan_downloads.dart`); po oglądaniu zdjęcia w `cache` nie ma plików kafelków (sprawdzone w buildzie debug,
+  `run-as`). Nagłówki dostawcy kafelków muszą być zwykłą mapą, nie `const` — `TileLayer` dopisuje do nich `putIfAbsent`.
+- **Overpass jest zawodny** (pomiary przy ISSUE-027: 504, „server is probably too busy”, instancje bez odpowiedzi) i ma
+  limit kilku zapytań naraz **na adres IP** — emulator wychodzi przez ten sam adres co PC, więc zapytania z PC w tym samym
+  czasie psują pobieranie na emulatorze. Dlatego: po kolei, najwyżej jedno zapytanie na sekundę, ponowienia na dwóch
+  hostach, cała próba do ok. 60 s, a ekran mówi wprost „serwer map nie odpowiada”.
+- **Kiedy plan się pobiera** (`PlanDownloads`, ISSUE-027 D3): zapis cmentarza z punktem, zmiana punktu, start aplikacji,
+  powrót do niej, otwarcie cmentarza bez planu, „Pobierz teraz”. Bez zadania w tle przy zamkniętej aplikacji. Brak sieci
+  albo błąd serwera nie zapisuje niczego, więc następny start próbuje znowu; „brak w OSM” się zapisuje i wraca tylko po
+  zmianie punktu.
+- **Build release na emulator jako aktualizacja:** dotychczasowe buildy szły z `--split-per-abi` (kod wersji 4001 dla
+  x86_64). Zwykły `flutter build apk --release` ma kod 1 i Android odrzuca go jako „downgrade” — na emulator
+  `flutter build apk --release --split-per-abi --target-platform android-x64`.
 
 ## Baza cmentarzy
 

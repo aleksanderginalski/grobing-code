@@ -78,16 +78,19 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('9'),
+        find.text('10'),
         findsOneWidget,
-      ); // the schema version (9 since ISSUE-023); every count is 0
+      ); // the schema version (10 since ISSUE-027); every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
       expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
       // ISSUE-017: the new table has its Polish label, not "person_media".
       expect(find.text('Zdjęcia osób (łącza)'), findsOneWidget);
       expect(find.text('person_media'), findsNothing);
-      expect(find.text('0'), findsNWidgets(13)); // 12 tables + photo files
+      // ISSUE-027: and the plans.
+      expect(find.text('Plany cmentarzy'), findsOneWidget);
+      expect(find.text('cemetery_plans'), findsNothing);
+      expect(find.text('0'), findsNWidgets(14)); // 13 tables + photo files
 
       // The button writes a file and a transaction: run it on the real clock, not the test's fake one.
       await tester.runAsync(() async {
@@ -103,14 +106,14 @@ void main() {
       // "wedding photo"); persons are 5 since ISSUE-019 (the father's second union: a partner and a child)
       expect(find.text('3'), findsNWidgets(4));
       expect(find.text('5'), findsOneWidget);
-      // The schema version, 9 since ISSUE-023 — read in its own row: a count may be 9 too.
+      // The schema version, 10 since ISSUE-027 — read in its own row: a count may be 10 too.
       expect(
         find.descendant(
           of: find.ancestor(
             of: find.text('Wersja schematu'),
             matching: find.byType(Row),
           ),
-          matching: find.text('9'),
+          matching: find.text('10'),
         ),
         findsOneWidget,
       );

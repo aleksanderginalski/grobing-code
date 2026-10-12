@@ -399,9 +399,28 @@ void main() {
           entry: const PersonEntry(givenNames: 'Ewa', surname: 'Testowa'),
         ),
       );
-      await pumpScreen(
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: GrobingTheme.dark,
+          home: CemeteryScreen(
+            database: db,
+            cemeteryId: cemetery,
+            photos: photos,
+          ),
+        ),
+      );
+      // ISSUE-027: the cards are on the list — state C, behind the bar of graves.
+      await _pumpUntil(
         tester,
-        CemeteryScreen(database: db, cemeteryId: cemetery, photos: photos),
+        () => find.bySemanticsLabel('Pokaż listę grobów').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.bySemanticsLabel('Pokaż listę grobów'));
+      await _pumpUntil(
+        tester,
+        () => find.text('Jan Wymyślony').evaluate().isNotEmpty,
       );
 
       final Finder thumbnails = find.byWidgetPredicate(

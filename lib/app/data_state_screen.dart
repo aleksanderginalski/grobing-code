@@ -53,6 +53,7 @@ class _DataStateScreenState extends State<DataStateScreen> {
     'family_children': 'Dzieci w rodzinach',
     'events': 'Zdarzenia',
     'cemeteries': 'Cmentarze',
+    'cemetery_plans': 'Plany cmentarzy',
     'graves': 'Groby',
     'burials': 'Pochówki',
     'assertions': 'Twierdzenia (źródła)',
@@ -119,6 +120,11 @@ class _DataStateScreenState extends State<DataStateScreen> {
 
   Future<void> _addFictionalData() async {
     await addFictionalData(widget.database, widget.location.mediaDir);
+    _refresh();
+  }
+
+  Future<void> _addFictionalPins() async {
+    await addFictionalPins(widget.database);
     _refresh();
   }
 
@@ -201,6 +207,12 @@ class _DataStateScreenState extends State<DataStateScreen> {
                 OutlinedButton(
                   onPressed: _addFictionalData,
                   child: const Text('Wgraj wymyślone dane'),
+                ),
+                const SizedBox(height: 12),
+                // Until US-008 the only way to see the candles of a cemetery's map (ISSUE-027).
+                OutlinedButton(
+                  onPressed: _addFictionalPins,
+                  child: const Text('Wymyślone pinezki na planach'),
                 ),
               ],
             ],

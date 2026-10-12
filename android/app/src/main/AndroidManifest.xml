@@ -1,13 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No android.permission.INTERNET in release: the backup reaches Drive through the system
-         "save as" window and the Drive app uploads it (ADR-004 pkt 1, NFR-005). Android's own backup
-         and device transfer are off (ADR-004 pkt 4, res/xml/data_extraction_rules.xml). -->
+    <!-- INTERNET for two things alone (ADR-003 pkt 4, ISSUE-027): a cemetery's plan from OpenStreetMap,
+         downloaded once, and the photo from above from GUGiK, shown online and never kept. Every address
+         the app talks to is in lib/net/hosts.dart, all https; from here on the code keeps NFR-005, not
+         the system. The backup still reaches Drive through the system "save as" window and the Drive app
+         uploads it (ADR-004 pkt 1). Android's own backup and device transfer are off (ADR-004 pkt 4,
+         res/xml/data_extraction_rules.xml). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="Grobing"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

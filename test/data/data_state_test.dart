@@ -26,17 +26,22 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 9, zero rows in every table, no photos', () async {
-    final DataState state = await readDataState(db, mediaDir: media);
+  test(
+    'empty database: schema 10, zero rows in every table, no photos',
+    () async {
+      final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 9);
-    // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
-    expect(state.rowCounts, hasLength(12));
-    expect(state.rowCounts, contains('person_media'));
-    expect(state.rowCounts.values, everyElement(0));
-    expect(state.mediaFileCount, 0);
-    expect(state.shortFingerprint, hasLength(16));
-  });
+      expect(state.schemaVersion, 10);
+      // v4 (ISSUE-017): person_media joins the 11 tables of v3, v10 (ISSUE-027) cemetery_plans — and the
+      // fingerprint finds each by itself.
+      expect(state.rowCounts, hasLength(13));
+      expect(state.rowCounts, contains('cemetery_plans'));
+      expect(state.rowCounts, contains('person_media'));
+      expect(state.rowCounts.values, everyElement(0));
+      expect(state.mediaFileCount, 0);
+      expect(state.shortFingerprint, hasLength(16));
+    },
+  );
 
   test('row counts follow the data', () async {
     await addFictionalData(db, media);

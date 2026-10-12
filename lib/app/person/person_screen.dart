@@ -93,8 +93,8 @@ class _PersonScreenState extends State<PersonScreen> {
     pickPhotosAtStart: pickPhotos,
   );
 
-  /// Pochówek (element 9): the cemetery with this grave marked; until its map (US-007) the list, scrolled
-  /// to the grave (D17).
+  /// Pochówek (element 9): the cemetery with this grave marked — on the map when it has a pin, on the list
+  /// without one (05_DESIGN/cmentarz.md D23; D17 holds until pins can be set, US-008).
   Future<void> _openBurial(BurialPlace b) => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => CemeteryScreen(

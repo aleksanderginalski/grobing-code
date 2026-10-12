@@ -107,25 +107,34 @@ Future<int> addCemetery(
     );
 
 /// Corrects a cemetery's name, locality and point (05_DESIGN/cmentarze.md, element 8). A null [point]
-/// takes the cemetery off the map ("Zapisz bez punktu").
+/// takes the cemetery off the map ("Zapisz bez punktu"). A new point deletes the cemetery's plan in the
+/// same transaction: the outline was chosen by the old point, so the plan is downloaded again
+/// (05_DESIGN/cmentarz.md D18; ISSUE-027 D3).
 Future<void> updateCemetery(
   GrobingDatabase db,
   int id, {
   required String name,
   String? locality,
   GeoPoint? point,
-}) async {
-  final int updated =
-      await (db.update(db.cemeteries)..where((c) => c.id.equals(id))).write(
-        CemeteriesCompanion(
-          name: Value(_name(name)),
-          locality: Value(_blankToNull(locality)),
-          centerLat: Value(point?.lat),
-          centerLon: Value(point?.lon),
-        ),
-      );
-  if (updated != 1) throw StateError('No cemetery with id $id');
-}
+}) => db.transaction(() async {
+  final Cemetery? before = await (db.select(
+    db.cemeteries,
+  )..where((c) => c.id.equals(id))).getSingleOrNull();
+  if (before == null) throw StateError('No cemetery with id $id');
+  await (db.update(db.cemeteries)..where((c) => c.id.equals(id))).write(
+    CemeteriesCompanion(
+      name: Value(_name(name)),
+      locality: Value(_blankToNull(locality)),
+      centerLat: Value(point?.lat),
+      centerLon: Value(point?.lon),
+    ),
+  );
+  if (_point(before.centerLat, before.centerLon) != point) {
+    await (db.delete(
+      db.cemeteryPlans,
+    )..where((p) => p.cemeteryId.equals(id))).go();
+  }
+});
 
 String _name(String name) {
   final String trimmed = name.trim();

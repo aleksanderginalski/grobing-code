@@ -5,8 +5,8 @@ import '../data/cemeteries.dart';
 const MethodChannel _channel = MethodChannel('grobing/external');
 
 /// Opens a web address in another app (`ExternalLinks.kt`): Google Maps when installed, a browser
-/// otherwise. Only ever after a tap — the app itself has no INTERNET permission, the other app loads the
-/// page (ISSUE-015 D1, D2; NFR-005). False when no app takes it.
+/// otherwise. Only ever after a tap — the other app loads the page, never this one (ISSUE-015 D1, D2;
+/// NFR-005; the app's own addresses are in lib/net/hosts.dart, ISSUE-027). False when no app takes it.
 Future<bool> openExternalUrl(String url) async {
   try {
     return await _channel.invokeMethod<bool>('openUrl', {'url': url}) ?? false;

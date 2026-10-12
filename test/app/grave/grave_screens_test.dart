@@ -148,6 +148,10 @@ void main() {
         tester,
         () => find.text('2 groby · 3 osoby').evaluate().isNotEmpty,
       );
+      // ISSUE-027: the list is state C, behind the bar of graves (05_DESIGN/cmentarz.md v5).
+      expect(find.text('2 groby bez pinezki — na liście'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Pokaż listę grobów'));
+      await tester.pumpAndSettle();
       expect(find.text('Grób rodzinny Wymyślonych'), findsOneWidget);
       expect(find.text('Jan Wymyślony, Anna Wymyślona'), findsOneWidget);
       expect(find.text('Bez adresu kwatery · bez pinezki'), findsOneWidget);

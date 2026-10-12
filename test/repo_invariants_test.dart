@@ -124,16 +124,25 @@ void main() {
     },
   );
 
-  // ISSUE-008 AC-5, NFR-005: the backup reaches Drive through the system window; the app itself has
-  // no network permission. Debug and profile manifests add INTERNET for the Flutter tools only; the
-  // release APK is checked with aapt (Verification in the item).
+  // NFR-005: the backup reaches Drive through the system window (ISSUE-008 AC-5). Since ISSUE-027 (ADR-003
+  // pkt 4) the app has INTERNET for the cemetery's plan and the photo from above alone, every address in
+  // lib/net/hosts.dart (test/net/hosts_test.dart), no cleartext. Debug and profile manifests add INTERNET for
+  // the Flutter tools too; the release APK is checked with aapt (Verification in the item).
   test(
-    'the main manifest asks for no INTERNET permission (ISSUE-008 AC-5)',
+    'the main manifest asks for INTERNET and nothing else, without cleartext, and says where the addresses '
+    'are (ISSUE-027; ISSUE-008 AC-5 before it)',
     () {
       final String manifest = File(
         'android/app/src/main/AndroidManifest.xml',
       ).readAsStringSync();
-      expect(manifest, isNot(contains('android.permission.INTERNET"')));
+      expect(
+        RegExp(
+          r'<uses-permission[^>]*android:name="([^"]+)"',
+        ).allMatches(manifest).map((m) => m.group(1)),
+        ['android.permission.INTERNET'],
+      );
+      expect(manifest, contains('android:usesCleartextTraffic="false"'));
+      expect(manifest, contains('lib/net/hosts.dart'));
     },
   );
 

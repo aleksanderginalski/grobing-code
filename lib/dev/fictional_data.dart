@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 
+import '../data/cemeteries.dart';
+import '../data/cemetery_plans.dart';
 import '../data/claims.dart';
 import '../data/database.dart';
 import '../data/families.dart';
 import '../data/graves.dart';
+import '../net/osm_plan.dart';
 import 'fictional_photo.dart';
 
 /// Adds one batch of **made-up** people, families and graves (family-data.md: never real data in the
@@ -262,3 +265,44 @@ const int _headCropSide = 160;
 const int _headCropTop = 50;
 int _headCropLeft(int index) =>
     (480 * (index + 1) / 3).round() - _headCropSide ~/ 2;
+
+/// **Made-up** pins for the cemetery's map (ISSUE-027): until US-008 no pin can be set in the app, so the
+/// candles, the grave's sheet (B) and the list from a candle are seen only on this. Every grave without a
+/// pin on a cemetery with a plan gets one at a point inside the outline — a grid over the outline's box,
+/// the same points every time — except every third, so the bar has graves without a pin too. Debug only
+/// (`kDebugMode`), like [addFictionalData]; the source says "set at home", what a pin from the plan is.
+Future<void> addFictionalPins(GrobingDatabase db) async {
+  for (final CemeteryPlanRow row in await (db.select(
+    db.cemeteryPlans,
+  )..where((p) => p.status.equalsValue(PlanStatus.ok))).get()) {
+    final List<PlanArea> areas = decodeAreas(row.outline!);
+    final ({double south, double west, double north, double east}) box = boxOf(
+      areas,
+    );
+    final List<GeoPoint> spots = [
+      for (int i = 1; i < 8; i++)
+        for (int j = 1; j < 8; j++)
+          GeoPoint(
+            box.south + (box.north - box.south) * i / 8,
+            box.west + (box.east - box.west) * j / 8,
+          ),
+    ].where((p) => insideAreas(p, areas)).toList();
+    if (spots.isEmpty) continue;
+    final List<Grave> graves =
+        await (db.select(db.graves)
+              ..where((g) => g.cemeteryId.equals(row.cemeteryId))
+              ..orderBy([(g) => OrderingTerm.asc(g.id)]))
+            .get();
+    for (final (int k, Grave g) in graves.indexed) {
+      if (g.lat != null || k % 3 == 2) continue;
+      final GeoPoint at = spots[(k * 5) % spots.length];
+      await (db.update(db.graves)..where((x) => x.id.equals(g.id))).write(
+        GravesCompanion(
+          lat: Value(at.lat),
+          lon: Value(at.lon),
+          positionSource: const Value(PositionSource.satellite),
+        ),
+      );
+    }
+  }
+}

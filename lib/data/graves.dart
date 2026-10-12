@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import 'cemeteries.dart';
 import 'claims.dart';
 import 'database.dart';
 import 'photos.dart';
@@ -107,7 +108,7 @@ class GraveSummary {
     this.sector,
     this.row,
     this.plot,
-    required this.hasPin,
+    this.pin,
     required this.people,
     this.photoPath,
   });
@@ -117,7 +118,12 @@ class GraveSummary {
   final String? sector;
   final String? row;
   final String? plot;
-  final bool hasPin;
+
+  /// Where the grave's candle stands on the cemetery's map (05_DESIGN/cmentarz.md, element 5); null
+  /// without a pin.
+  final GeoPoint? pin;
+
+  bool get hasPin => pin != null;
 
   /// The grave's photo, relative to the media directory (05_DESIGN/cmentarz.md, element 3 (d)).
   final String? photoPath;
@@ -132,12 +138,17 @@ class CemeteryGraves {
     required this.id,
     required this.name,
     this.locality,
+    this.point,
     required this.graves,
   });
 
   final int id;
   final String name;
   final String? locality;
+
+  /// The cemetery's point: where its plan was looked for, and the middle of the photo from above when
+  /// there is no plan (05_DESIGN/cmentarz.md, element 2a); null without one — (e).
+  final GeoPoint? point;
   final List<GraveSummary> graves;
 
   /// Distinct people with a burial here: someone whose sources disagree on the grave counts once
@@ -322,6 +333,9 @@ Future<CemeteryGraves?> loadCemeteryGraves(
     id: cemetery.id,
     name: cemetery.name,
     locality: cemetery.locality,
+    point: cemetery.centerLat != null && cemetery.centerLon != null
+        ? GeoPoint(cemetery.centerLat!, cemetery.centerLon!)
+        : null,
     graves: [
       for (final Grave g in graves)
         GraveSummary(
@@ -330,7 +344,7 @@ Future<CemeteryGraves?> loadCemeteryGraves(
           sector: g.sector,
           row: g.row,
           plot: g.plot,
-          hasPin: g.lat != null && g.lon != null,
+          pin: g.lat != null && g.lon != null ? GeoPoint(g.lat!, g.lon!) : null,
           people: people[g.id] ?? const [],
           photoPath: photos[g.id],
         ),

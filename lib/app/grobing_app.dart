@@ -7,8 +7,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../backup/backup_service.dart';
 import '../backup/restore_service.dart';
 import '../data/database.dart';
+import '../net/overpass_plan_source.dart';
 import 'data_state_screen.dart';
 import 'home/home_screen.dart';
+import 'map/plan_downloads.dart';
 import 'photo/photos.dart';
 import 'theme.dart';
 
@@ -30,6 +32,7 @@ class GrobingApp extends StatefulWidget {
     this.restore,
     this.reopen,
     this.photos,
+    this.planSource,
   });
 
   final GrobingDatabase database;
@@ -45,6 +48,9 @@ class GrobingApp extends StatefulWidget {
   /// The photos' picker and preparer (tests replace them); by default the system ones, on [location].
   final Photos? photos;
 
+  /// Where cemeteries' plans come from (tests replace it); by default the Overpass API (ISSUE-027).
+  final PlanSource? planSource;
+
   @override
   State<GrobingApp> createState() => _GrobingAppState();
 }
@@ -55,6 +61,7 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
   late BackupService _backup = widget.backup;
   late RestoreService? _restore = widget.restore;
   late Photos _photos = widget.photos ?? Photos.platform(_location);
+  late PlanDownloads _plans = _downloads(_database);
 
   /// A new generation rebuilds every screen on the new data; nothing keeps the closed database.
   int _generation = 0;
@@ -69,14 +76,21 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _changes = _backup.watchChanges();
+    unawaited(_plans.downloadAll());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_changes.cancel());
+    _plans.close();
     super.dispose();
   }
+
+  PlanDownloads _downloads(GrobingDatabase database) => PlanDownloads(
+    database: database,
+    source: widget.planSource ?? OverpassPlanSource(),
+  );
 
   /// Leaving the app asks too: it catches a change no write notified (D2). Alone it was not enough —
   /// swiping the app away right after leaving kills it before the request is stored (stop #2). `paused`
@@ -87,6 +101,9 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       unawaited(_backup.requestBackgroundIfChanged());
     }
+    // Back in the app: a plan that waited for the internet gets its chance (ISSUE-027 D3) — the phone
+    // may have found a network while the app was away.
+    if (state == AppLifecycleState.resumed) unawaited(_plans.downloadAll());
   }
 
   /// After a restore (or one interrupted after the old database was closed): the data on disk is
@@ -96,15 +113,18 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
     if (!mounted) return;
     unawaited(_changes.cancel());
     _changes = data.backup.watchChanges();
+    _plans.close();
     setState(() {
       _database = data.database;
       _location = data.location;
       _backup = data.backup;
       _restore = data.restore;
       _photos = widget.photos ?? Photos.platform(data.location);
+      _plans = _downloads(data.database);
       _generation++;
       _notice = notice;
     });
+    unawaited(_plans.downloadAll());
   }
 
   @override
@@ -129,6 +149,8 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       locale: const Locale('pl'),
       supportedLocales: const [Locale('pl')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // Above the navigator: every cemetery screen, whatever opened it, has the plans' downloads.
+      builder: (context, child) => MapNetwork(plans: _plans, child: child!),
       // No `home`: Flutter refuses it next to `onGenerateInitialRoutes`. The home screen (the map of
       // Poland, ISSUE-014) is the only named route; after a restore "Stan danych" opens on top of it
       // with the notice.

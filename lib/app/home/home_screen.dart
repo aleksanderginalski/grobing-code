@@ -14,6 +14,7 @@ import '../../data/database.dart';
 import '../../data/photos.dart' show cemeteryPhotoPath;
 import '../external_link.dart';
 import '../grave/cemetery_screen.dart';
+import '../map/plan_downloads.dart';
 import '../photo/add_photo_field.dart';
 import '../photo/photo_picker.dart';
 import '../photo/photo_source_sheet.dart';
@@ -27,9 +28,8 @@ import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
 import 'cemetery_base.dart';
 import 'cemetery_card.dart';
-import 'cemetery_form.dart';
+import 'cemetery_edit.dart';
 import 'cemetery_search.dart';
-import 'pick_point_screen.dart';
 import 'poland_map.dart';
 import 'poland_map_data.dart';
 
@@ -309,6 +309,8 @@ class _HomeScreenState extends State<HomeScreen>
       case AddByHand(:final String name):
         await _edit(null, name: name);
       case AddedFromBase(:final int id, :final GeoPoint point):
+        // The plan of a cemetery from the database: downloaded at once, nothing shows it here (D34).
+        unawaited(MapNetwork.maybeOf(context)?.plans?.download(id));
         _showSaved(id, point);
       case null:
         break;
@@ -328,59 +330,25 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  /// Adding by hand ([cemetery] null) or correcting: the window, then the pick mode. Closing the pick
-  /// mode brings the window back with what was typed; cancelling the window ends it all.
+  /// Adding by hand ([cemetery] null) or correcting — one way with the cemetery screen's ✎
+  /// (`cemetery_edit.dart`); the saved candle and its sheet show it.
   Future<void> _edit(CemeterySummary? cemetery, {String name = ''}) async {
-    final PolandMapData map = await _mapData;
-    String currentName = cemetery?.name ?? name;
-    String? currentLocality = cemetery?.locality;
-    GeoPoint? currentPoint = cemetery?.point;
-    while (true) {
-      if (!mounted) return;
-      final CemeteryFormValues? values = await showCemeteryForm(
-        context,
-        title: cemetery == null ? 'Nowy cmentarz' : 'Popraw cmentarz',
-        name: currentName,
-        locality: currentLocality,
-      );
-      if (values == null || !mounted) return;
-      currentName = values.name;
-      currentLocality = values.locality;
-      int? savedId = cemetery?.id;
-      final bool? saved = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => PickPointScreen(
-            mapData: map,
-            name: values.name,
-            initial: currentPoint,
-            others: _pins(except: cemetery?.id),
-            onSave: (point) async {
-              currentPoint = point;
-              if (cemetery == null) {
-                savedId = await addCemetery(
-                  widget.database,
-                  name: values.name,
-                  locality: values.locality,
-                  point: point,
-                );
-              } else {
-                await updateCemetery(
-                  widget.database,
-                  cemetery.id,
-                  name: values.name,
-                  locality: values.locality,
-                  point: point,
-                );
-              }
-            },
-          ),
-        ),
-      );
-      if (saved == true && mounted) {
-        _showSaved(savedId!, currentPoint);
-        return;
-      }
-    }
+    final ({int id, GeoPoint? point})? saved = await editCemetery(
+      context,
+      database: widget.database,
+      mapData: _mapData,
+      others: _pins(except: cemetery?.id),
+      cemetery: cemetery == null
+          ? null
+          : (
+              id: cemetery.id,
+              name: cemetery.name,
+              locality: cemetery.locality,
+              point: cemetery.point,
+            ),
+      name: name,
+    );
+    if (saved != null && mounted) _showSaved(saved.id, saved.point);
   }
 
   @override

@@ -4779,6 +4779,421 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   }
 }
 
+class $CemeteryPlansTable extends CemeteryPlans
+    with TableInfo<$CemeteryPlansTable, CemeteryPlanRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CemeteryPlansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _cemeteryIdMeta = const VerificationMeta(
+    'cemeteryId',
+  );
+  @override
+  late final GeneratedColumn<int> cemeteryId = GeneratedColumn<int>(
+    'cemetery_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES cemeteries (id)',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PlanStatus, String> status =
+      GeneratedColumn<String>(
+        'status',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<PlanStatus>($CemeteryPlansTable.$converterstatus);
+  static const VerificationMeta _outlineMeta = const VerificationMeta(
+    'outline',
+  );
+  @override
+  late final GeneratedColumn<String> outline = GeneratedColumn<String>(
+    'outline',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pathsMeta = const VerificationMeta('paths');
+  @override
+  late final GeneratedColumn<String> paths = GeneratedColumn<String>(
+    'paths',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverMeta = const VerificationMeta('server');
+  @override
+  late final GeneratedColumn<String> server = GeneratedColumn<String>(
+    'server',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    cemeteryId,
+    status,
+    outline,
+    paths,
+    fetchedAt,
+    server,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cemetery_plans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CemeteryPlanRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('cemetery_id')) {
+      context.handle(
+        _cemeteryIdMeta,
+        cemeteryId.isAcceptableOrUnknown(data['cemetery_id']!, _cemeteryIdMeta),
+      );
+    }
+    if (data.containsKey('outline')) {
+      context.handle(
+        _outlineMeta,
+        outline.isAcceptableOrUnknown(data['outline']!, _outlineMeta),
+      );
+    }
+    if (data.containsKey('paths')) {
+      context.handle(
+        _pathsMeta,
+        paths.isAcceptableOrUnknown(data['paths']!, _pathsMeta),
+      );
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fetchedAtMeta);
+    }
+    if (data.containsKey('server')) {
+      context.handle(
+        _serverMeta,
+        server.isAcceptableOrUnknown(data['server']!, _serverMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_serverMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {cemeteryId};
+  @override
+  CemeteryPlanRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CemeteryPlanRow(
+      cemeteryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cemetery_id'],
+      )!,
+      status: $CemeteryPlansTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+      outline: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}outline'],
+      ),
+      paths: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paths'],
+      ),
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      )!,
+      server: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server'],
+      )!,
+    );
+  }
+
+  @override
+  $CemeteryPlansTable createAlias(String alias) {
+    return $CemeteryPlansTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<PlanStatus, String, String> $converterstatus =
+      const EnumNameConverter<PlanStatus>(PlanStatus.values);
+}
+
+class CemeteryPlanRow extends DataClass implements Insertable<CemeteryPlanRow> {
+  final int cemeteryId;
+  final PlanStatus status;
+
+  /// The outline's polygons with their holes; null when [status] is `notInOsm`.
+  final String? outline;
+
+  /// The paths inside the outline, each main or side; null when [status] is `notInOsm`.
+  final String? paths;
+  final DateTime fetchedAt;
+
+  /// The host that answered — which server knows the cemetery's area (ADR-003 → Consequences).
+  final String server;
+  const CemeteryPlanRow({
+    required this.cemeteryId,
+    required this.status,
+    this.outline,
+    this.paths,
+    required this.fetchedAt,
+    required this.server,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['cemetery_id'] = Variable<int>(cemeteryId);
+    {
+      map['status'] = Variable<String>(
+        $CemeteryPlansTable.$converterstatus.toSql(status),
+      );
+    }
+    if (!nullToAbsent || outline != null) {
+      map['outline'] = Variable<String>(outline);
+    }
+    if (!nullToAbsent || paths != null) {
+      map['paths'] = Variable<String>(paths);
+    }
+    map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    map['server'] = Variable<String>(server);
+    return map;
+  }
+
+  CemeteryPlansCompanion toCompanion(bool nullToAbsent) {
+    return CemeteryPlansCompanion(
+      cemeteryId: Value(cemeteryId),
+      status: Value(status),
+      outline: outline == null && nullToAbsent
+          ? const Value.absent()
+          : Value(outline),
+      paths: paths == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paths),
+      fetchedAt: Value(fetchedAt),
+      server: Value(server),
+    );
+  }
+
+  factory CemeteryPlanRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CemeteryPlanRow(
+      cemeteryId: serializer.fromJson<int>(json['cemeteryId']),
+      status: $CemeteryPlansTable.$converterstatus.fromJson(
+        serializer.fromJson<String>(json['status']),
+      ),
+      outline: serializer.fromJson<String?>(json['outline']),
+      paths: serializer.fromJson<String?>(json['paths']),
+      fetchedAt: serializer.fromJson<DateTime>(json['fetchedAt']),
+      server: serializer.fromJson<String>(json['server']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'cemeteryId': serializer.toJson<int>(cemeteryId),
+      'status': serializer.toJson<String>(
+        $CemeteryPlansTable.$converterstatus.toJson(status),
+      ),
+      'outline': serializer.toJson<String?>(outline),
+      'paths': serializer.toJson<String?>(paths),
+      'fetchedAt': serializer.toJson<DateTime>(fetchedAt),
+      'server': serializer.toJson<String>(server),
+    };
+  }
+
+  CemeteryPlanRow copyWith({
+    int? cemeteryId,
+    PlanStatus? status,
+    Value<String?> outline = const Value.absent(),
+    Value<String?> paths = const Value.absent(),
+    DateTime? fetchedAt,
+    String? server,
+  }) => CemeteryPlanRow(
+    cemeteryId: cemeteryId ?? this.cemeteryId,
+    status: status ?? this.status,
+    outline: outline.present ? outline.value : this.outline,
+    paths: paths.present ? paths.value : this.paths,
+    fetchedAt: fetchedAt ?? this.fetchedAt,
+    server: server ?? this.server,
+  );
+  CemeteryPlanRow copyWithCompanion(CemeteryPlansCompanion data) {
+    return CemeteryPlanRow(
+      cemeteryId: data.cemeteryId.present
+          ? data.cemeteryId.value
+          : this.cemeteryId,
+      status: data.status.present ? data.status.value : this.status,
+      outline: data.outline.present ? data.outline.value : this.outline,
+      paths: data.paths.present ? data.paths.value : this.paths,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      server: data.server.present ? data.server.value : this.server,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CemeteryPlanRow(')
+          ..write('cemeteryId: $cemeteryId, ')
+          ..write('status: $status, ')
+          ..write('outline: $outline, ')
+          ..write('paths: $paths, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('server: $server')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(cemeteryId, status, outline, paths, fetchedAt, server);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CemeteryPlanRow &&
+          other.cemeteryId == this.cemeteryId &&
+          other.status == this.status &&
+          other.outline == this.outline &&
+          other.paths == this.paths &&
+          other.fetchedAt == this.fetchedAt &&
+          other.server == this.server);
+}
+
+class CemeteryPlansCompanion extends UpdateCompanion<CemeteryPlanRow> {
+  final Value<int> cemeteryId;
+  final Value<PlanStatus> status;
+  final Value<String?> outline;
+  final Value<String?> paths;
+  final Value<DateTime> fetchedAt;
+  final Value<String> server;
+  const CemeteryPlansCompanion({
+    this.cemeteryId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.outline = const Value.absent(),
+    this.paths = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.server = const Value.absent(),
+  });
+  CemeteryPlansCompanion.insert({
+    this.cemeteryId = const Value.absent(),
+    required PlanStatus status,
+    this.outline = const Value.absent(),
+    this.paths = const Value.absent(),
+    required DateTime fetchedAt,
+    required String server,
+  }) : status = Value(status),
+       fetchedAt = Value(fetchedAt),
+       server = Value(server);
+  static Insertable<CemeteryPlanRow> custom({
+    Expression<int>? cemeteryId,
+    Expression<String>? status,
+    Expression<String>? outline,
+    Expression<String>? paths,
+    Expression<DateTime>? fetchedAt,
+    Expression<String>? server,
+  }) {
+    return RawValuesInsertable({
+      if (cemeteryId != null) 'cemetery_id': cemeteryId,
+      if (status != null) 'status': status,
+      if (outline != null) 'outline': outline,
+      if (paths != null) 'paths': paths,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (server != null) 'server': server,
+    });
+  }
+
+  CemeteryPlansCompanion copyWith({
+    Value<int>? cemeteryId,
+    Value<PlanStatus>? status,
+    Value<String?>? outline,
+    Value<String?>? paths,
+    Value<DateTime>? fetchedAt,
+    Value<String>? server,
+  }) {
+    return CemeteryPlansCompanion(
+      cemeteryId: cemeteryId ?? this.cemeteryId,
+      status: status ?? this.status,
+      outline: outline ?? this.outline,
+      paths: paths ?? this.paths,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      server: server ?? this.server,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (cemeteryId.present) {
+      map['cemetery_id'] = Variable<int>(cemeteryId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(
+        $CemeteryPlansTable.$converterstatus.toSql(status.value),
+      );
+    }
+    if (outline.present) {
+      map['outline'] = Variable<String>(outline.value);
+    }
+    if (paths.present) {
+      map['paths'] = Variable<String>(paths.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (server.present) {
+      map['server'] = Variable<String>(server.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CemeteryPlansCompanion(')
+          ..write('cemeteryId: $cemeteryId, ')
+          ..write('status: $status, ')
+          ..write('outline: $outline, ')
+          ..write('paths: $paths, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('server: $server')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$GrobingDatabase extends GeneratedDatabase {
   _$GrobingDatabase(QueryExecutor e) : super(e);
   $GrobingDatabaseManager get managers => $GrobingDatabaseManager(this);
@@ -4794,6 +5209,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final $MediaTable media = $MediaTable(this);
   late final $PersonMediaTable personMedia = $PersonMediaTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $CemeteryPlansTable cemeteryPlans = $CemeteryPlansTable(this);
   late final Index personMediaMedia = Index(
     'person_media_media',
     'CREATE INDEX person_media_media ON person_media (media_id)',
@@ -4819,6 +5235,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     media,
     personMedia,
     settings,
+    cemeteryPlans,
     personMediaMedia,
     personMediaBackground,
   ];
@@ -7675,6 +8092,25 @@ final class $$CemeteriesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$CemeteryPlansTable, List<CemeteryPlanRow>>
+  _cemeteryPlansRefsTable(_$GrobingDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.cemeteryPlans,
+        aliasName: 'cemeteries__id__cemetery_plans__cemetery_id',
+      );
+
+  $$CemeteryPlansTableProcessedTableManager get cemeteryPlansRefs {
+    final manager = $$CemeteryPlansTableTableManager(
+      $_db,
+      $_db.cemeteryPlans,
+    ).filter((f) => f.cemeteryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_cemeteryPlansRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CemeteriesTableFilterComposer
@@ -7757,6 +8193,31 @@ class $$CemeteriesTableFilterComposer
           }) => $$MediaTableFilterComposer(
             $db: $db,
             $table: $db.media,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> cemeteryPlansRefs(
+    Expression<bool> Function($$CemeteryPlansTableFilterComposer f) f,
+  ) {
+    final $$CemeteryPlansTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cemeteryPlans,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteryPlansTableFilterComposer(
+            $db: $db,
+            $table: $db.cemeteryPlans,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7885,6 +8346,31 @@ class $$CemeteriesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> cemeteryPlansRefs<T extends Object>(
+    Expression<T> Function($$CemeteryPlansTableAnnotationComposer a) f,
+  ) {
+    final $$CemeteryPlansTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cemeteryPlans,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteryPlansTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cemeteryPlans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CemeteriesTableTableManager
@@ -7900,7 +8386,11 @@ class $$CemeteriesTableTableManager
           $$CemeteriesTableUpdateCompanionBuilder,
           (Cemetery, $$CemeteriesTableReferences),
           Cemetery,
-          PrefetchHooks Function({bool gravesRefs, bool mediaRefs})
+          PrefetchHooks Function({
+            bool gravesRefs,
+            bool mediaRefs,
+            bool cemeteryPlansRefs,
+          })
         > {
   $$CemeteriesTableTableManager(_$GrobingDatabase db, $CemeteriesTable table)
     : super(
@@ -7953,50 +8443,89 @@ class $$CemeteriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({gravesRefs = false, mediaRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (gravesRefs) db.graves,
-                if (mediaRefs) db.media,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (gravesRefs)
-                    await $_getPrefetchedData<
-                      Cemetery,
-                      $CemeteriesTable,
-                      Grave
-                    >(
-                      currentTable: table,
-                      referencedTable: $$CemeteriesTableReferences
-                          ._gravesRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$CemeteriesTableReferences(db, table, p0).gravesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.cemeteryId == item.id),
-                      typedResults: items,
-                    ),
-                  if (mediaRefs)
-                    await $_getPrefetchedData<
-                      Cemetery,
-                      $CemeteriesTable,
-                      MediaFile
-                    >(
-                      currentTable: table,
-                      referencedTable: $$CemeteriesTableReferences
-                          ._mediaRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$CemeteriesTableReferences(db, table, p0).mediaRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.cemeteryId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                gravesRefs = false,
+                mediaRefs = false,
+                cemeteryPlansRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (gravesRefs) db.graves,
+                    if (mediaRefs) db.media,
+                    if (cemeteryPlansRefs) db.cemeteryPlans,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (gravesRefs)
+                        await $_getPrefetchedData<
+                          Cemetery,
+                          $CemeteriesTable,
+                          Grave
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CemeteriesTableReferences
+                              ._gravesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CemeteriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).gravesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.cemeteryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (mediaRefs)
+                        await $_getPrefetchedData<
+                          Cemetery,
+                          $CemeteriesTable,
+                          MediaFile
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CemeteriesTableReferences
+                              ._mediaRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CemeteriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).mediaRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.cemeteryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (cemeteryPlansRefs)
+                        await $_getPrefetchedData<
+                          Cemetery,
+                          $CemeteriesTable,
+                          CemeteryPlanRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CemeteriesTableReferences
+                              ._cemeteryPlansRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CemeteriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cemeteryPlansRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.cemeteryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -8013,7 +8542,11 @@ typedef $$CemeteriesTableProcessedTableManager =
       $$CemeteriesTableUpdateCompanionBuilder,
       (Cemetery, $$CemeteriesTableReferences),
       Cemetery,
-      PrefetchHooks Function({bool gravesRefs, bool mediaRefs})
+      PrefetchHooks Function({
+        bool gravesRefs,
+        bool mediaRefs,
+        bool cemeteryPlansRefs,
+      })
     >;
 typedef $$GravesTableCreateCompanionBuilder =
     GravesCompanion Function({
@@ -10925,6 +11458,348 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function({bool mePersonId})
     >;
+typedef $$CemeteryPlansTableCreateCompanionBuilder =
+    CemeteryPlansCompanion Function({
+      Value<int> cemeteryId,
+      required PlanStatus status,
+      Value<String?> outline,
+      Value<String?> paths,
+      required DateTime fetchedAt,
+      required String server,
+    });
+typedef $$CemeteryPlansTableUpdateCompanionBuilder =
+    CemeteryPlansCompanion Function({
+      Value<int> cemeteryId,
+      Value<PlanStatus> status,
+      Value<String?> outline,
+      Value<String?> paths,
+      Value<DateTime> fetchedAt,
+      Value<String> server,
+    });
+
+final class $$CemeteryPlansTableReferences
+    extends
+        BaseReferences<
+          _$GrobingDatabase,
+          $CemeteryPlansTable,
+          CemeteryPlanRow
+        > {
+  $$CemeteryPlansTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $CemeteriesTable _cemeteryIdTable(_$GrobingDatabase db) =>
+      db.cemeteries.createAlias('cemetery_plans__cemetery_id__cemeteries__id');
+
+  $$CemeteriesTableProcessedTableManager get cemeteryId {
+    final $_column = $_itemColumn<int>('cemetery_id')!;
+
+    final manager = $$CemeteriesTableTableManager(
+      $_db,
+      $_db.cemeteries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_cemeteryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CemeteryPlansTableFilterComposer
+    extends Composer<_$GrobingDatabase, $CemeteryPlansTable> {
+  $$CemeteryPlansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnWithTypeConverterFilters<PlanStatus, PlanStatus, String> get status =>
+      $composableBuilder(
+        column: $table.status,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get outline => $composableBuilder(
+    column: $table.outline,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paths => $composableBuilder(
+    column: $table.paths,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get server => $composableBuilder(
+    column: $table.server,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CemeteriesTableFilterComposer get cemeteryId {
+    final $$CemeteriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableFilterComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CemeteryPlansTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $CemeteryPlansTable> {
+  $$CemeteryPlansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get outline => $composableBuilder(
+    column: $table.outline,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paths => $composableBuilder(
+    column: $table.paths,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get server => $composableBuilder(
+    column: $table.server,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CemeteriesTableOrderingComposer get cemeteryId {
+    final $$CemeteriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CemeteryPlansTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $CemeteryPlansTable> {
+  $$CemeteryPlansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumnWithTypeConverter<PlanStatus, String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get outline =>
+      $composableBuilder(column: $table.outline, builder: (column) => column);
+
+  GeneratedColumn<String> get paths =>
+      $composableBuilder(column: $table.paths, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get server =>
+      $composableBuilder(column: $table.server, builder: (column) => column);
+
+  $$CemeteriesTableAnnotationComposer get cemeteryId {
+    final $$CemeteriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CemeteryPlansTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $CemeteryPlansTable,
+          CemeteryPlanRow,
+          $$CemeteryPlansTableFilterComposer,
+          $$CemeteryPlansTableOrderingComposer,
+          $$CemeteryPlansTableAnnotationComposer,
+          $$CemeteryPlansTableCreateCompanionBuilder,
+          $$CemeteryPlansTableUpdateCompanionBuilder,
+          (CemeteryPlanRow, $$CemeteryPlansTableReferences),
+          CemeteryPlanRow,
+          PrefetchHooks Function({bool cemeteryId})
+        > {
+  $$CemeteryPlansTableTableManager(
+    _$GrobingDatabase db,
+    $CemeteryPlansTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CemeteryPlansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CemeteryPlansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CemeteryPlansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> cemeteryId = const Value.absent(),
+                Value<PlanStatus> status = const Value.absent(),
+                Value<String?> outline = const Value.absent(),
+                Value<String?> paths = const Value.absent(),
+                Value<DateTime> fetchedAt = const Value.absent(),
+                Value<String> server = const Value.absent(),
+              }) => CemeteryPlansCompanion(
+                cemeteryId: cemeteryId,
+                status: status,
+                outline: outline,
+                paths: paths,
+                fetchedAt: fetchedAt,
+                server: server,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> cemeteryId = const Value.absent(),
+                required PlanStatus status,
+                Value<String?> outline = const Value.absent(),
+                Value<String?> paths = const Value.absent(),
+                required DateTime fetchedAt,
+                required String server,
+              }) => CemeteryPlansCompanion.insert(
+                cemeteryId: cemeteryId,
+                status: status,
+                outline: outline,
+                paths: paths,
+                fetchedAt: fetchedAt,
+                server: server,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CemeteryPlansTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({cemeteryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (cemeteryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.cemeteryId,
+                                referencedTable: $$CemeteryPlansTableReferences
+                                    ._cemeteryIdTable(db),
+                                referencedColumn: $$CemeteryPlansTableReferences
+                                    ._cemeteryIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CemeteryPlansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $CemeteryPlansTable,
+      CemeteryPlanRow,
+      $$CemeteryPlansTableFilterComposer,
+      $$CemeteryPlansTableOrderingComposer,
+      $$CemeteryPlansTableAnnotationComposer,
+      $$CemeteryPlansTableCreateCompanionBuilder,
+      $$CemeteryPlansTableUpdateCompanionBuilder,
+      (CemeteryPlanRow, $$CemeteryPlansTableReferences),
+      CemeteryPlanRow,
+      PrefetchHooks Function({bool cemeteryId})
+    >;
 
 class $GrobingDatabaseManager {
   final _$GrobingDatabase _db;
@@ -10953,4 +11828,6 @@ class $GrobingDatabaseManager {
       $$PersonMediaTableTableManager(_db, _db.personMedia);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$CemeteryPlansTableTableManager get cemeteryPlans =>
+      $$CemeteryPlansTableTableManager(_db, _db.cemeteryPlans);
 }

@@ -35,8 +35,9 @@ dependencies:
   # new version of either is a reviewed change, not a `pub upgrade`.
   cryptography: 2.9.0
   pointycastle: 4.0.0
-  # Map of Poland (ISSUE-014, ADR-007): polygons, lines and markers only — no tile layer, so nothing is
-  # fetched (its `http` dependency serves tiles alone, and the app has no INTERNET permission). Pinned
+  # Map of Poland (ISSUE-014, ADR-007): polygons, lines and markers only — no tile layer, nothing fetched.
+  # The cemetery's map (ISSUE-027, ADR-003) adds its one tile layer, the photo from above, through the
+  # `http` dependency, with flutter_map's tile cache off; every address is in lib/net/hosts.dart. Pinned
   # exactly, like the backup crypto: a new version is a reviewed change, not a `pub upgrade`.
   flutter_map: 8.3.2
   latlong2: 0.10.1
