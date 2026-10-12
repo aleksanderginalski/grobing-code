@@ -321,25 +321,30 @@ class UnreadablePhoto extends StatelessWidget {
   );
 }
 
-/// A photo action that failed: the error colour, never alone — with the icon (SC 1.4.1).
+/// A photo action that failed: the error colour, never alone — with the icon (SC 1.4.1). It appears after
+/// the action, so a screen reader announces it (SC 4.1.3 Status Messages; ui review, ISSUE-023).
 class PhotoErrorLine extends StatelessWidget {
   const PhotoErrorLine(this.message, {super.key});
 
   final String message;
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Icon(Icons.error_outline, size: 18, color: GrobingColors.error),
-      const SizedBox(width: 6),
-      Expanded(
-        child: Text(
-          message,
-          style: const TextStyle(color: GrobingColors.error, fontSize: 14),
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    liveRegion: true,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.error_outline, size: 18, color: GrobingColors.error),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(color: GrobingColors.error, fontSize: 14),
+          ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
 }
 

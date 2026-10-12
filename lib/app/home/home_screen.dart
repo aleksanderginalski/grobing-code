@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -9,8 +11,13 @@ import '../../backup/backup_service.dart';
 import '../../backup/restore_service.dart';
 import '../../data/cemeteries.dart';
 import '../../data/database.dart';
+import '../../data/photos.dart' show cemeteryPhotoPath;
 import '../external_link.dart';
 import '../grave/cemetery_screen.dart';
+import '../photo/add_photo_field.dart';
+import '../photo/photo_picker.dart';
+import '../photo/photo_source_sheet.dart';
+import '../photo/photo_viewer_screen.dart';
 import '../photo/photos.dart';
 import '../polish.dart';
 import '../settings/settings_screen.dart';
@@ -67,7 +74,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late Stream<List<CemeterySummary>> _cemeteries = watchCemeteries(
     widget.database,
   );
@@ -75,6 +83,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ? Future.value(widget.mapData)
       : PolandMapData.load();
   final MapController _map = MapController();
+
+  /// The box of Poland, once the map is read: where "the whole of Poland" is.
+  LatLngBounds? _poland;
 
   /// The database of cemeteries: read once, on the first entry into the search, and kept.
   Future<CemeteryBase>? _base;
@@ -86,11 +97,42 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The open sheet, measured once drawn, to keep the selected candle above it.
   final GlobalKey _sheetKey = GlobalKey();
 
-  /// Room kept free at the bottom of the whole of Poland: about a sheet's height (ui review).
-  static const double _sheetRoom = 150;
+  /// A cemetery's sheet with its photo and a one-line name (element 6a), before it is measured — about
+  /// 190 dp (05_DESIGN/cmentarze.md D30). The glide reads the drawn sheet; this is only its first guess.
+  static const double _sheetRoom = 190;
+
+  /// The whole of Poland at the least zoom: 16 dp at every side, in the middle of the map (D30). The room
+  /// for a sheet of D26 v2.6 — `min(sheet, what is left under Poland at full width)`, split between the top
+  /// and the bottom — never changes this zoom: where a sheet fits under Poland the width sets the zoom
+  /// anyway, and where it does not the room is what is left. So Poland keeps the whole width on every phone,
+  /// and on a short one an open sheet covers its south (the candle's rule — ui review, ISSUE-023). Measured
+  /// before: a fixed room of 214 dp made Poland 145 dp wide on 360 × 640 dp.
+  static const EdgeInsets _polandPadding = EdgeInsets.all(16);
+
+  /// D30: the map glides between Poland in the middle and Poland above the sheet — about 300 ms,
+  /// slowing down at the end (Material's standard decelerate). Made in [initState], not lazily: a screen
+  /// closed before its map was read would make it first in [dispose], where its ticker can no longer look
+  /// up the tree (seen in the tests, ISSUE-023).
+  late final AnimationController _glide;
+  LatLng? _glideFrom;
+  LatLng? _glideTo;
+
+  /// The cemetery whose photo is being saved, and the one whose save failed (element 6a).
+  int? _photoSaving;
+  int? _photoFailed;
+
+  @override
+  void initState() {
+    super.initState();
+    _glide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..addListener(_glideStep);
+  }
 
   @override
   void dispose() {
+    _glide.dispose();
     _map.dispose();
     super.dispose();
   }
@@ -98,27 +140,114 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Opens the sheet of [ids] and, once it is drawn, keeps their candle above it — a group's too
   /// (05_DESIGN/cmentarze.md, element 4).
   void _select(List<int> ids, {bool zoomIn = false}) {
-    setState(() => _selected = ids);
+    setState(() {
+      _selected = ids;
+      _photoFailed = null;
+    });
     final GeoPoint? p = ids.isEmpty ? null : _byId(ids.first)?.point;
-    if (p == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _reveal(LatLng(p.lat, p.lon), zoomIn: zoomIn);
+      if (mounted) {
+        _reveal(p == null ? null : LatLng(p.lat, p.lon), zoomIn: zoomIn);
+      }
     });
   }
 
-  /// Moves the map so [point] is not under the sheet; from the search also zooms in on it.
-  void _reveal(LatLng point, {required bool zoomIn}) {
+  /// Closes the sheet; with the whole of Poland on the screen the map glides back to the middle (D30).
+  void _closeSheet() {
+    if (_selected.isEmpty) return;
+    setState(() {
+      _selected = const [];
+      _photoFailed = null;
+    });
+    final MapCamera camera = _map.camera;
+    final LatLngBounds? poland = _poland;
+    if (poland != null && _atWholePoland(camera)) {
+      _glideCentre(
+        CameraFit.bounds(
+          bounds: poland,
+          padding: _polandPadding,
+        ).fit(camera).center,
+      );
+    }
+  }
+
+  /// The least zoom: the whole of Poland, where the map stands in the middle without a sheet (D2).
+  bool _atWholePoland(MapCamera camera) =>
+      camera.zoom <= (camera.minZoom ?? camera.zoom) + 0.01;
+
+  /// Moves the map so [point] is not under the sheet; from the search also zooms in on it. At the whole
+  /// of Poland the map glides up instead, so Poland stands above the sheet (D30) — unless the candle would
+  /// still be under it (a short screen), when the candle's rule wins.
+  void _reveal(LatLng? point, {required bool zoomIn}) {
     final MapCamera camera = _map.camera;
     final double sheet = _sheetKey.currentContext?.size?.height ?? _sheetRoom;
+    bool hiddenAt(MapCamera c) =>
+        point != null &&
+        c.latLngToScreenOffset(point).dy > c.size.height - sheet - 24;
+    final LatLngBounds? poland = _poland;
+    if (!zoomIn && poland != null && _atWholePoland(camera)) {
+      final LatLng lifted = _liftedCentre(camera, poland, sheet);
+      if (!hiddenAt(camera.withPosition(center: lifted))) {
+        _glideCentre(lifted);
+        return;
+      }
+    }
+    if (point == null) return;
     // From the search: 2³ = 8× the whole of Poland, unless already closer.
     final double zoom = zoomIn
         ? math.max(camera.zoom, (camera.minZoom ?? camera.zoom) + 3)
         : camera.zoom;
-    final Offset at = camera.latLngToScreenOffset(point);
-    final bool hidden = at.dy > camera.size.height - sheet - 24;
-    if (zoomIn || hidden) {
+    if (zoomIn || hiddenAt(camera)) {
+      _glide.stop();
       _map.move(point, zoom, offset: Offset(0, -sheet / 2));
     }
+  }
+
+  /// The centre at which the whole of Poland ends 16 dp above a sheet [sheet] high — or, when it is taller
+  /// than the room above the sheet, starts 16 dp below the top.
+  LatLng _liftedCentre(MapCamera camera, LatLngBounds poland, double sheet) {
+    final MapCamera middle = camera.withPosition(
+      center: CameraFit.bounds(
+        bounds: poland,
+        padding: _polandPadding,
+      ).fit(camera).center,
+    );
+    final double top = middle.latLngToScreenOffset(poland.northWest).dy;
+    final double bottom = middle.latLngToScreenOffset(poland.southEast).dy;
+    final double up = math.min(
+      bottom - (middle.size.height - sheet - 16),
+      top - 16,
+    );
+    if (up <= 0) return middle.center;
+    return middle.screenOffsetToLatLng(
+      Offset(middle.size.width / 2, middle.size.height / 2 + up),
+    );
+  }
+
+  /// Glides the map's centre to [target] at the same zoom; with "Usuń animacje" in the system it jumps.
+  void _glideCentre(LatLng target) {
+    final MapCamera camera = _map.camera;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _glide.stop();
+      _map.move(target, camera.zoom);
+      return;
+    }
+    _glideFrom = camera.center;
+    _glideTo = target;
+    _glide.forward(from: 0);
+  }
+
+  void _glideStep() {
+    final LatLng? from = _glideFrom, to = _glideTo;
+    if (from == null || to == null) return;
+    final double t = Curves.easeOutCubic.transform(_glide.value);
+    _map.move(
+      LatLng(
+        lerpDouble(from.latitude, to.latitude, t)!,
+        lerpDouble(from.longitude, to.longitude, t)!,
+      ),
+      _map.camera.zoom,
+    );
   }
 
   List<MapPin> _pins({int? except}) => [
@@ -189,10 +318,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Quiet confirmation (style-b.md rule 10): the saved candle and its sheet.
   void _showSaved(int id, GeoPoint? point) {
     setState(() => _selected = [id]);
-    if (point == null) return;
-    final LatLng p = LatLng(point.lat, point.lon);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _reveal(p, zoomIn: false);
+      if (mounted) {
+        _reveal(
+          point == null ? null : LatLng(point.lat, point.lon),
+          zoomIn: false,
+        );
+      }
     });
   }
 
@@ -255,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) => PopScope(
     canPop: _selected.isEmpty,
     onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) setState(() => _selected = const []);
+      if (!didPop) _closeSheet();
     },
     child: Scaffold(
       // Element 18: the sheets stand above the bar, which keeps clear of the gesture bar itself.
@@ -371,24 +503,27 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     if (!map.hasData) return const SizedBox.shrink();
+    _poland = map.data!.bounds;
     return PolandMap(
       data: map.data!,
       controller: _map,
       pins: _pins(),
-      // Poland stands under the search, above the sheet's room (05_DESIGN/cmentarze.md, element 3).
-      fitPadding: const EdgeInsets.fromLTRB(16, 16, 16, _sheetRoom),
+      // Poland in the middle, with room for a sheet (05_DESIGN/cmentarze.md, element 3, D30).
+      fitPadding: _polandPadding,
       selected: _selected.toSet(),
       onPins: _select,
-      onMapTap: (_) {
-        if (_selected.isNotEmpty) setState(() => _selected = const []);
-      },
+      onMapTap: (_) => _closeSheet(),
+      // A finger wins over the glide.
+      onPointerDown: _glide.stop,
     );
   }
 
+  /// Element 5 and the read error: a card above the bottom bar, which keeps clear of the gesture bar itself
+  /// — so no margin for it here (ui review, ISSUE-023: it was counted twice since ISSUE-022).
   Widget _bottomCard(Widget child) => Positioned(
     left: 16,
     right: 16,
-    bottom: 16 + MediaQuery.paddingOf(context).bottom,
+    bottom: 16,
     child: Material(
       color: GrobingColors.surface,
       borderRadius: BorderRadius.circular(16),
@@ -433,17 +568,16 @@ class _HomeScreenState extends State<HomeScreen> {
     ],
   );
 
-  /// A sheet to the bottom edge, its content above the gesture bar. The handle means what it shows:
-  /// dragging the sheet down closes it, like a tap on the map.
+  /// A sheet down to the bottom bar (element 18), which keeps clear of the gesture bar itself — so 20 dp
+  /// under the content and no margin for the gesture bar a second time (ui review, ISSUE-023). The handle
+  /// means what it shows: dragging the sheet down closes it, like a tap on the map.
   Widget _sheet(Widget child) => Positioned(
     left: 0,
     right: 0,
     bottom: 0,
     child: GestureDetector(
       onVerticalDragEnd: (details) {
-        if ((details.primaryVelocity ?? 0) > 0) {
-          setState(() => _selected = const []);
-        }
+        if ((details.primaryVelocity ?? 0) > 0) _closeSheet();
       },
       child: Material(
         key: _sheetKey,
@@ -451,12 +585,7 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 8,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            8,
-            16,
-            20 + MediaQuery.paddingOf(context).bottom,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,50 +621,157 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
-  /// Elements 6–8.
+  /// The source sheet, then the system picker or camera; null when the user cancels either.
+  Future<File?> _pickPhoto(Photos photos) async {
+    final PhotoSource? source = await showPhotoSourceSheet(
+      context,
+      title: 'Zdjęcie cmentarza',
+    );
+    if (source == null) return null;
+    return photos.pick(source);
+  }
+
+  /// "Dodaj zdjęcie" (element 6a): kept at once, without a form, like a gravestone's (ISSUE-023 D3); the
+  /// sheet shows it.
+  Future<void> _addPhoto(CemeterySummary c, Photos photos) async {
+    if (_photoSaving != null) return;
+    setState(() => _photoFailed = null);
+    try {
+      final File? picked = await _pickPhoto(photos);
+      if (picked == null || !mounted) return;
+      setState(() => _photoSaving = c.id);
+      await photos.setCemeteryPhoto(widget.database, c.id, picked);
+    } on Object {
+      if (mounted) setState(() => _photoFailed = c.id);
+    } finally {
+      if (mounted) setState(() => _photoSaving = null);
+    }
+  }
+
+  /// The photo on the whole screen (05_DESIGN/zdjecie.md, B), where it can be changed or deleted — as a
+  /// gravestone's (D3).
+  Future<void> _openPhoto(CemeterySummary c, Photos photos, String path) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PhotoViewerScreen(
+            title: c.name,
+            subtitle: 'Zdjęcie cmentarza',
+            file: photos.fileOf(path),
+            pickReplacement: () => _pickPhoto(photos),
+            replace: (picked) async {
+              await photos.setCemeteryPhoto(widget.database, c.id, picked);
+              return photos.fileOf(
+                (await cemeteryPhotoPath(widget.database, c.id))!,
+              );
+            },
+            onDelete: () => photos.deleteCemeteryPhoto(widget.database, c.id),
+          ),
+        ),
+      );
+
+  /// Element 6a: the photo, or the field in its place — 96 × 80 dp, left of the name.
+  Widget _photoSlot(CemeterySummary c, Photos photos) {
+    if (c.photoPath case final String path?) {
+      return _CemeteryPhoto(
+        file: photos.fileOf(path),
+        onTap: () => _openPhoto(c, photos, path),
+      );
+    }
+    if (_photoSaving == c.id) return const _SavingCemeteryPhoto();
+    return AddPhotoField(
+      label: 'Dodaj zdjęcie',
+      onTap: () => _addPhoto(c, photos),
+      width: _CemeteryPhoto.width,
+      height: _CemeteryPhoto.height,
+      iconSize: 24,
+      captionStyle: const TextStyle(
+        color: GrobingColors.text,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+      radius: 12,
+      padding: const EdgeInsets.all(8),
+    );
+  }
+
+  /// Elements 6–8, and 6a: the photo left of the name, the ✎ in the top right corner.
   Widget _cemeterySheet(CemeterySummary c) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.photos case final Photos photos?) ...[
+            _photoSlot(c, photos),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                c.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: GrobingColors.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+              padding: EdgeInsets.only(top: widget.photos == null ? 12 : 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: GrobingColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (c.locality != null)
+                    Text(
+                      c.locality!,
+                      style: const TextStyle(
+                        color: GrobingColors.textMuted,
+                        fontSize: 14,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  _iconLine(
+                    Icons.people_outline,
+                    '${gravesLabel(c.graveCount)} · ${peopleLabel(c.personCount)}',
+                  ),
+                  if (c.point == null) ...[
+                    const SizedBox(height: 4),
+                    _iconLine(
+                      Icons.location_off_outlined,
+                      'Bez punktu na mapie',
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            color: GrobingColors.amber,
-            tooltip: 'Popraw cmentarz',
-            onPressed: () => _edit(c),
+          // Element 8 "in the line of the name": next to the photo the name starts 2 dp from the top, so the
+          // ✎ moves up to the middle of its first line — the target stays 48 × 48 (ui review, ISSUE-023).
+          Transform.translate(
+            offset: Offset(
+              0,
+              widget.photos == null
+                  ? 0
+                  : 2 +
+                        MediaQuery.textScalerOf(context).scale(18) * 1.33 / 2 -
+                        24,
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              color: GrobingColors.amber,
+              tooltip: 'Popraw cmentarz',
+              onPressed: () => _edit(c),
+            ),
           ),
         ],
       ),
-      if (c.locality != null)
-        Text(
-          c.locality!,
-          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+      if (_photoFailed == c.id)
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: PhotoErrorLine(
+            'Nie udało się zapisać zdjęcia. Spróbuj jeszcze raz.',
+          ),
         ),
-      const SizedBox(height: 8),
-      _iconLine(
-        Icons.people_outline,
-        '${gravesLabel(c.graveCount)} · ${peopleLabel(c.personCount)}',
-      ),
-      if (c.point == null) ...[
-        const SizedBox(height: 4),
-        _iconLine(Icons.location_off_outlined, 'Bez punktu na mapie'),
-      ],
       const SizedBox(height: 16),
       // The candle leads to a place of memory (style-b.md rule 8), in the colour of the label.
       FilledButton.icon(
@@ -548,12 +784,16 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   Widget _iconLine(IconData icon, String text) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Icon(icon, size: 18, color: GrobingColors.textMuted),
       const SizedBox(width: 6),
-      Text(
-        text,
-        style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+      // Next to the photo the line is narrower: it wraps rather than run past the ✎.
+      Flexible(
+        child: Text(
+          text,
+          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+        ),
       ),
     ],
   );
@@ -586,4 +826,82 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
+}
+
+/// Element 6a: the cemetery's own photo, 96 × 80 dp, radius 12, cut from the middle (style-b.md rule 14:
+/// only a thumbnail is cut; all of it is one tap away, in the viewer). Decoded at the size it is shown.
+class _CemeteryPhoto extends StatelessWidget {
+  const _CemeteryPhoto({required this.file, required this.onTap});
+
+  static const double width = 96;
+  static const double height = 80;
+
+  final File file;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    // As the field (AddPhotoField): its own node, or it merges into the sheet, and the tap of its own, or
+    // Switch Access and Voice Access only read it (WCAG 2.2 SC 4.1.2).
+    container: true,
+    button: true,
+    label: 'Zdjęcie cmentarza — otwórz',
+    onTap: onTap,
+    excludeSemantics: true,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Material(
+        color: GrobingColors.background,
+        child: InkWell(
+          onTap: onTap,
+          child: Image.file(
+            file,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            // Cut from the middle of a landscape photo, the box's width would blur it (ui review).
+            cacheWidth: coverDecodeWidth(context, width),
+            excludeFromSemantics: true,
+            errorBuilder: (_, _, _) => const SizedBox(
+              width: width,
+              height: height,
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: GrobingColors.textMuted,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Element 6a while the chosen photo is being kept: its place on the surface with the progress
+/// indicator — no words, there is no room for them; a screen reader hears them.
+class _SavingCemeteryPhoto extends StatelessWidget {
+  const _SavingCemeteryPhoto();
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    label: 'Zapisuję zdjęcie…',
+    liveRegion: true,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: const ColoredBox(
+        color: GrobingColors.background,
+        child: SizedBox(
+          width: _CemeteryPhoto.width,
+          height: _CemeteryPhoto.height,
+          child: Center(
+            child: SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }

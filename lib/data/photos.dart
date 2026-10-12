@@ -11,10 +11,46 @@ import 'database.dart';
 // removes only the row, and a file without a row goes only in [sweepOrphanMedia], under the data lock
 // the backup holds. Writes go through drift's own API, so they ask for a background backup (ISSUE-010).
 
-/// A new, unique path for a grave's photo, relative to the media directory. Built from the grave's id,
-/// the time and a random part — never from what the photo shows.
+/// A place with one photo — a grave (its gravestone, ISSUE-016) or a cemetery (ISSUE-023, ADR-014): the
+/// folder of its files and the column of its `media` row. Both go through the same steps below, so the
+/// order "file before row" (D3) lives once.
+enum _Place {
+  grave('groby'),
+  cemetery('cmentarze');
+
+  const _Place(this.folder);
+
+  final String folder;
+
+  Expression<bool> owns($MediaTable m, int id) => switch (this) {
+    _Place.grave => m.graveId.equals(id),
+    _Place.cemetery => m.cemeteryId.equals(id),
+  };
+
+  MediaCompanion row(String relativePath, int id) => switch (this) {
+    _Place.grave => MediaCompanion.insert(
+      relativePath: relativePath,
+      graveId: Value(id),
+    ),
+    _Place.cemetery => MediaCompanion.insert(
+      relativePath: relativePath,
+      cemeteryId: Value(id),
+    ),
+  };
+
+  /// A new, unique path for the place's photo, relative to the media directory. Built from the place's
+  /// id, the time and a random part — never from what the photo shows.
+  String newPath(int id, {DateTime? now, Random? random}) =>
+      '$folder/$id/${_uniqueName(now, random)}.jpg';
+}
+
+/// A new, unique path for a grave's photo, relative to the media directory (`groby/<id>/…`).
 String newGravePhotoPath(int graveId, {DateTime? now, Random? random}) =>
-    'groby/$graveId/${_uniqueName(now, random)}.jpg';
+    _Place.grave.newPath(graveId, now: now, random: random);
+
+/// A new, unique path for a cemetery's photo, relative to the media directory (`cmentarze/<id>/…`).
+String newCemeteryPhotoPath(int cemeteryId, {DateTime? now, Random? random}) =>
+    _Place.cemetery.newPath(cemeteryId, now: now, random: random);
 
 /// A new, unique path for a person's photo (ISSUE-017). Not under a person: one photo may be on several
 /// people (05_DESIGN/zdjecie.md, D). Never from what the photo shows.
@@ -44,10 +80,21 @@ String _uniqueName(DateTime? now, Random? random) {
 /// The grave's photo (path relative to the media directory), or null. A grave has at most one
 /// (05_DESIGN/grob.md D9); older data with several rows shows the first — the lowest id, the same
 /// "first value" rule as ADR-006 D3.
-Future<String?> gravePhotoPath(GrobingDatabase db, int graveId) async {
+Future<String?> gravePhotoPath(GrobingDatabase db, int graveId) =>
+    _placePhotoPath(db, _Place.grave, graveId);
+
+/// The cemetery's photo (05_DESIGN/cmentarze.md, element 6a), or null — at most one, as a grave's.
+Future<String?> cemeteryPhotoPath(GrobingDatabase db, int cemeteryId) =>
+    _placePhotoPath(db, _Place.cemetery, cemeteryId);
+
+Future<String?> _placePhotoPath(
+  GrobingDatabase db,
+  _Place place,
+  int id,
+) async {
   final MediaFile? row =
       await (db.select(db.media)
-            ..where((m) => m.graveId.equals(graveId))
+            ..where((m) => place.owns(m, id))
             ..orderBy([(m) => OrderingTerm.asc(m.id)])
             ..limit(1))
           .getSingleOrNull();
@@ -63,26 +110,35 @@ Future<String> setGravePhoto(
   Directory mediaDir,
   int graveId,
   File prepared,
+) => _setPlacePhoto(db, mediaDir, _Place.grave, graveId, prepared);
+
+/// Makes [prepared] the cemetery's only photo — the same steps as [setGravePhoto] (ISSUE-023 D3).
+Future<String> setCemeteryPhoto(
+  GrobingDatabase db,
+  Directory mediaDir,
+  int cemeteryId,
+  File prepared,
+) => _setPlacePhoto(db, mediaDir, _Place.cemetery, cemeteryId, prepared);
+
+Future<String> _setPlacePhoto(
+  GrobingDatabase db,
+  Directory mediaDir,
+  _Place place,
+  int id,
+  File prepared,
 ) async {
-  String relativePath = newGravePhotoPath(graveId);
+  String relativePath = place.newPath(id);
   File target = File('${mediaDir.path}/$relativePath');
   while (await target.exists()) {
-    relativePath = newGravePhotoPath(graveId);
+    relativePath = place.newPath(id);
     target = File('${mediaDir.path}/$relativePath');
   }
   await target.parent.create(recursive: true);
   await _move(prepared, target);
   try {
     await db.transaction(() async {
-      await (db.delete(db.media)..where((m) => m.graveId.equals(graveId))).go();
-      await db
-          .into(db.media)
-          .insert(
-            MediaCompanion.insert(
-              relativePath: relativePath,
-              graveId: Value(graveId),
-            ),
-          );
+      await (db.delete(db.media)..where((m) => place.owns(m, id))).go();
+      await db.into(db.media).insert(place.row(relativePath, id));
     });
   } on Object {
     // No row points at it, so nothing in a backup needs it: the file goes now, not at the next sweep.
@@ -95,7 +151,14 @@ Future<String> setGravePhoto(
 /// Deletes the grave's photo (D1'). Only the rows go now; the file goes with the next sweep, so a backup
 /// running at this moment still finds every file its snapshot names (D3).
 Future<void> deleteGravePhoto(GrobingDatabase db, int graveId) =>
-    (db.delete(db.media)..where((m) => m.graveId.equals(graveId))).go();
+    _deletePlacePhoto(db, _Place.grave, graveId);
+
+/// Deletes the cemetery's photo — as [deleteGravePhoto]: the row now, the file with the next sweep.
+Future<void> deleteCemeteryPhoto(GrobingDatabase db, int cemeteryId) =>
+    _deletePlacePhoto(db, _Place.cemetery, cemeteryId);
+
+Future<void> _deletePlacePhoto(GrobingDatabase db, _Place place, int id) =>
+    (db.delete(db.media)..where((m) => place.owns(m, id))).go();
 
 /// The crop of a person's link to a photo (ISSUE-018, ADR-010): GEDCOM 7's `CROP`, in pixels of the
 /// photo's file — [left] and [top] are the pixels not shown from the left and the top, [width] and
@@ -360,8 +423,10 @@ Future<void> returnMovedPhotos(
 ///   or the one it had (ISSUE-018, F1);
 /// - someone else added to a photo gets a link at the end of their own order, so their profile stays —
 ///   or, with no photos before, this one becomes it;
-/// - a `media` row left with neither a grave nor a link goes; its file goes with the next sweep, so a
-///   backup taken meanwhile still has every file its rows name (ADR-008, point 3).
+/// - a `media` row left with neither a grave, a cemetery nor a link goes; its file goes with the next
+///   sweep, so a backup taken meanwhile still has every file its rows name (ADR-008, point 3). A
+///   cemetery's photo has no link and no grave — without its own condition every person's "Zapisz"
+///   would delete it (ISSUE-023 → Prior art).
 Future<void> applyPersonPhotoEdits(
   GrobingDatabase db,
   int personId,
@@ -455,6 +520,7 @@ Future<void> applyPersonPhotoEdits(
   await (db.delete(db.media)..where(
         (m) =>
             m.graveId.isNull() &
+            m.cemeteryId.isNull() &
             m.id.isNotInQuery(
               db.selectOnly(db.personMedia)
                 ..addColumns([db.personMedia.mediaId]),

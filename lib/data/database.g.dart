@@ -3768,8 +3768,22 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
       'REFERENCES graves (id)',
     ),
   );
+  static const VerificationMeta _cemeteryIdMeta = const VerificationMeta(
+    'cemeteryId',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, relativePath, graveId];
+  late final GeneratedColumn<int> cemeteryId = GeneratedColumn<int>(
+    'cemetery_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES cemeteries (id)',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, relativePath, graveId, cemeteryId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3802,6 +3816,12 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
         graveId.isAcceptableOrUnknown(data['grave_id']!, _graveIdMeta),
       );
     }
+    if (data.containsKey('cemetery_id')) {
+      context.handle(
+        _cemeteryIdMeta,
+        cemeteryId.isAcceptableOrUnknown(data['cemetery_id']!, _cemeteryIdMeta),
+      );
+    }
     return context;
   }
 
@@ -3823,6 +3843,10 @@ class $MediaTable extends Media with TableInfo<$MediaTable, MediaFile> {
         DriftSqlType.int,
         data['${effectivePrefix}grave_id'],
       ),
+      cemeteryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cemetery_id'],
+      ),
     );
   }
 
@@ -3836,7 +3860,13 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
   final int id;
   final String relativePath;
   final int? graveId;
-  const MediaFile({required this.id, required this.relativePath, this.graveId});
+  final int? cemeteryId;
+  const MediaFile({
+    required this.id,
+    required this.relativePath,
+    this.graveId,
+    this.cemeteryId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -3844,6 +3874,9 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     map['relative_path'] = Variable<String>(relativePath);
     if (!nullToAbsent || graveId != null) {
       map['grave_id'] = Variable<int>(graveId);
+    }
+    if (!nullToAbsent || cemeteryId != null) {
+      map['cemetery_id'] = Variable<int>(cemeteryId);
     }
     return map;
   }
@@ -3855,6 +3888,9 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
       graveId: graveId == null && nullToAbsent
           ? const Value.absent()
           : Value(graveId),
+      cemeteryId: cemeteryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cemeteryId),
     );
   }
 
@@ -3867,6 +3903,7 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
       id: serializer.fromJson<int>(json['id']),
       relativePath: serializer.fromJson<String>(json['relativePath']),
       graveId: serializer.fromJson<int?>(json['graveId']),
+      cemeteryId: serializer.fromJson<int?>(json['cemeteryId']),
     );
   }
   @override
@@ -3876,6 +3913,7 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
       'id': serializer.toJson<int>(id),
       'relativePath': serializer.toJson<String>(relativePath),
       'graveId': serializer.toJson<int?>(graveId),
+      'cemeteryId': serializer.toJson<int?>(cemeteryId),
     };
   }
 
@@ -3883,10 +3921,12 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     int? id,
     String? relativePath,
     Value<int?> graveId = const Value.absent(),
+    Value<int?> cemeteryId = const Value.absent(),
   }) => MediaFile(
     id: id ?? this.id,
     relativePath: relativePath ?? this.relativePath,
     graveId: graveId.present ? graveId.value : this.graveId,
+    cemeteryId: cemeteryId.present ? cemeteryId.value : this.cemeteryId,
   );
   MediaFile copyWithCompanion(MediaCompanion data) {
     return MediaFile(
@@ -3895,6 +3935,9 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
           ? data.relativePath.value
           : this.relativePath,
       graveId: data.graveId.present ? data.graveId.value : this.graveId,
+      cemeteryId: data.cemeteryId.present
+          ? data.cemeteryId.value
+          : this.cemeteryId,
     );
   }
 
@@ -3903,45 +3946,52 @@ class MediaFile extends DataClass implements Insertable<MediaFile> {
     return (StringBuffer('MediaFile(')
           ..write('id: $id, ')
           ..write('relativePath: $relativePath, ')
-          ..write('graveId: $graveId')
+          ..write('graveId: $graveId, ')
+          ..write('cemeteryId: $cemeteryId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, relativePath, graveId);
+  int get hashCode => Object.hash(id, relativePath, graveId, cemeteryId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is MediaFile &&
           other.id == this.id &&
           other.relativePath == this.relativePath &&
-          other.graveId == this.graveId);
+          other.graveId == this.graveId &&
+          other.cemeteryId == this.cemeteryId);
 }
 
 class MediaCompanion extends UpdateCompanion<MediaFile> {
   final Value<int> id;
   final Value<String> relativePath;
   final Value<int?> graveId;
+  final Value<int?> cemeteryId;
   const MediaCompanion({
     this.id = const Value.absent(),
     this.relativePath = const Value.absent(),
     this.graveId = const Value.absent(),
+    this.cemeteryId = const Value.absent(),
   });
   MediaCompanion.insert({
     this.id = const Value.absent(),
     required String relativePath,
     this.graveId = const Value.absent(),
+    this.cemeteryId = const Value.absent(),
   }) : relativePath = Value(relativePath);
   static Insertable<MediaFile> custom({
     Expression<int>? id,
     Expression<String>? relativePath,
     Expression<int>? graveId,
+    Expression<int>? cemeteryId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (relativePath != null) 'relative_path': relativePath,
       if (graveId != null) 'grave_id': graveId,
+      if (cemeteryId != null) 'cemetery_id': cemeteryId,
     });
   }
 
@@ -3949,11 +3999,13 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
     Value<int>? id,
     Value<String>? relativePath,
     Value<int?>? graveId,
+    Value<int?>? cemeteryId,
   }) {
     return MediaCompanion(
       id: id ?? this.id,
       relativePath: relativePath ?? this.relativePath,
       graveId: graveId ?? this.graveId,
+      cemeteryId: cemeteryId ?? this.cemeteryId,
     );
   }
 
@@ -3969,6 +4021,9 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
     if (graveId.present) {
       map['grave_id'] = Variable<int>(graveId.value);
     }
+    if (cemeteryId.present) {
+      map['cemetery_id'] = Variable<int>(cemeteryId.value);
+    }
     return map;
   }
 
@@ -3977,7 +4032,8 @@ class MediaCompanion extends UpdateCompanion<MediaFile> {
     return (StringBuffer('MediaCompanion(')
           ..write('id: $id, ')
           ..write('relativePath: $relativePath, ')
-          ..write('graveId: $graveId')
+          ..write('graveId: $graveId, ')
+          ..write('cemeteryId: $cemeteryId')
           ..write(')'))
         .toString();
   }
@@ -7600,6 +7656,25 @@ final class $$CemeteriesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$MediaTable, List<MediaFile>> _mediaRefsTable(
+    _$GrobingDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.media,
+    aliasName: 'cemeteries__id__media__cemetery_id',
+  );
+
+  $$MediaTableProcessedTableManager get mediaRefs {
+    final manager = $$MediaTableTableManager(
+      $_db,
+      $_db.media,
+    ).filter((f) => f.cemeteryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_mediaRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CemeteriesTableFilterComposer
@@ -7657,6 +7732,31 @@ class $$CemeteriesTableFilterComposer
           }) => $$GravesTableFilterComposer(
             $db: $db,
             $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> mediaRefs(
+    Expression<bool> Function($$MediaTableFilterComposer f) f,
+  ) {
+    final $$MediaTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.media,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaTableFilterComposer(
+            $db: $db,
+            $table: $db.media,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7760,6 +7860,31 @@ class $$CemeteriesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> mediaRefs<T extends Object>(
+    Expression<T> Function($$MediaTableAnnotationComposer a) f,
+  ) {
+    final $$MediaTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.media,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaTableAnnotationComposer(
+            $db: $db,
+            $table: $db.media,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CemeteriesTableTableManager
@@ -7775,7 +7900,7 @@ class $$CemeteriesTableTableManager
           $$CemeteriesTableUpdateCompanionBuilder,
           (Cemetery, $$CemeteriesTableReferences),
           Cemetery,
-          PrefetchHooks Function({bool gravesRefs})
+          PrefetchHooks Function({bool gravesRefs, bool mediaRefs})
         > {
   $$CemeteriesTableTableManager(_$GrobingDatabase db, $CemeteriesTable table)
     : super(
@@ -7828,10 +7953,13 @@ class $$CemeteriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({gravesRefs = false}) {
+          prefetchHooksCallback: ({gravesRefs = false, mediaRefs = false}) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [if (gravesRefs) db.graves],
+              explicitlyWatchedTables: [
+                if (gravesRefs) db.graves,
+                if (mediaRefs) db.media,
+              ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
                 return [
@@ -7846,6 +7974,21 @@ class $$CemeteriesTableTableManager
                           ._gravesRefsTable(db),
                       managerFromTypedResult: (p0) =>
                           $$CemeteriesTableReferences(db, table, p0).gravesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.cemeteryId == item.id),
+                      typedResults: items,
+                    ),
+                  if (mediaRefs)
+                    await $_getPrefetchedData<
+                      Cemetery,
+                      $CemeteriesTable,
+                      MediaFile
+                    >(
+                      currentTable: table,
+                      referencedTable: $$CemeteriesTableReferences
+                          ._mediaRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$CemeteriesTableReferences(db, table, p0).mediaRefs,
                       referencedItemsForCurrentItem: (item, referencedItems) =>
                           referencedItems.where((e) => e.cemeteryId == item.id),
                       typedResults: items,
@@ -7870,7 +8013,7 @@ typedef $$CemeteriesTableProcessedTableManager =
       $$CemeteriesTableUpdateCompanionBuilder,
       (Cemetery, $$CemeteriesTableReferences),
       Cemetery,
-      PrefetchHooks Function({bool gravesRefs})
+      PrefetchHooks Function({bool gravesRefs, bool mediaRefs})
     >;
 typedef $$GravesTableCreateCompanionBuilder =
     GravesCompanion Function({
@@ -9601,12 +9744,14 @@ typedef $$MediaTableCreateCompanionBuilder =
       Value<int> id,
       required String relativePath,
       Value<int?> graveId,
+      Value<int?> cemeteryId,
     });
 typedef $$MediaTableUpdateCompanionBuilder =
     MediaCompanion Function({
       Value<int> id,
       Value<String> relativePath,
       Value<int?> graveId,
+      Value<int?> cemeteryId,
     });
 
 final class $$MediaTableReferences
@@ -9624,6 +9769,23 @@ final class $$MediaTableReferences
       $_db.graves,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_graveIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $CemeteriesTable _cemeteryIdTable(_$GrobingDatabase db) =>
+      db.cemeteries.createAlias('media__cemetery_id__cemeteries__id');
+
+  $$CemeteriesTableProcessedTableManager? get cemeteryId {
+    final $_column = $_itemColumn<int>('cemetery_id');
+    if ($_column == null) return null;
+    final manager = $$CemeteriesTableTableManager(
+      $_db,
+      $_db.cemeteries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_cemeteryIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -9682,6 +9844,29 @@ class $$MediaTableFilterComposer
           }) => $$GravesTableFilterComposer(
             $db: $db,
             $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CemeteriesTableFilterComposer get cemeteryId {
+    final $$CemeteriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableFilterComposer(
+            $db: $db,
+            $table: $db.cemeteries,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9758,6 +9943,29 @@ class $$MediaTableOrderingComposer
     );
     return composer;
   }
+
+  $$CemeteriesTableOrderingComposer get cemeteryId {
+    final $$CemeteriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$MediaTableAnnotationComposer
@@ -9791,6 +9999,29 @@ class $$MediaTableAnnotationComposer
           }) => $$GravesTableAnnotationComposer(
             $db: $db,
             $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CemeteriesTableAnnotationComposer get cemeteryId {
+    final $$CemeteriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cemeteries,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9839,7 +10070,11 @@ class $$MediaTableTableManager
           $$MediaTableUpdateCompanionBuilder,
           (MediaFile, $$MediaTableReferences),
           MediaFile,
-          PrefetchHooks Function({bool graveId, bool personMediaRefs})
+          PrefetchHooks Function({
+            bool graveId,
+            bool cemeteryId,
+            bool personMediaRefs,
+          })
         > {
   $$MediaTableTableManager(_$GrobingDatabase db, $MediaTable table)
     : super(
@@ -9857,20 +10092,24 @@ class $$MediaTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> relativePath = const Value.absent(),
                 Value<int?> graveId = const Value.absent(),
+                Value<int?> cemeteryId = const Value.absent(),
               }) => MediaCompanion(
                 id: id,
                 relativePath: relativePath,
                 graveId: graveId,
+                cemeteryId: cemeteryId,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String relativePath,
                 Value<int?> graveId = const Value.absent(),
+                Value<int?> cemeteryId = const Value.absent(),
               }) => MediaCompanion.insert(
                 id: id,
                 relativePath: relativePath,
                 graveId: graveId,
+                cemeteryId: cemeteryId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -9878,63 +10117,85 @@ class $$MediaTableTableManager
                     (e.readTable(table), $$MediaTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({graveId = false, personMediaRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (personMediaRefs) db.personMedia],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (graveId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.graveId,
-                                referencedTable: $$MediaTableReferences
-                                    ._graveIdTable(db),
-                                referencedColumn: $$MediaTableReferences
-                                    ._graveIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({graveId = false, cemeteryId = false, personMediaRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (personMediaRefs) db.personMedia,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (graveId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.graveId,
+                                    referencedTable: $$MediaTableReferences
+                                        ._graveIdTable(db),
+                                    referencedColumn: $$MediaTableReferences
+                                        ._graveIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (cemeteryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.cemeteryId,
+                                    referencedTable: $$MediaTableReferences
+                                        ._cemeteryIdTable(db),
+                                    referencedColumn: $$MediaTableReferences
+                                        ._cemeteryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (personMediaRefs)
+                        await $_getPrefetchedData<
+                          MediaFile,
+                          $MediaTable,
+                          PersonMediaData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MediaTableReferences
+                              ._personMediaRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MediaTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).personMediaRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.mediaId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (personMediaRefs)
-                    await $_getPrefetchedData<
-                      MediaFile,
-                      $MediaTable,
-                      PersonMediaData
-                    >(
-                      currentTable: table,
-                      referencedTable: $$MediaTableReferences
-                          ._personMediaRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$MediaTableReferences(db, table, p0).personMediaRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.mediaId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -9951,7 +10212,11 @@ typedef $$MediaTableProcessedTableManager =
       $$MediaTableUpdateCompanionBuilder,
       (MediaFile, $$MediaTableReferences),
       MediaFile,
-      PrefetchHooks Function({bool graveId, bool personMediaRefs})
+      PrefetchHooks Function({
+        bool graveId,
+        bool cemeteryId,
+        bool personMediaRefs,
+      })
     >;
 typedef $$PersonMediaTableCreateCompanionBuilder =
     PersonMediaCompanion Function({

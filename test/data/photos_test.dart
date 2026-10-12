@@ -214,4 +214,135 @@ void main() {
       expect(updates.length, greaterThanOrEqualTo(3));
     },
   );
+
+  group(
+    'ISSUE-023 AC-3 — a cemetery\'s photo (05_DESIGN/cmentarze.md 6a, schema v9)',
+    () {
+      late int cemetery;
+
+      setUp(() async {
+        cemetery = (await watchCemeteries(db).first).single.id;
+      });
+
+      test(
+        'the cemetery gets its photo: the file moves under cmentarze/<id>/ before its row, one row points at '
+        'the cemetery (not at a grave), and the map\'s sheet reads it',
+        () async {
+          final File source = prepared(1);
+          final List<int> bytes = source.readAsBytesSync();
+
+          final String path = await setCemeteryPhoto(
+            db,
+            mediaDir,
+            cemetery,
+            source,
+          );
+
+          expect(path, startsWith('cmentarze/$cemetery/'));
+          expect(File('${mediaDir.path}/$path').readAsBytesSync(), bytes);
+          expect(source.existsSync(), isFalse);
+          final MediaFile row = (await rows()).single;
+          expect(
+            (row.cemeteryId, row.graveId, row.relativePath),
+            (cemetery, null, path),
+          );
+          expect(await cemeteryPhotoPath(db, cemetery), path);
+          expect((await watchCemeteries(db).first).single.photoPath, path);
+          // The grave's photo is a different place.
+          expect(await gravePhotoPath(db, grave), isNull);
+        },
+      );
+
+      test(
+        'one photo per cemetery: a change leaves one row with the new file, the old file stays until the '
+        'sweep; a delete takes the row only, and the sheet has no photo',
+        () async {
+          final String first = await setCemeteryPhoto(
+            db,
+            mediaDir,
+            cemetery,
+            prepared(1),
+          );
+          final String second = await setCemeteryPhoto(
+            db,
+            mediaDir,
+            cemetery,
+            prepared(2),
+          );
+          expect(second, isNot(first));
+          expect((await rows()).map((m) => m.relativePath), [second]);
+          expect(File('${mediaDir.path}/$first').existsSync(), isTrue);
+
+          await deleteCemeteryPhoto(db, cemetery);
+
+          expect(await rows(), isEmpty);
+          expect(File('${mediaDir.path}/$second').existsSync(), isTrue);
+          expect(await cemeteryPhotoPath(db, cemetery), isNull);
+          expect((await watchCemeteries(db).first).single.photoPath, isNull);
+        },
+      );
+
+      test(
+        'the sweep keeps the cemetery\'s photo — its row names it — and takes an old file nobody names',
+        () async {
+          final String kept = await setCemeteryPhoto(
+            db,
+            mediaDir,
+            cemetery,
+            prepared(1),
+          );
+          File('${mediaDir.path}/$kept').setLastModifiedSync(
+            DateTime.now().subtract(const Duration(hours: 2)),
+          );
+          final File old =
+              File('${mediaDir.path}/cmentarze/$cemetery/stare.jpg')
+                ..writeAsBytesSync([1, 2, 3])
+                ..setLastModifiedSync(
+                  DateTime.now().subtract(const Duration(hours: 2)),
+                );
+
+          expect(await sweepOrphanMedia(db, mediaDir), 1);
+          expect(old.existsSync(), isFalse);
+          expect(File('${mediaDir.path}/$kept').existsSync(), isTrue);
+        },
+      );
+
+      test(
+        'a cemetery\'s photo, a grave\'s photo and the sheet\'s stream: changing the photo gives the sheet '
+        'a new value (it watches the media table)',
+        () async {
+          final List<String?> seen = [];
+          final sub = watchCemeteries(
+            db,
+          ).listen((c) => seen.add(c.single.photoPath));
+          await pumpEventQueue();
+          final String path = await setCemeteryPhoto(
+            db,
+            mediaDir,
+            cemetery,
+            prepared(1),
+          );
+          await pumpEventQueue();
+          await sub.cancel();
+
+          expect(seen.first, isNull);
+          expect(seen.last, path);
+        },
+      );
+
+      test(
+        'a new path says nothing about the picture: cemetery id, UTC time, random part',
+        () {
+          expect(
+            newCemeteryPhotoPath(
+              3,
+              now: DateTime.utc(2026, 10, 12, 8, 20, 1),
+              random: Random(1),
+            ),
+            matches(RegExp(r'^cmentarze/3/20261012-082001-[0-9a-f]{8}\.jpg$')),
+          );
+        },
+      );
+    },
+  );
 }

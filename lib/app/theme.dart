@@ -32,6 +32,14 @@ abstract final class GrobingColors {
   /// relation lines.
   static const Color relParentChild = Color(0xFF8FB3C9);
   static const Color relPartners = Color(0xFFD39BB0);
+
+  /// Water on the map of Poland like R1 (style-b.md v1.13, rule 13; 05_DESIGN/cmentarze.md element 3): the
+  /// Baltic and the lakes. As bright as the land (1.00:1), so the coast is carried by Poland's border, not by
+  /// colour (SC 1.4.1). Decoration — never anything off the map, never a carrier of meaning.
+  static const Color water = Color(0xFF101C25);
+
+  /// Rivers on the map, 1 dp (same role as [water]).
+  static const Color waterLine = Color(0xFF3A5E74);
 }
 
 abstract final class GrobingTheme {

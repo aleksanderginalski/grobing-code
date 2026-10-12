@@ -30,6 +30,7 @@ import '../drift/grobing/generated/schema_v4.dart' as v4;
 import '../drift/grobing/generated/schema_v5.dart' as v5;
 import '../drift/grobing/generated/schema_v6.dart' as v6;
 import '../drift/grobing/generated/schema_v7.dart' as v7;
+import '../drift/grobing/generated/schema_v8.dart' as v8;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -238,6 +239,24 @@ const List<String> _v7Rows = [
       '(person_id, media_id, position, crop_left, crop_top, crop_width, crop_height) VALUES '
       '(1, 1, 0, 10, 20, 160, 160), (2, 2, 0, NULL, NULL, NULL, NULL), '
       '(2, 1, 1, NULL, NULL, NULL, NULL)',
+];
+
+/// Made-up rows of a phone at schema v8 (ISSUE-023 AC-4): two cemeteries, a grave with its gravestone and
+/// a person whose photo is her background — no photo of a cemetery, as v8 had none.
+const List<String> _v8Rows = [
+  'INSERT INTO persons (id, given_names, surname, sex) VALUES '
+      "(1, 'Ewa', 'Wymyślona', 'female')",
+  'INSERT INTO cemeteries (id, name, locality, center_lat, center_lon) VALUES '
+      "(1, 'Cmentarz Wymyślony', 'Wymyślin', 52.5, 19.5), "
+      "(2, 'Cmentarz Zmyślony', NULL, NULL, NULL)",
+  "INSERT INTO graves (id, cemetery_id, name) VALUES (1, 1, 'Grób Wymyślonych')",
+  'INSERT INTO burials (id, person_id, grave_id) VALUES (1, 1, 1)',
+  'INSERT INTO assertions (event_id, burial_id, source_kind, status, recorded_at) VALUES '
+      "(NULL, 1, 'notes', 'claimed', 1791273600)",
+  'INSERT INTO media (id, relative_path, grave_id) VALUES '
+      "(1, 'groby/1/nagrobek.png', 1), (2, 'zdjecia/ewa.png', NULL)",
+  'INSERT INTO person_media (person_id, media_id, position, is_background) VALUES '
+      '(1, 2, 0, 1)',
 ];
 
 /// Made-up rows of a phone at schema v4 (ISSUE-018 F3): a gravestone, a photo Jan and Anna share (Jan's
@@ -1729,6 +1748,146 @@ void main() {
       for (final String path in photoPaths) {
         expect(File('${fresh.dir.path}/media/$path').existsSync(), isTrue);
       }
+    },
+  );
+
+  test(
+    'ISSUE-023 AC-4 — a v8 backup restores into the v9 app: every v8 table and count kept, the gravestone '
+    'and the background kept, every file there, and no cemetery has a photo',
+    () async {
+      final File v8File = File('${tmp.path}/v8.db');
+      final Directory v8Media = Directory('${tmp.path}/v8-media');
+      final v8.DatabaseAtV8 old = v8.DatabaseAtV8(NativeDatabase(v8File));
+      for (final String row in _v8Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 8');
+      const List<String> photoPaths = [
+        'groby/1/nagrobek.png',
+        'zdjecia/ewa.png',
+      ];
+      for (final (int i, String path) in photoPaths.indexed) {
+        File('${v8Media.path}/$path')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalGravestonePng(i + 1));
+      }
+      final DataState v8State = await readDataState(old, mediaDir: v8Media);
+      expect(v8State.schemaVersion, 8);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v8-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v8-snapshot.db').readAsBytesSync(),
+        ),
+        for (final String path in photoPaths)
+          (
+            path: 'media/$path',
+            data: File('${v8Media.path}/$path').readAsBytesSync(),
+          ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v8.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 8,
+              'record_counts': v8State.rowCounts,
+              'data_fingerprint': v8State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v9');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (8, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(after.rowCounts, v8State.rowCounts);
+      expect(after.mediaFileCount, 2);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<CemeterySummary> cemeteries = await watchCemeteries(
+        reopened,
+      ).first;
+      final String? gravestone = await gravePhotoPath(reopened, 1);
+      final List<PersonPhoto> ewa = await personPhotos(reopened, 1);
+      await reopened.close();
+      expect(cemeteries.map((c) => (c.name, c.photoPath)), [
+        ('Cmentarz Wymyślony', null),
+        ('Cmentarz Zmyślony', null),
+      ]);
+      expect(gravestone, 'groby/1/nagrobek.png');
+      expect(ewa.single.isBackground, isTrue);
+      for (final String path in photoPaths) {
+        expect(File('${fresh.dir.path}/media/$path').existsSync(), isTrue);
+      }
+    },
+  );
+
+  test(
+    'ISSUE-023 AC-4 — a v9 backup with a cemetery\'s photo restores with it: the same fingerprint, the '
+    'cemetery\'s photo row and its file',
+    () async {
+      final Directory v9 = Directory('${tmp.path}/v9-source')..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${v9.path}/grobing.db')),
+      );
+      final Directory media = Directory('${v9.path}/media');
+      await addFictionalData(db, media);
+      final int cemetery = (await watchCemeteries(db).first).first.id;
+      final File prepared = File('${tmp.path}/cmentarz.png')
+        ..writeAsBytesSync(fictionalGravestonePng(7));
+      final String path = await setCemeteryPhoto(db, media, cemetery, prepared);
+      final DataState state = await readDataState(db, mediaDir: media);
+      await db.customStatement('VACUUM INTO ?', ['${tmp.path}/v9-snapshot.db']);
+      await db.close();
+      final File backup = drive.fileFor(
+        FakeDocumentStore.uriOf('kopia-v9.age'),
+      );
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/v9-snapshot.db'),
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+        'v9-fresh',
+      );
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia-v9.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.dataFingerprint, state.fingerprint);
+      expect((await stateOnDisk(fresh.dir)).fingerprint, state.fingerprint);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final String? restored = await cemeteryPhotoPath(reopened, cemetery);
+      await reopened.close();
+      expect(restored, path);
+      expect(path, startsWith('cmentarze/$cemetery/'));
+      expect(File('${fresh.dir.path}/media/$path').existsSync(), isTrue);
     },
   );
 

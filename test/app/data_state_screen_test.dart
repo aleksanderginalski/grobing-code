@@ -78,9 +78,9 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('8'),
+        find.text('9'),
         findsOneWidget,
-      ); // the schema version (8 since ISSUE-024); every count is 0
+      ); // the schema version (9 since ISSUE-023); every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
       expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
@@ -103,14 +103,14 @@ void main() {
       // "wedding photo"); persons are 5 since ISSUE-019 (the father's second union: a partner and a child)
       expect(find.text('3'), findsNWidgets(4));
       expect(find.text('5'), findsOneWidget);
-      // The schema version, 8 since ISSUE-024 — read in its own row: a count may be 8 too.
+      // The schema version, 9 since ISSUE-023 — read in its own row: a count may be 9 too.
       expect(
         find.descendant(
           of: find.ancestor(
             of: find.text('Wersja schematu'),
             matching: find.byType(Row),
           ),
-          matching: find.text('8'),
+          matching: find.text('9'),
         ),
         findsOneWidget,
       );

@@ -8,8 +8,9 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-// v8 (ISSUE-024) has the tables of v7 — a photo link got its background mark; v7 (ISSUE-025) — persons got a
-// sex; v6 (ISSUE-019) gave family_children an id and let assertions cite a family or a child's link (ADR-011).
+// v9 (ISSUE-023) has the tables of v7 — a photo may point at a cemetery; v8 (ISSUE-024) — a photo link got its
+// background mark; v7 (ISSUE-025) — persons got a sex; v6 (ISSUE-019) gave family_children an id and let
+// assertions cite a family or a child's link (ADR-011).
 const List<String> _v7Tables = [
   'assertions',
   'burials',
@@ -39,15 +40,16 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 8, integrity ok, exactly the v8 tables, foreign keys on, the crop and the background '
-      'on the photo link, claims on families and on children\'s links, a person\'s sex',
+      'user_version 9, integrity ok, exactly the v9 tables, foreign keys on, the crop and the background '
+      'on the photo link, claims on families and on children\'s links, a person\'s sex, a photo\'s '
+      'cemetery',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 8);
+        expect(await _single(db, 'PRAGMA user_version'), 9);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -89,6 +91,10 @@ void main() {
           containsAll(['family_id', 'family_child_id']),
         );
         expect(await columns('persons'), contains('sex'));
+        expect(
+          await columns('media'),
+          containsAll(['grave_id', 'cemetery_id']),
+        );
       },
     );
 

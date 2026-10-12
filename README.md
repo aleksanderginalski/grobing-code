@@ -135,6 +135,12 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   przepisuje od zera `applyPersonPhotoEdits`: tło, jak kadr, czyta przed skasowaniem i oddaje, a łącze usunięte (także
   przez „Kto jest na zdjęciu?”) zabiera tło ze sobą. Migracja v7→v8 dodaje kolumnę z domyślnym `false` i indeks — bez
   nowych wierszy, więc kopia v7 odtwarza się bez tła.
+- **Zdjęcie cmentarza (schemat v9, ISSUE-023).** Kolumna `media.cemetery_id` — wiersz zdjęcia wskazuje cmentarz tak jak
+  zdjęcie nagrobka wskazuje grób (`grave_id`); pliki w `media/cmentarze/<id>/`. Jedno zdjęcie na cmentarz pilnuje jedna
+  droga zapisu (`lib/data/photos.dart` → `setCemeteryPhoto`), wspólna z nagrobkiem: plik przed wierszem, usunięcie zdejmuje
+  tylko wiersz. **Pułapka:** `applyPersonPhotoEdits` sprząta wiersze `media` bez właściciela — warunek obejmuje grób,
+  cmentarz i łącze osoby; bez cmentarza każde „Zapisz” przy zdjęciach osoby kasowałoby zdjęcia cmentarzy. Migracja v8→v9
+  tylko dodaje kolumnę (`addColumn`), więc kopia v8 odtwarza się z cmentarzami bez zdjęć.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
@@ -148,12 +154,27 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
 
 ## Mapa
 
-Ekran główny to mapa Polski (ISSUE-014, ADR-007 w vaulcie). **Bez warstwy kafelków i bez sieci:** kontur
-kraju, rzeki i 9 miast są w aplikacji, w `assets/map/poland.json` (ok. 37 KB).
+Ekran główny to mapa Polski (ISSUE-014, ADR-007 w vaulcie), od ISSUE-023 jak R1: sąsiedzi, Bałtyk, jeziora, rzeki,
+„Polska” i 11 miast. **Bez warstwy kafelków i bez sieci:** wszystko jest w aplikacji, w `assets/map/poland.json`
+(ok. 300 KB).
 - **Źródło:** [Natural Earth](https://www.naturalearthdata.com/about/terms-of-use/) 1:10m — domena
-  publiczna, bez wymogu podpisu. Plik odtwarza `tool/map/extract_poland.dart` z trzech plików GeoJSON
+  publiczna, bez wymogu podpisu. Plik odtwarza `tool/map/extract_poland.dart` z siedmiu plików GeoJSON
   repozytorium [`nvkelso/natural-earth-vector`](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson)
   (lista i polecenie w nagłówku skryptu). Plików źródłowych nie ma w repo.
+- **Co skrypt bierze:** kontur Polski bez uproszczenia; morze (ocean przycięty do prostokąta wokół Polski, wyspy jako
+  dziury), jeziora (w Polsce od 8 km², za granicą od 40 km²) i granice sąsiadów — uproszczone (ok. 50 m przy Polsce,
+  ok. 600 m dalej). **Prostokąt danych jest większy niż wszystko, co kamera pokaże** na telefonie trzymanym pionowo —
+  inaczej morze kończyłoby się prostą linią. W pliku nie ma żadnych nazw poza 11 miastami (strażnik treści sprawdza
+  plik przy `git add` jak każdy inny).
+- **Tło mapy ma kolor sąsiadów**, więc szczeliny między uproszczonymi granicami a pełnym konturem Polski nie wychodzą.
+- **Pułapka wydajności:** morze to jeden wielokąt z wyspami jako dziurami. Domyślne wypełnienie `flutter_map`
+  (`Path.combine`) przy każdej klatce robi operację na ścieżce całego morza — 2–3 s na klatkę i ANR przy starcie
+  (zmierzone w ISSUE-023). Warstwy wody mają więc `painterFillMethod: PolygonPainterFillMethod.evenOdd` (wyspy się nie
+  przecinają, rysunek ten sam); test ekranu tego pilnuje.
+- **Jazda mapy przy arkuszu** (`home_screen.dart`, D30): przy całej Polsce otwarcie arkusza przesuwa mapę w ok. 300 ms
+  tak, że Polska stoi nad arkuszem, a zamknięcie wraca na środek; przy przybliżeniu — znicz nad arkuszem. Na emulatorze
+  z oknem w tle zrzuty potrafią złapać stan pośredni (klatki przychodzą z opóźnieniem) — pozycję końcową sprawdza
+  przełącznik „Usuń animacje” (`settings put global transition_animation_scale 0`), płynność — oko.
 - **`flutter_map` 8.3.2 i `latlong2` 0.10.1 są przypięte dokładnie.** Paczka zależy od `http`, ale używa
   go tylko warstwa kafelków, której tu nie ma. Aplikacja nie ma uprawnienia `INTERNET`.
 - **Pułapka:** ruch mapy ogranicza `CameraConstraint.containCenter`, a nie `contain`. Na pionowym ekranie

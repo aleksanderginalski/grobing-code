@@ -30,6 +30,7 @@ class CemeterySummary {
     this.point,
     required this.graveCount,
     required this.personCount,
+    this.photoPath,
   });
 
   final int id;
@@ -43,18 +44,24 @@ class CemeterySummary {
   /// Distinct people with a burial in a grave of this cemetery: a person whose sources disagree on the
   /// grave (ADR-006 D2) counts once (05_DESIGN/cmentarze.md D13).
   final int personCount;
+
+  /// The cemetery's photo, relative to the media directory (element 6a; ISSUE-023), or null. At most one;
+  /// with several rows the first by id, as a grave's.
+  final String? photoPath;
 }
 
-/// The family's cemeteries with their counts, in the order they were added; a new value after every
-/// write to cemeteries, graves or burials.
+/// The family's cemeteries with their counts and photos, in the order they were added; a new value after
+/// every write to cemeteries, graves, burials or photos.
 Stream<List<CemeterySummary>> watchCemeteries(GrobingDatabase db) => db
     .customSelect(
       'SELECT c.id, c.name, c.locality, c.center_lat, c.center_lon, '
       '(SELECT COUNT(*) FROM graves g WHERE g.cemetery_id = c.id) AS grave_count, '
       '(SELECT COUNT(DISTINCT b.person_id) FROM burials b '
-      'JOIN graves g ON g.id = b.grave_id WHERE g.cemetery_id = c.id) AS person_count '
+      'JOIN graves g ON g.id = b.grave_id WHERE g.cemetery_id = c.id) AS person_count, '
+      '(SELECT m.relative_path FROM media m WHERE m.cemetery_id = c.id '
+      'ORDER BY m.id LIMIT 1) AS photo_path '
       'FROM cemeteries c ORDER BY c.id',
-      readsFrom: {db.cemeteries, db.graves, db.burials},
+      readsFrom: {db.cemeteries, db.graves, db.burials, db.media},
     )
     .watch()
     .map(
@@ -70,6 +77,7 @@ Stream<List<CemeterySummary>> watchCemeteries(GrobingDatabase db) => db
             ),
             graveCount: r.read<int>('grave_count'),
             personCount: r.read<int>('person_count'),
+            photoPath: r.readNullable<String>('photo_path'),
           ),
       ],
     );

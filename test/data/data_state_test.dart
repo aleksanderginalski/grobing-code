@@ -26,10 +26,10 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 8, zero rows in every table, no photos', () async {
+  test('empty database: schema 9, zero rows in every table, no photos', () async {
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 8);
+    expect(state.schemaVersion, 9);
     // v4 (ISSUE-017): person_media joins the 11 tables of v3, and the fingerprint finds it by itself.
     expect(state.rowCounts, hasLength(12));
     expect(state.rowCounts, contains('person_media'));

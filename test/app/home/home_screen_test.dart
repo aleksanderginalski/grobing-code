@@ -153,8 +153,16 @@ void main() {
             .isNotEmpty,
       );
 
-      final PolygonLayer outline = tester.widget(find.byType(PolygonLayer));
-      expect(outline.polygons.single.points, hasLength(1332));
+      // Poland's land among the layers (since ISSUE-023 also the sea and the lakes).
+      final Iterable<Polygon> polygons = tester
+          .widgetList<PolygonLayer>(find.byType(PolygonLayer))
+          .expand((l) => l.polygons);
+      expect(
+        polygons.where(
+          (p) => p.points.length == 1332 && p.color == GrobingColors.surface,
+        ),
+        hasLength(1),
+      );
       expect(find.byType(TileLayer), findsNothing);
       // A city name is drawn twice: the halo under the letters, then the letters.
       expect(find.text('Warszawa'), findsNWidgets(2));

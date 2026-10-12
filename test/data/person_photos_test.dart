@@ -647,4 +647,32 @@ void main() {
       },
     );
   });
+
+  test(
+    'ISSUE-023 (plan → Prior art) — "Zapisz" of a person\'s photos keeps a cemetery\'s photo: it has no '
+    'grave and no link, but it is not an orphan; the person\'s own removed photo still goes',
+    () async {
+      final int cemetery = (await watchCemeteries(db).first).single.id;
+      final File prepared = File('${tmp.path}/photo-work/cmentarz.jpg')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fictionalGravestonePng(5), flush: true);
+      final String cemeteryPhoto = await setCemeteryPhoto(
+        db,
+        mediaDir,
+        cemetery,
+        prepared,
+      );
+      await save(anna, PersonPhotoEdits(photos: [waiting(1), waiting(2)]));
+      final List<int> before = await photosOf(anna);
+
+      // The edit that removes a photo is the one that deletes rows left without an owner.
+      await save(anna, PersonPhotoEdits(photos: [SavedPhoto(before.first)]));
+
+      expect(await photosOf(anna), [before.first]);
+      expect(await cemeteryPhotoPath(db, cemetery), cemeteryPhoto);
+      final List<MediaFile> rows = await db.select(db.media).get();
+      expect(rows.map((m) => m.id), isNot(contains(before.last)));
+      expect(rows.where((m) => m.cemeteryId == cemetery), hasLength(1));
+    },
+  );
 }

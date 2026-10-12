@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -14,8 +16,10 @@ typedef MapPin = ({int id, LatLng point, String name});
 /// Natural Earth 1:10m, so closer there would be nothing to see.
 const double maxZoomIn = 6;
 
-/// The map of Poland drawn from bundled data, no tile layer (ISSUE-014, ADR-007; style-b.md rule 13):
-/// land in the surface colour, the border in the outline colour, rivers as decoration, nine cities,
+/// The map of Poland drawn from bundled data, no tile layer (ISSUE-014, ADR-007; style-b.md rule 13), like
+/// R1 since ISSUE-023 (05_DESIGN/cmentarze.md element 3, D29): the neighbours in the background colour with
+/// their borders as decoration, the sea and the lakes in the water colour, Poland's land in the surface
+/// colour with its border in the muted text colour, rivers in the water line colour, "Polska", eleven cities,
 /// and the family's cemeteries as candles — grouped when they would cover each other.
 class PolandMap extends StatelessWidget {
   const PolandMap({
@@ -30,6 +34,7 @@ class PolandMap extends StatelessWidget {
     this.placedLook = PinLook.selected,
     this.focus,
     this.fitPadding = const EdgeInsets.all(16),
+    this.onPointerDown,
   });
 
   final PolandMapData data;
@@ -54,14 +59,19 @@ class PolandMap extends StatelessWidget {
   /// of Poland (the preview, element 14).
   final LatLng? focus;
 
-  /// 2^1.5 ≈ 2.8× the whole of Poland, about 240 km across: one of the nine cities is in the frame for
+  /// 2^1.5 ≈ 2.8× the whole of Poland, about 240 km across: one of the nine cities (measured before
+  /// ISSUE-023 added Bydgoszcz and Katowice) is in the frame for
   /// 96% of the cemeteries in the database, so the map says where in Poland the cemetery is. At 2³
   /// (84 km) it was 29% — a lone candle on plain land (ui review, measured on the extract).
   static const double focusZoomIn = 1.5;
 
-  /// Margins of the whole of Poland at the least zoom. The home screen keeps the sheet's height free
-  /// at the bottom, so Poland stands under the search, above the sheet (ui review, 2026-10-06).
+  /// Margins of the whole of Poland at the least zoom. The home screen splits a sheet's height between
+  /// the top and the bottom: the zoom leaves room for the sheet, and Poland stands in the middle until one
+  /// opens (05_DESIGN/cmentarze.md D30).
   final EdgeInsets fitPadding;
+
+  /// A finger on the map — the home screen stops its own movement of the map then.
+  final VoidCallback? onPointerDown;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -98,17 +108,28 @@ class PolandMap extends StatelessWidget {
             flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
           ),
           onTap: onMapTap == null ? null : (_, point) => onMapTap!(point),
+          onPointerDown: onPointerDown == null
+              ? null
+              : (_, _) => onPointerDown!(),
         ),
         children: [
+          // Beyond the data the background shows: the neighbours' colour, so a gap between their simplified
+          // shapes and Poland's full outline never shows.
+          // Islands are holes cut with the even-odd rule: flutter_map's default `Path.combine` redid a path
+          // operation on the whole sea every frame — 2–3 s a frame (measured, ISSUE-023 qa). The islands never
+          // cross each other, so even-odd draws the same.
+          PolygonLayer(
+            polygons: _areas(data.water),
+            painterFillMethod: PolygonPainterFillMethod.evenOdd,
+          ),
           PolygonLayer(
             polygons: [
-              Polygon(
-                points: data.outline,
-                color: GrobingColors.surface,
-                borderColor: GrobingColors.outline,
-                borderStrokeWidth: 1.5,
-              ),
+              Polygon(points: data.outline, color: GrobingColors.surface),
             ],
+          ),
+          PolygonLayer(
+            polygons: _areas(data.lakes),
+            painterFillMethod: PolygonPainterFillMethod.evenOdd,
           ),
           // Decoration (SC 1.4.11 covers only graphics needed to understand the content).
           PolylineLayer(
@@ -116,11 +137,30 @@ class PolandMap extends StatelessWidget {
               for (final List<LatLng> river in data.rivers)
                 Polyline(
                   points: river,
-                  color: GrobingColors.outline.withValues(alpha: 0.5),
+                  color: GrobingColors.waterLine,
                   strokeWidth: 1,
+                ),
+              for (final List<LatLng> border in data.borders)
+                Polyline(
+                  points: border,
+                  color: GrobingColors.outline.withValues(alpha: 0.45),
+                  strokeWidth: 0.7,
                 ),
             ],
           ),
+          // Poland's border carries where the candles are (SC 1.4.11): in the muted text colour, because the
+          // outline colour has only 3.11:1 on the water (style-b.md rule 13). On top, so a lake at the border
+          // does not cut it.
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: [...data.outline, data.outline.first],
+                color: GrobingColors.textMuted,
+                strokeWidth: 1.4,
+              ),
+            ],
+          ),
+          const IgnorePointer(child: _CountryLabel()),
           IgnorePointer(child: _CityLayer(cities: data.cities)),
           if (onPins == null) IgnorePointer(child: pinLayer) else pinLayer,
           if (placed != null)
@@ -165,12 +205,75 @@ double fitZoom(
   return fitted.zoom;
 }
 
-/// Which side of its dot a city's name goes (05_DESIGN/cmentarze.md, element 3): left at the eastern
-/// border, below where a right-hand label would run into the border.
+/// The sea or the lakes as polygons in the water colour, islands as holes.
+List<Polygon> _areas(List<MapArea> areas) => [
+  for (final MapArea a in areas)
+    Polygon(
+      points: a.outer,
+      holePointsList: a.holes.isEmpty ? null : a.holes,
+      color: GrobingColors.water,
+    ),
+];
+
+/// Where "Polska" stands: free land in the north, in Masuria, between the labels of Gdańsk, Bydgoszcz,
+/// Warszawa and Białystok (05_DESIGN/cmentarze.md, element 3).
+const LatLng _countryLabelAt = LatLng(53.85, 21.0);
+
+/// Past this many zoom steps beyond the whole of Poland the country's name is gone: it names the whole,
+/// and closer in it would only lie over a region (the cartographic standard — the country's label belongs
+/// to the least zooms).
+const double _countryLabelUntil = 2;
+
+/// "Polska": 22 sp, semi-bold, letter spacing 2, the muted text colour at 85% (style-b.md rule 13). It grows
+/// with the system text size only up to [_labelMaxScale], as the cities: larger it would cover them, and it
+/// names what the outline already shows.
+class _CountryLabel extends StatelessWidget {
+  const _CountryLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final MapCamera camera = MapCamera.of(context);
+    final double least = camera.minZoom ?? camera.zoom;
+    if (camera.zoom > least + _countryLabelUntil) {
+      return const SizedBox.shrink();
+    }
+    return MarkerLayer(
+      markers: [
+        Marker(
+          point: _countryLabelAt,
+          width: 240,
+          height: 48,
+          child: Center(
+            child: Text(
+              'Polska',
+              maxLines: 1,
+              softWrap: false,
+              textScaler: MediaQuery.textScalerOf(
+                context,
+              ).clamp(maxScaleFactor: _labelMaxScale),
+              style: TextStyle(
+                color: GrobingColors.textMuted.withValues(alpha: 0.85),
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 2,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Which side of its dot a city's name goes (05_DESIGN/cmentarze.md, element 3, D32): left at Katowice,
+/// whose right-hand label would run into Kraków's dot; below at the eastern border — Lublin, and Białystok,
+/// whose left-hand label stood a space from Bydgoszcz's in one line and read as one name (360 dp, text
+/// 200%; ui review, ISSUE-023).
 enum _LabelSide { right, left, below }
 
 const Map<String, _LabelSide> _labelSides = {
-  'Białystok': _LabelSide.left,
+  'Białystok': _LabelSide.below,
+  'Katowice': _LabelSide.left,
   'Lublin': _LabelSide.below,
 };
 
@@ -178,6 +281,11 @@ const Map<String, _LabelSide> _labelSides = {
 /// the city's point, so the box is shifted by its half.
 const double _labelWidth = 200;
 const double _dotHalf = 2;
+
+/// Map labels — the cities and "Polska" — grow with the system text size up to 1.3×. Larger they would
+/// run into each other (Bydgoszcz into Białystok at 200%, ISSUE-023) and cover the map they name; at 1.3×
+/// a city label is 17 sp.
+const double _labelMaxScale = 1.3;
 
 class _CityLayer extends StatelessWidget {
   const _CityLayer({required this.cities});
@@ -197,46 +305,55 @@ class _CityLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double x = 1 - _dotHalf / (_labelWidth / 2);
-    return MarkerLayer(
-      markers: [
-        for (final MapCity city in cities)
-          switch (_labelSides[city.name] ?? _LabelSide.right) {
-            _LabelSide.right => Marker(
-              point: city.point,
-              width: _labelWidth,
-              height: 24,
-              alignment: const Alignment(x, 0),
-              child: Row(
-                children: [
-                  _dot,
-                  const SizedBox(width: 4),
-                  Flexible(child: _HaloLabel(city.name)),
-                ],
+    // The box is as tall as the label in the clamped size, so a large system font never cuts its letters.
+    final double line = MediaQuery.textScalerOf(
+      context,
+    ).clamp(maxScaleFactor: _labelMaxScale).scale(13 * 1.5);
+    final double side = math.max(24, line);
+    final double below = 2 * _dotHalf + line;
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: _labelMaxScale,
+      child: MarkerLayer(
+        markers: [
+          for (final MapCity city in cities)
+            switch (_labelSides[city.name] ?? _LabelSide.right) {
+              _LabelSide.right => Marker(
+                point: city.point,
+                width: _labelWidth,
+                height: side,
+                alignment: const Alignment(x, 0),
+                child: Row(
+                  children: [
+                    _dot,
+                    const SizedBox(width: 4),
+                    Flexible(child: _HaloLabel(city.name)),
+                  ],
+                ),
               ),
-            ),
-            _LabelSide.left => Marker(
-              point: city.point,
-              width: _labelWidth,
-              height: 24,
-              alignment: const Alignment(-x, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Flexible(child: _HaloLabel(city.name)),
-                  const SizedBox(width: 4),
-                  _dot,
-                ],
+              _LabelSide.left => Marker(
+                point: city.point,
+                width: _labelWidth,
+                height: side,
+                alignment: const Alignment(-x, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Flexible(child: _HaloLabel(city.name)),
+                    const SizedBox(width: 4),
+                    _dot,
+                  ],
+                ),
               ),
-            ),
-            _LabelSide.below => Marker(
-              point: city.point,
-              width: _labelWidth,
-              height: 28,
-              alignment: const Alignment(0, 1 - _dotHalf / 14),
-              child: Column(children: [_dot, _HaloLabel(city.name)]),
-            ),
-          },
-      ],
+              _LabelSide.below => Marker(
+                point: city.point,
+                width: _labelWidth,
+                height: below,
+                alignment: Alignment(0, 1 - _dotHalf / (below / 2)),
+                child: Column(children: [_dot, _HaloLabel(city.name)]),
+              ),
+            },
+        ],
+      ),
     );
   }
 }

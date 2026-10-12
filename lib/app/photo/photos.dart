@@ -40,25 +40,47 @@ class Photos {
 
   /// Makes [picked] the grave's only photo: shrinks it (D2'), then hands it to the data layer, which
   /// writes the file before the row (D3). The picker's copy and the scratch file go either way.
-  Future<void> setGravePhoto(
+  Future<void> setGravePhoto(GrobingDatabase db, int graveId, File picked) =>
+      _keep(
+        picked,
+        (prepared) => data.setGravePhoto(db, mediaDir, graveId, prepared),
+      );
+
+  /// Deletes the grave's photo (D1'); the file goes with the next sweep (D3).
+  Future<void> deleteGravePhoto(GrobingDatabase db, int graveId) =>
+      data.deleteGravePhoto(db, graveId);
+
+  /// Makes [picked] the cemetery's only photo (ISSUE-023, 05_DESIGN/cmentarze.md element 6a) — the same
+  /// steps as a grave's.
+  Future<void> setCemeteryPhoto(
     GrobingDatabase db,
-    int graveId,
+    int cemeteryId,
     File picked,
+  ) => _keep(
+    picked,
+    (prepared) => data.setCemeteryPhoto(db, mediaDir, cemeteryId, prepared),
+  );
+
+  /// Deletes the cemetery's photo; the file goes with the next sweep (D3).
+  Future<void> deleteCemeteryPhoto(GrobingDatabase db, int cemeteryId) =>
+      data.deleteCemeteryPhoto(db, cemeteryId);
+
+  /// Shrinks [picked] into the work directory, then hands it to [save]. The picker's copy and the scratch
+  /// file go either way.
+  Future<void> _keep(
+    File picked,
+    Future<String> Function(File prepared) save,
   ) async {
     await workDir.create(recursive: true);
     final File prepared = File('${workDir.path}/${_scratchName()}.jpg');
     try {
       await preparer.prepare(picked, prepared);
-      await data.setGravePhoto(db, mediaDir, graveId, prepared);
+      await save(prepared);
     } finally {
       if (await prepared.exists()) await prepared.delete();
       await picker.discard(picked);
     }
   }
-
-  /// Deletes the grave's photo (D1'); the file goes with the next sweep (D3).
-  Future<void> deleteGravePhoto(GrobingDatabase db, int graveId) =>
-      data.deleteGravePhoto(db, graveId);
 
   /// Several photos from the gallery (a person's — zdjecie.md v1.3, A2); empty when cancelled.
   Future<List<File>> pickMany() => picker.pickMany();

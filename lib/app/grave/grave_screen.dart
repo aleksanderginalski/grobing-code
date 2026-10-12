@@ -7,6 +7,7 @@ import '../../data/graves.dart';
 import '../../data/photos.dart' show PhotoCrop, gravePhotoPath;
 import '../dates.dart';
 import '../person/person_screen.dart';
+import '../photo/add_photo_field.dart';
 import '../photo/photo_picker.dart';
 import '../photo/photo_source_sheet.dart';
 import '../photo/photo_viewer_screen.dart';
@@ -194,7 +195,8 @@ class _GraveScreenState extends State<GraveScreen> {
     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
     children: [
       // Element 1a: the gravestone photo; without one, the field "Dodaj zdjęcie nagrobka" in its place —
-      // the action stands where its result will (grob.md v3.2, D12, the author's decision at stop #2).
+      // the action stands where its result will (grob.md v3.2, D12, the author's decision at stop #2), one
+      // button, never a placeholder picture (style-b.md rules 11, 14).
       if (widget.photos case final Photos photos?) ...[
         if (grave.photoPath case final String path?)
           _GravePhoto(
@@ -204,7 +206,12 @@ class _GraveScreenState extends State<GraveScreen> {
         else if (_savingPhoto)
           const _SavingPhoto()
         else
-          _AddPhotoField(onTap: () => _addPhoto(grave)),
+          // 120 dp, not the photo's 4:3: about 50 graves start without one, and a photo-sized field would
+          // push the people down on every one of them.
+          AddPhotoField(
+            label: 'Dodaj zdjęcie nagrobka',
+            onTap: () => _addPhoto(grave),
+          ),
         if (_photoFailed)
           const Padding(
             padding: EdgeInsets.only(top: 8),
@@ -397,63 +404,6 @@ class _GravePhoto extends StatelessWidget {
         ),
       );
     },
-  );
-}
-
-/// Element 1a without a photo (grob.md v3.2, D12): the place of the photo as one button — an outline, the
-/// icon in amber, the caption — never a placeholder picture (style-b.md rules 11, 14). 120 dp, not the
-/// photo's 4:3: about 50 graves start without one, and a photo-sized field would push the people down on
-/// every one of them.
-class _AddPhotoField extends StatelessWidget {
-  const _AddPhotoField({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: 'Dodaj zdjęcie nagrobka',
-    // excludeSemantics drops the InkWell's tap too: without its own the button is only read, never pressed
-    // by Switch Access or Voice Access (WCAG 2.2 SC 4.1.2; the pattern of ISSUE-017, ISSUE-021).
-    onTap: onTap,
-    excludeSemantics: true,
-    child: Material(
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: GrobingColors.outline),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 120),
-          child: const Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.add_a_photo_outlined,
-                  size: 32,
-                  color: GrobingColors.amber,
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Dodaj zdjęcie nagrobka',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: GrobingColors.text,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
   );
 }
 

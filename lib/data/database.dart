@@ -185,15 +185,19 @@ class Assertions extends Table {
 }
 
 /// A photo — the record, like GEDCOM 7's MULTIMEDIA_RECORD — and its file in the app's private storage,
-/// under [DataLocation.mediaDir]. A grave's photo carries [graveId] (at most one per grave, ISSUE-016);
-/// people reach a photo through [PersonMedia] links, so one photo can be on several people (schema v4,
-/// ISSUE-017). A row with neither a grave nor a link does not outlive the write that left it so
-/// (`photos.dart` → applyPersonPhotoEdits); its file goes with the next sweep (ADR-008).
+/// under [DataLocation.mediaDir]. A grave's photo carries [graveId] (at most one per grave, ISSUE-016), a
+/// cemetery's [cemeteryId] (at most one per cemetery, schema v9, ISSUE-023, ADR-014); people reach a photo
+/// through [PersonMedia] links, so one photo can be on several people (schema v4, ISSUE-017). "At most one"
+/// is kept by the one write path (`photos.dart` → setGravePhoto, setCemeteryPhoto), not by SQL. A row with
+/// neither a grave, a cemetery nor a link does not outlive the write that left it so (`photos.dart` →
+/// applyPersonPhotoEdits); its file goes with the next sweep (ADR-008).
 @DataClassName('MediaFile')
 class Media extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get relativePath => text().unique()();
   IntColumn get graveId => integer().nullable().references(Graves, #id)();
+  IntColumn get cemeteryId =>
+      integer().nullable().references(Cemeteries, #id)();
 }
 
 /// A person's link to a photo — GEDCOM 7's MULTIMEDIA_LINK (`OBJE`). A person's links are ordered by
@@ -292,7 +296,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 8;
+  static const int currentSchemaVersion = 9;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -320,6 +324,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from5To6: _from5To6,
             from6To7: _from6To7,
             from7To8: _from7To8,
+            from8To9: _from8To9,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -445,6 +450,12 @@ class GrobingDatabase extends _$GrobingDatabase {
     await m.addColumn(schema.personMedia, schema.personMedia.isBackground);
     await m.createIndex(schema.personMediaBackground);
   }
+
+  /// ISSUE-023 (ADR-014): a cemetery's photo, a `media` row pointing at the cemetery like a grave's. A new
+  /// nullable column: no row changes, nothing dropped, the table not rebuilt — a restored v8 backup has
+  /// cemeteries without photos.
+  Future<void> _from8To9(Migrator m, Schema9 schema) =>
+      m.addColumn(schema.media, schema.media.cemeteryId);
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).
