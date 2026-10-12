@@ -3,7 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:drift/drift.dart' show MigrationStrategy, driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show MigrationStrategy, QueryRow, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/home/cemetery_base.dart';
@@ -21,10 +22,12 @@ import 'package:grobing/data/families.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/people.dart';
 import 'package:grobing/data/photos.dart';
+import 'package:grobing/data/sectors.dart';
 import 'package:grobing/dev/fictional_data.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 
 import '../drift/grobing/generated/schema_v1.dart' as v1;
+import '../drift/grobing/generated/schema_v10.dart' as v10;
 import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../drift/grobing/generated/schema_v3.dart' as v3;
 import '../drift/grobing/generated/schema_v4.dart' as v4;
@@ -1340,76 +1343,84 @@ void main() {
     },
   );
 
-  test(
-    'ISSUE-012 — a v2 backup restores into the current app: every v2 table and count kept, graves '
-    'without a name',
-    () async {
-      final File v2File = File('${tmp.path}/v2.db');
-      final v2.DatabaseAtV2 old = v2.DatabaseAtV2(NativeDatabase(v2File));
-      for (final String row in _v2Rows) {
-        await old.customStatement(row);
-      }
-      await old.customStatement('PRAGMA user_version = 2');
-      final DataState v2State = await readDataState(
-        old,
-        mediaDir: Directory('${tmp.path}/v2-media'),
-      );
-      expect(v2State.schemaVersion, 2);
-      await old.customStatement('VACUUM INTO ?', [
-        '${tmp.path}/v2-snapshot.db',
-      ]);
-      await old.close();
-      final List<_Entry> files = [
-        (
-          path: backupDatabaseName,
-          data: File('${tmp.path}/v2-snapshot.db').readAsBytesSync(),
+  test('ISSUE-012 — a v2 backup restores into the current app: every v2 table and count kept, graves '
+      'without a name', () async {
+    final File v2File = File('${tmp.path}/v2.db');
+    final v2.DatabaseAtV2 old = v2.DatabaseAtV2(NativeDatabase(v2File));
+    for (final String row in _v2Rows) {
+      await old.customStatement(row);
+    }
+    await old.customStatement('PRAGMA user_version = 2');
+    final DataState v2State = await readDataState(
+      old,
+      mediaDir: Directory('${tmp.path}/v2-media'),
+    );
+    expect(v2State.schemaVersion, 2);
+    await old.customStatement('VACUUM INTO ?', ['${tmp.path}/v2-snapshot.db']);
+    await old.close();
+    final List<_Entry> files = [
+      (
+        path: backupDatabaseName,
+        data: File('${tmp.path}/v2-snapshot.db').readAsBytesSync(),
+      ),
+    ];
+    final String uri = await uploadTar(
+      'kopia-v2.age',
+      _tar([
+        ...files,
+        _manifestEntry(
+          _withFiles({
+            ..._manifestOf(_untar(backupTar)),
+            'schema_version': 2,
+            'record_counts': v2State.rowCounts,
+            'data_fingerprint': v2State.fingerprint,
+          }, files),
         ),
-      ];
-      final String uri = await uploadTar(
-        'kopia-v2.age',
-        _tar([
-          ...files,
-          _manifestEntry(
-            _withFiles({
-              ..._manifestOf(_untar(backupTar)),
-              'schema_version': 2,
-              'record_counts': v2State.rowCounts,
-              'data_fingerprint': v2State.fingerprint,
-            }, files),
-          ),
-        ]),
-      );
+      ]),
+    );
 
-      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
-      final RestoreResult result =
-          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
-            backupUri: uri,
-            keyUri: FakeDocumentStore.uriOf('klucz.age'),
-            passphrase: _passphrase,
-          );
+    final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+    final RestoreResult result =
+        await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+          backupUri: uri,
+          keyUri: FakeDocumentStore.uriOf('klucz.age'),
+          passphrase: _passphrase,
+        );
 
-      expect(
-        (result.schemaFrom, result.schemaTo),
-        (2, GrobingDatabase.currentSchemaVersion),
-      );
-      final DataState after = await stateOnDisk(fresh.dir);
-      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // Every v2 table with its count; a table added later (person_media, v4) is there and empty.
-      for (final MapEntry<String, int> t in v2State.rowCounts.entries) {
-        expect(after.rowCounts[t.key], t.value, reason: t.key);
-      }
-      expect(after.rowCounts['person_media'], 0);
-      final GrobingDatabase reopened = GrobingDatabase(
-        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
-      );
-      final List<Grave> graves = await reopened.select(reopened.graves).get();
-      await reopened.close();
-      expect(graves.map((g) => (g.id, g.name, g.sector)), [
-        (1, null, null),
-        (2, null, 'B'),
-      ]);
-    },
-  );
+    expect(
+      (result.schemaFrom, result.schemaTo),
+      (2, GrobingDatabase.currentSchemaVersion),
+    );
+    final DataState after = await stateOnDisk(fresh.dir);
+    expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+    // Every v2 table with its count; a table added later (person_media, v4) is there and empty.
+    for (final MapEntry<String, int> t in v2State.rowCounts.entries) {
+      expect(after.rowCounts[t.key], t.value, reason: t.key);
+    }
+    expect(after.rowCounts['person_media'], 0);
+    final GrobingDatabase reopened = GrobingDatabase(
+      NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+    );
+    // The v2 sector text is a sector of its cemetery now, and the grave points at it (v11, ADR-016).
+    final List<QueryRow> graves = await reopened
+        .customSelect(
+          'SELECT g.id, g.name, s.name AS sector FROM graves g '
+          'LEFT JOIN sectors s ON s.id = g.sector_id ORDER BY g.id',
+        )
+        .get();
+    await reopened.close();
+    expect(
+      graves.map(
+        (g) => (
+          g.read<int>('id'),
+          g.readNullable<String>('name'),
+          g.readNullable<String>('sector'),
+        ),
+      ),
+      [(1, null, null), (2, null, 'B')],
+    );
+    expect(after.rowCounts['sectors'], 1);
+  });
 
   test(
     'ISSUE-017 F3 — a v3 backup with people\'s photos restores into the v4 app: every v3 table and '
@@ -1573,8 +1584,13 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // A table a later schema added is there, empty: cemeteries' plans (v10, ISSUE-027).
-      expect(after.rowCounts, {...v5State.rowCounts, 'cemetery_plans': 0});
+      // Tables a later schema added are there, empty: cemeteries' plans (v10, ISSUE-027) and sectors (v11,
+      // ISSUE-028 — these backups name no sector).
+      expect(after.rowCounts, {
+        ...v5State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
       );
@@ -1649,8 +1665,13 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // A table a later schema added is there, empty: cemeteries' plans (v10, ISSUE-027).
-      expect(after.rowCounts, {...v6State.rowCounts, 'cemetery_plans': 0});
+      // Tables a later schema added are there, empty: cemeteries' plans (v10, ISSUE-027) and sectors (v11,
+      // ISSUE-028 — these backups name no sector).
+      expect(after.rowCounts, {
+        ...v6State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
       );
@@ -1733,8 +1754,13 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // A table a later schema added is there, empty: cemeteries' plans (v10, ISSUE-027).
-      expect(after.rowCounts, {...v7State.rowCounts, 'cemetery_plans': 0});
+      // Tables a later schema added are there, empty: cemeteries' plans (v10, ISSUE-027) and sectors (v11,
+      // ISSUE-028 — these backups name no sector).
+      expect(after.rowCounts, {
+        ...v7State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
       );
@@ -1822,8 +1848,13 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // A table a later schema added is there, empty: cemeteries' plans (v10, ISSUE-027).
-      expect(after.rowCounts, {...v8State.rowCounts, 'cemetery_plans': 0});
+      // Tables a later schema added are there, empty: cemeteries' plans (v10, ISSUE-027) and sectors (v11,
+      // ISSUE-028 — these backups name no sector).
+      expect(after.rowCounts, {
+        ...v8State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       expect(after.mediaFileCount, 2);
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -1967,7 +1998,11 @@ void main() {
         (9, GrobingDatabase.currentSchemaVersion),
       );
       final DataState after = await stateOnDisk(fresh.dir);
-      expect(after.rowCounts, {...v9State.rowCounts, 'cemetery_plans': 0});
+      expect(after.rowCounts, {
+        ...v9State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       expect(after.mediaFileCount, 3);
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -2064,6 +2099,158 @@ void main() {
   );
 
   test(
+    'ISSUE-028 (ADR-016) — a v10 backup restores into the v11 app: every v10 table and count kept, the '
+    'graves\' sector text a sector of their cemetery — "B" and "b" one — and the address reads the same',
+    () async {
+      final File v10File = File('${tmp.path}/v10-old.db');
+      final Directory v10Media = Directory('${tmp.path}/v10-old-media');
+      final v10.DatabaseAtV10 old = v10.DatabaseAtV10(NativeDatabase(v10File));
+      for (final String row in [
+        ..._v8Rows,
+        'UPDATE graves SET sector = \'B\', "row" = \'4\', plot = \'12\' WHERE id = 1',
+        "INSERT INTO graves (id, cemetery_id, sector) VALUES (2, 1, 'b')",
+      ]) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 10');
+      const List<String> photoPaths = [
+        'groby/1/nagrobek.png',
+        'zdjecia/ewa.png',
+      ];
+      for (final (int i, String path) in photoPaths.indexed) {
+        File('${v10Media.path}/$path')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalGravestonePng(i + 1));
+      }
+      final DataState v10State = await readDataState(old, mediaDir: v10Media);
+      expect(v10State.schemaVersion, 10);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v10-old-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v10-old-snapshot.db').readAsBytesSync(),
+        ),
+        for (final String path in photoPaths)
+          (
+            path: 'media/$path',
+            data: File('${v10Media.path}/$path').readAsBytesSync(),
+          ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v10-stara.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 10,
+              'record_counts': v10State.rowCounts,
+              'data_fingerprint': v10State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v11');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (10, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.rowCounts, {...v10State.rowCounts, 'sectors': 1});
+      expect(after.mediaFileCount, 2);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final GraveDetail first = (await loadGrave(reopened, 1))!;
+      final GraveDetail second = (await loadGrave(reopened, 2))!;
+      final List<Sector> sectors = await watchSectors(reopened, 1).first;
+      await reopened.close();
+      expect(
+        (first.sector, first.row, first.plot, second.sector),
+        ('B', '4', '12', 'B'),
+      );
+      expect(sectors.map((s) => (s.name, s.zone, s.graveCount)), [
+        ('B', null, 2),
+      ]);
+    },
+  );
+
+  test(
+    'ISSUE-028 AC — a v11 backup with a sector, its zone and a grave\'s address restores with them: the '
+    'same fingerprint, the zone and the address read back whole',
+    () async {
+      final Directory v11 = Directory('${tmp.path}/v11-source')..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${v11.path}/grobing.db')),
+      );
+      final Directory media = Directory('${v11.path}/media');
+      const List<GeoPoint> zone = [
+        GeoPoint(51.4990, 19.4990),
+        GeoPoint(51.4990, 19.5000),
+        GeoPoint(51.5000, 19.5000),
+        GeoPoint(51.5000, 19.4990),
+      ];
+      final int cemetery = await addCemetery(db, name: 'Cmentarz Wymyślony');
+      await addSector(db, cemetery, name: 'B', zone: zone);
+      final int grave = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      await setGraveDetails(db, grave, sector: 'B', row: '4', plot: '12');
+      final DataState state = await readDataState(db, mediaDir: media);
+      expect(state.rowCounts['sectors'], 1);
+      await db.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v11-snapshot.db',
+      ]);
+      await db.close();
+      final File backup = drive.fileFor(
+        FakeDocumentStore.uriOf('kopia-v11.age'),
+      );
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/v11-snapshot.db'),
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+        'v11-fresh',
+      );
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia-v11.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.dataFingerprint, state.fingerprint);
+      expect((await stateOnDisk(fresh.dir)).fingerprint, state.fingerprint);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<Sector> sectors = await watchSectors(reopened, cemetery).first;
+      final GraveDetail detail = (await loadGrave(reopened, grave))!;
+      await reopened.close();
+      expect(sectors.map((s) => (s.name, s.graveCount)), [('B', 1)]);
+      expect(sectors.single.zone, zone);
+      expect((detail.sector, detail.row, detail.plot), ('B', '4', '12'));
+    },
+  );
+
+  test(
     'ISSUE-018 F3 — a v4 backup restores into the v5 app: every v4 table and count kept, every link and '
     'its position kept, no link has a crop (the circles show the middle), every file is there',
     () async {
@@ -2131,8 +2318,13 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      // A table a later schema added is there, empty: cemeteries' plans (v10, ISSUE-027).
-      expect(after.rowCounts, {...v4State.rowCounts, 'cemetery_plans': 0});
+      // Tables a later schema added are there, empty: cemeteries' plans (v10, ISSUE-027) and sectors (v11,
+      // ISSUE-028 — these backups name no sector).
+      expect(after.rowCounts, {
+        ...v4State.rowCounts,
+        'cemetery_plans': 0,
+        'sectors': 0,
+      });
       expect(after.mediaFileCount, 3);
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),

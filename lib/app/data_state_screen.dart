@@ -54,6 +54,7 @@ class _DataStateScreenState extends State<DataStateScreen> {
     'events': 'Zdarzenia',
     'cemeteries': 'Cmentarze',
     'cemetery_plans': 'Plany cmentarzy',
+    'sectors': 'Kwatery',
     'graves': 'Groby',
     'burials': 'Pochówki',
     'assertions': 'Twierdzenia (źródła)',

@@ -186,6 +186,11 @@ List<PlanPath> decodePaths(String json) {
   ];
 }
 
+/// One line or ring as the plan stores it — a flat list, 6 decimals — for the author's sectors too (ISSUE-028).
+String encodeRing(List<GeoPoint> points) => jsonEncode(_flat(points));
+
+List<GeoPoint> decodeRing(String json) => _points(jsonDecode(json));
+
 List<double> _flat(List<GeoPoint> points) => [
   for (final GeoPoint p in points) ...[_round(p.lat), _round(p.lon)],
 ];

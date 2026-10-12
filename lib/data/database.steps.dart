@@ -2732,6 +2732,326 @@ i1.GeneratedColumn<String> _column_58(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
+
+final class Schema11 extends i0.VersionedSchema {
+  Schema11({required super.database}) : super(version: 11);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    persons,
+    families,
+    familyPartners,
+    familyChildren,
+    events,
+    cemeteries,
+    sectors,
+    graves,
+    burials,
+    assertions,
+    media,
+    personMedia,
+    settings,
+    cemeteryPlans,
+    personMediaMedia,
+    personMediaBackground,
+  ];
+  late final Shape16 persons = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'persons',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_52,
+        _column_4,
+        _column_5,
+        _column_6,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 families = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'families',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_0],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 familyPartners = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'family_partners',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(family_id, person_id)'],
+      columns: [_column_7, _column_8],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape14 familyChildren = Shape14(
+    source: i0.VersionedTable(
+      entityName: 'family_children',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(family_id, person_id)'],
+      columns: [_column_0, _column_7, _column_8],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 events = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'events',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((person_id IS NULL)<>(family_id IS NULL))',
+        'CHECK((type IN (\'birth\', \'death\', \'burial\'))=(person_id IS NOT NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape4 cemeteries = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'cemeteries',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_24,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape20 sectors = Shape20(
+    source: i0.VersionedTable(
+      entityName: 'sectors',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(cemetery_id, name_key)'],
+      columns: [_column_0, _column_25, _column_20, _column_59, _column_60],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape21 graves = Shape21(
+    source: i0.VersionedTable(
+      entityName: 'graves',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_25,
+        _column_44,
+        _column_61,
+        _column_27,
+        _column_28,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 burials = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'burials',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(person_id, grave_id)'],
+      columns: [_column_0, _column_8, _column_33],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape15 assertions = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'assertions',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((event_id IS NOT NULL)+(burial_id IS NOT NULL)+(family_id IS NOT NULL)+(family_child_id IS NOT NULL)= 1)',
+      ],
+      columns: [
+        _column_0,
+        _column_34,
+        _column_35,
+        _column_11,
+        _column_51,
+        _column_36,
+        _column_37,
+        _column_38,
+        _column_39,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape18 media = Shape18(
+    source: i0.VersionedTable(
+      entityName: 'media',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_0, _column_40, _column_41, _column_54],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape17 personMedia = Shape17(
+    source: i0.VersionedTable(
+      entityName: 'person_media',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(person_id, media_id)'],
+      columns: [
+        _column_8,
+        _column_45,
+        _column_46,
+        _column_47,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_53,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 settings = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(id = 1)'],
+      columns: [_column_42, _column_43],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape19 cemeteryPlans = Shape19(
+    source: i0.VersionedTable(
+      entityName: 'cemetery_plans',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(cemetery_id)'],
+      columns: [
+        _column_25,
+        _column_38,
+        _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index personMediaMedia = i1.Index(
+    'person_media_media',
+    'CREATE INDEX person_media_media ON person_media (media_id)',
+  );
+  final i1.Index personMediaBackground = i1.Index(
+    'person_media_background',
+    'CREATE UNIQUE INDEX person_media_background ON person_media (person_id) WHERE is_background',
+  );
+}
+
+class Shape20 extends i0.VersionedTable {
+  Shape20({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get cemeteryId =>
+      columnsByName['cemetery_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get name =>
+      columnsByName['name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get nameKey =>
+      columnsByName['name_key']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get zone =>
+      columnsByName['zone']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_59(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'name_key',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_60(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'zone',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+
+class Shape21 extends i0.VersionedTable {
+  Shape21({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get cemeteryId =>
+      columnsByName['cemetery_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get name =>
+      columnsByName['name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get sectorId =>
+      columnsByName['sector_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get row =>
+      columnsByName['row']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get plot =>
+      columnsByName['plot']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<double> get lat =>
+      columnsByName['lat']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<double> get lon =>
+      columnsByName['lon']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<String> get positionSource =>
+      columnsByName['position_source']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<double> get positionAccuracyM =>
+      columnsByName['position_accuracy_m']! as i1.GeneratedColumn<double>;
+}
+
+i1.GeneratedColumn<int> _column_61(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'sector_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL REFERENCES sectors(id)',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
@@ -2742,6 +3062,7 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema8 schema) from7To8,
   required Future<void> Function(i1.Migrator m, Schema9 schema) from8To9,
   required Future<void> Function(i1.Migrator m, Schema10 schema) from9To10,
+  required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -2790,6 +3111,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from9To10(migrator, schema);
         return 10;
+      case 10:
+        final schema = Schema11(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from10To11(migrator, schema);
+        return 11;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -2806,6 +3132,7 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema8 schema) from7To8,
   required Future<void> Function(i1.Migrator m, Schema9 schema) from8To9,
   required Future<void> Function(i1.Migrator m, Schema10 schema) from9To10,
+  required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -2817,5 +3144,6 @@ i1.OnUpgrade stepByStep({
     from7To8: from7To8,
     from8To9: from8To9,
     from9To10: from9To10,
+    from10To11: from10To11,
   ),
 );

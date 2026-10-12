@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../data/address_text.dart';
 import '../../data/database.dart';
 import '../../data/graves.dart';
 import '../../data/photos.dart' show PhotoCrop, gravePhotoPath;
+import '../../data/sectors.dart';
 import '../dates.dart';
 import '../person/person_screen.dart';
 import '../photo/add_photo_field.dart';
@@ -129,13 +131,30 @@ class _GraveScreenState extends State<GraveScreen> {
         ),
       );
 
-  Future<void> _editName(GraveDetail g) => showDialog<void>(
-    context: context,
-    builder: (_) => GraveNameDialog(
-      name: g.name,
-      save: (name) => setGraveName(widget.database, g.id, name),
-    ),
-  );
+  /// ✎ and "Wpisz adres" (elements 3, 4): the window "Popraw grób" with the cemetery's sectors as chips.
+  Future<void> _editGrave(GraveDetail g, {bool address = false}) async {
+    final List<Sector> sectors = await watchSectors(
+      widget.database,
+      g.cemeteryId,
+    ).first;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => GraveDialog(
+        grave: g,
+        sectors: sectors,
+        focusAddress: address,
+        save: ({name, sector, row, plot}) => setGraveDetails(
+          widget.database,
+          g.id,
+          name: name,
+          sector: sector,
+          row: row,
+          plot: plot,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => StreamBuilder<GraveDetail?>(
@@ -289,12 +308,13 @@ class _GraveScreenState extends State<GraveScreen> {
         icon: const Icon(Icons.edit_outlined),
         color: GrobingColors.amber,
         tooltip: 'Popraw grób',
-        onPressed: () => _editName(grave),
+        onPressed: () => _editGrave(grave),
       ),
     ],
   );
 
-  /// Element 4: the address in full words, or what is missing and when it gets filled in.
+  /// Element 4: the address in full words, or what is missing and "Wpisz adres" — the address is copied at
+  /// home from the manager's search, not at the visit (grob.md v6, D13).
   Widget _address(GraveDetail grave) {
     const TextStyle muted = TextStyle(
       color: GrobingColors.textMuted,
@@ -330,11 +350,17 @@ class _GraveScreenState extends State<GraveScreen> {
           textAlign: TextAlign.center,
           style: muted,
         ),
-        const SizedBox(height: 2),
-        const Text(
-          'Uzupełnisz przy wizycie.',
-          textAlign: TextAlign.center,
-          style: muted,
+        TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: GrobingColors.amber,
+            minimumSize: const Size(48, 48),
+            textStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          onPressed: () => _editGrave(grave, address: true),
+          child: const Text('Wpisz adres'),
         ),
       ],
     );
@@ -559,28 +585,58 @@ class _ProfileThumbnail extends StatelessWidget {
   );
 }
 
-/// The window "Popraw grób" (05_DESIGN/grob.md, element 3a): the grave's name, optional. It saves
-/// itself, so a failed save keeps it open with the message.
-class GraveNameDialog extends StatefulWidget {
-  const GraveNameDialog({super.key, this.name, required this.save});
+/// The window "Popraw grób" (05_DESIGN/grob.md v6, elements 3a, 3b): the grave's name and the manager's
+/// address — sector, row and plot — all optional, copied from the manager's search at home (EPIC-002). The
+/// sector is one of the cemetery's sectors: its chips fill the field, and a name no sector has becomes a new
+/// one without a zone (ADR-016). It saves itself, so a failed save keeps it open with the message.
+class GraveDialog extends StatefulWidget {
+  const GraveDialog({
+    super.key,
+    required this.grave,
+    required this.sectors,
+    required this.save,
+    this.focusAddress = false,
+  });
 
-  final String? name;
-  final Future<void> Function(String? name) save;
+  final GraveDetail grave;
+
+  /// The cemetery's sectors, for the chips.
+  final List<Sector> sectors;
+  final Future<void> Function({
+    String? name,
+    String? sector,
+    String? row,
+    String? plot,
+  })
+  save;
+
+  /// "Wpisz adres" (element 4): the focus in "Kwatera" instead of the name.
+  final bool focusAddress;
 
   @override
-  State<GraveNameDialog> createState() => _GraveNameDialogState();
+  State<GraveDialog> createState() => _GraveDialogState();
 }
 
-class _GraveNameDialogState extends State<GraveNameDialog> {
-  late final TextEditingController _name = TextEditingController(
-    text: widget.name ?? '',
-  )..selection = TextSelection.collapsed(offset: (widget.name ?? '').length);
+class _GraveDialogState extends State<GraveDialog> {
+  late final TextEditingController _name = _field(widget.grave.name);
+  late final TextEditingController _sector = _field(widget.grave.sector);
+  late final TextEditingController _row = _field(widget.grave.row);
+  late final TextEditingController _plot = _field(widget.grave.plot);
+  late final List<Sector> _chips = [...widget.sectors]
+    ..sort((a, b) => sectorOrder(a.name, b.name));
   bool _saving = false;
   bool _failed = false;
+
+  static TextEditingController _field(String? value) =>
+      TextEditingController(text: value ?? '')
+        ..selection = TextSelection.collapsed(offset: (value ?? '').length);
 
   @override
   void dispose() {
     _name.dispose();
+    _sector.dispose();
+    _row.dispose();
+    _plot.dispose();
     super.dispose();
   }
 
@@ -591,7 +647,12 @@ class _GraveNameDialogState extends State<GraveNameDialog> {
       _failed = false;
     });
     try {
-      await widget.save(_name.text.trim().isEmpty ? null : _name.text.trim());
+      await widget.save(
+        name: _name.text,
+        sector: _sector.text,
+        row: _row.text,
+        plot: _plot.text,
+      );
       if (mounted) Navigator.of(context).pop();
     } on Object {
       if (mounted) {
@@ -603,78 +664,185 @@ class _GraveNameDialogState extends State<GraveNameDialog> {
     }
   }
 
+  /// The cemetery's sector the field names — "b" is "B" — or null.
+  Sector? get _matched {
+    final String? typed = addressPart(_sector.text, sectorWord);
+    if (typed == null) return null;
+    return _chips
+        .where((s) => sectorKey(s.name) == sectorKey(typed))
+        .firstOrNull;
+  }
+
+  void _pick(Sector s) {
+    _sector
+      ..text = s.name
+      ..selection = TextSelection.collapsed(offset: s.name.length);
+    setState(() {});
+  }
+
+  static const TextStyle _note = TextStyle(
+    color: GrobingColors.textMuted,
+    fontSize: 13,
+  );
+
   @override
-  Widget build(BuildContext context) => Theme(
-    data: Theme.of(context).copyWith(inputDecorationTheme: GrobingTheme.fields),
-    child: AlertDialog(
-      backgroundColor: GrobingColors.surface,
-      surfaceTintColor: Colors.transparent,
-      title: const Text(
-        'Popraw grób',
-        style: TextStyle(
-          color: GrobingColors.text,
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) {
+    final Sector? matched = _matched;
+    final String? typed = addressPart(_sector.text, sectorWord);
+    final Widget row = TextField(
+      controller: _row,
+      textInputAction: TextInputAction.next,
+      decoration: const InputDecoration(labelText: rowWord),
+    );
+    final Widget plot = TextField(
+      controller: _plot,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _save(),
+      decoration: const InputDecoration(labelText: plotWord),
+    );
+    // Side by side, but one under the other at a large system text (element 3b).
+    final bool stacked = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    return Theme(
+      data: Theme.of(
+        context,
+      ).copyWith(inputDecorationTheme: GrobingTheme.fields),
+      child: AlertDialog(
+        backgroundColor: GrobingColors.surface,
+        surfaceTintColor: Colors.transparent,
+        scrollable: true,
+        title: const Text(
+          'Popraw grób',
+          style: TextStyle(
+            color: GrobingColors.text,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
-          TextField(
-            controller: _name,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _save(),
-            decoration: InputDecoration(
-              labelText: 'Nazwa grobu',
-              // The text of R4 (05_DESIGN/brand/references.md).
-              hintText: 'np. Grób rodzinny Nowaków',
-              helperText: _failed
-                  ? null
-                  : 'Zostaw puste, jeśli grób nie ma nazwy.',
-              helperStyle: const TextStyle(
-                color: GrobingColors.textMuted,
-                fontSize: 13,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 8),
+            TextField(
+              controller: _name,
+              autofocus: !widget.focusAddress,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Nazwa grobu',
+                // The text of R4 (05_DESIGN/brand/references.md).
+                hintText: 'np. Grób rodzinny Nowaków',
+                helperText: 'Zostaw puste, jeśli grób nie ma nazwy.',
+                helperStyle: _note,
+                helperMaxLines: 2,
               ),
-              helperMaxLines: 2,
-              // Never colour alone (SC 1.4.1): the message comes with an icon.
-              error: _failed
-                  ? const Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 16,
-                          color: GrobingColors.error,
-                        ),
-                        SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Nie udało się zapisać. Spróbuj jeszcze raz.',
-                            style: TextStyle(color: GrobingColors.error),
-                          ),
-                        ),
-                      ],
-                    )
-                  : null,
             ),
+            const SizedBox(height: 16),
+            const Text('Adres zarządcy', style: _note),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _sector,
+              autofocus: widget.focusAddress,
+              textInputAction: TextInputAction.next,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: sectorWord),
+            ),
+            if (_chips.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final Sector s in _chips)
+                    _SectorChip(
+                      sector: s,
+                      selected: s.id == matched?.id,
+                      onTap: () => _pick(s),
+                    ),
+                ],
+              ),
+            ],
+            if (typed != null && matched == null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Nowa kwatera „$typed” — powstanie bez strefy; zaznaczysz ją '
+                'w „Kwaterach”.',
+                style: _note,
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (stacked) ...[
+              row,
+              const SizedBox(height: 12),
+              plot,
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: row),
+                  const SizedBox(width: 12),
+                  Expanded(child: plot),
+                ],
+              ),
+            const SizedBox(height: 8),
+            const Text(
+              'Z wyszukiwarki zarządcy. Zostaw puste, czego nie wiesz.',
+              style: _note,
+            ),
+            if (_failed) ...[
+              const SizedBox(height: 12),
+              const PhotoErrorLine(
+                'Nie udało się zapisać. Spróbuj jeszcze raz.',
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Anuluj'),
+          ),
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Zapisz'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Anuluj'),
-        ),
-        TextButton(
-          onPressed: _saving ? null : _save,
-          child: const Text('Zapisz'),
-        ),
-      ],
+    );
+  }
+}
+
+/// A sector of the cemetery under "Kwatera" (element 3b; style-b.md rule 11 — a chip with an outline, a
+/// 48 dp target): the one the field names has a check, its outline and text in amber, and "zaznaczone" for a
+/// screen reader (SC 1.4.1).
+class _SectorChip extends StatelessWidget {
+  const _SectorChip({
+    required this.sector,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Sector sector;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+    label: Text('$sectorWord ${sector.name}'),
+    selected: selected,
+    onSelected: (_) => onTap(),
+    showCheckmark: true,
+    checkmarkColor: GrobingColors.amber,
+    backgroundColor: GrobingColors.surface,
+    selectedColor: GrobingColors.surface,
+    side: BorderSide(
+      color: selected ? GrobingColors.amber : GrobingColors.outline,
     ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    labelStyle: TextStyle(
+      color: selected ? GrobingColors.amber : GrobingColors.text,
+      fontSize: 14,
+    ),
+    materialTapTargetSize: MaterialTapTargetSize.padded,
   );
 }

@@ -147,6 +147,14 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   pobrany. **Nowy punkt cmentarza kasuje jego plan** w tej samej transakcji (`updateCemetery`), bo obrys wybiera punkt.
   Plan jest w bazie, więc wchodzi do kopii i odcisku bez zmian w kodzie kopii (tabele z `sqlite_master`). Migracja v9→v10
   to sam `createTable`: kopia v9 odtwarza się bez planów, a plany pobierają się, gdy telefon ma internet.
+- **Kwatery (schemat v11, ISSUE-028, ADR-016 w vaulcie).** Tabela `sectors`: kwatera cmentarza z nazwą (bez słowa
+  „Kwatera”), kluczem nazwy (bez wielkości liter i polskich znaków, unikalnym na cmentarzu — „b” i „B” to jedna kwatera)
+  i strefą zaznaczoną przez autora (JSON pierścienia, pusta = kwatera tylko w adresach). Grób wskazuje kwaterę
+  (`graves.sector_id`) zamiast trzymać tekst, więc zmiana nazwy kwatery zmienia adresy wszystkich jej grobów. Normalizacja
+  nazwy jest w jednym miejscu (`lib/data/address_text.dart`) dla okien, zapisu i migracji. Kwatera bez strefy i bez grobów
+  znika w tej samej transakcji (`dropSectorIfUnused`). Kwatery są osobno od planu, bo plan kasuje się przy zmianie punktu.
+  Migracja v10→v11 zamienia tekst kwatery na wiersze `sectors` i przebudowuje `graves` bez kolumny tekstu — liczba grobów
+  się nie zmienia, więc kopia v10 odtwarza się w v11.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.

@@ -1,9 +1,11 @@
 import 'package:drift/drift.dart';
 
+import 'address_text.dart';
 import 'cemeteries.dart';
 import 'claims.dart';
 import 'database.dart';
 import 'photos.dart';
+import 'sectors.dart';
 
 // Graves and the people buried in them, as the transcription screens show and write them
 // (ISSUE-012; 05_DESIGN/cmentarz.md, grob.md, wpis-osoby.md). Writes go through drift's own API, so
@@ -275,6 +277,7 @@ Stream<CemeteryGraves?> watchCemeteryGraves(
 ) => watchTables(db, 'cemetery_graves', {
   db.cemeteries,
   db.graves,
+  db.sectors,
   db.burials,
   db.persons,
   db.media,
@@ -293,6 +296,7 @@ Future<CemeteryGraves?> loadCemeteryGraves(
             ..where((g) => g.cemeteryId.equals(cemeteryId))
             ..orderBy([(g) => OrderingTerm.asc(g.id)]))
           .get();
+  final Map<int, String> sectors = await _sectorNames(db, cemeteryId);
   final List<TypedResult> buried =
       await (db.select(db.burials).join([
               innerJoin(
@@ -341,7 +345,7 @@ Future<CemeteryGraves?> loadCemeteryGraves(
         GraveSummary(
           id: g.id,
           name: g.name,
-          sector: g.sector,
+          sector: sectors[g.sectorId],
           row: g.row,
           plot: g.plot,
           pin: g.lat != null && g.lon != null ? GeoPoint(g.lat!, g.lon!) : null,
@@ -357,6 +361,7 @@ Stream<GraveDetail?> watchGrave(GrobingDatabase db, int graveId) =>
     watchTables(db, 'grave', {
       db.cemeteries,
       db.graves,
+      db.sectors,
       db.burials,
       db.persons,
       db.events,
@@ -392,7 +397,7 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
     cemeteryName: cemetery.name,
     cemeteryLocality: cemetery.locality,
     name: grave.name,
-    sector: grave.sector,
+    sector: (await _sectorNames(db, cemetery.id))[grave.sectorId],
     row: grave.row,
     plot: grave.plot,
     hasPin: grave.lat != null && grave.lon != null,
@@ -697,6 +702,47 @@ Future<void> setGraveName(GrobingDatabase db, int graveId, String? name) async {
       );
   if (updated != 1) throw StateError('No grave with id $graveId');
 }
+
+/// "Popraw grób" (05_DESIGN/grob.md v6, elements 3a, 3b): the grave's name and the manager's address, in one
+/// transaction. The sector is the cemetery's sector of that name — "b" finds "B" — or a new one without a
+/// zone (ADR-016); the sector the grave had before goes when nothing else keeps it (cmentarz.md D27). Each
+/// part is stored without its own word in front ("Rząd 4" is "4") and none when blank.
+Future<void> setGraveDetails(
+  GrobingDatabase db,
+  int graveId, {
+  String? name,
+  String? sector,
+  String? row,
+  String? plot,
+}) => db.transaction(() async {
+  final Grave? grave = await (db.select(
+    db.graves,
+  )..where((g) => g.id.equals(graveId))).getSingleOrNull();
+  if (grave == null) throw StateError('No grave with id $graveId');
+  final int? sectorId = await sectorForAddress(db, grave.cemeteryId, sector);
+  await (db.update(db.graves)..where((g) => g.id.equals(graveId))).write(
+    GravesCompanion(
+      name: Value(blankToNull(name)),
+      sectorId: Value(sectorId),
+      row: Value(addressPart(row, rowWord)),
+      plot: Value(addressPart(plot, plotWord)),
+    ),
+  );
+  if (grave.sectorId case final int before? when before != sectorId) {
+    await dropSectorIfUnused(db, before);
+  }
+});
+
+/// The names of [cemeteryId]'s sectors by id — what a grave's address says (ADR-016).
+Future<Map<int, String>> _sectorNames(
+  GrobingDatabase db,
+  int cemeteryId,
+) async => {
+  for (final SectorRow s in await (db.select(
+    db.sectors,
+  )..where((s) => s.cemeteryId.equals(cemeteryId))).get())
+    s.id: s.name,
+};
 
 List<(EventType, QualifiedDate?)> _dates(PersonEntry entry) => [
   (EventType.birth, entry.birth),

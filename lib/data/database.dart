@@ -4,15 +4,17 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:sqlite3/sqlite3.dart' show Database;
 
+import 'address_text.dart';
 import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v10 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v11 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
 // claims on families and children's links (ISSUE-019), a person's sex with the start of a union
 // (ISSUE-025), a person's background photo (ISSUE-024), a cemetery's photo (ISSUE-023) and its plan
-// (ISSUE-027, ADR-015), still without the grave fee (S4). Enums are stored by name, not index: data lives
+// (ISSUE-027, ADR-015), sectors as records the graves point at (ISSUE-028, ADR-016), still without the
+// grave fee (S4). Enums are stored by name, not index: data lives
 // for decades and a reordered enum must not silently change meaning. Renaming an enum value is a schema
 // change and needs a migration; a new value at the end is not.
 
@@ -154,6 +156,35 @@ class CemeteryPlans extends Table {
   Set<Column<Object>> get primaryKey => {cemeteryId};
 }
 
+/// A sector of a cemetery — "kwatera" (ISSUE-028, ADR-016): the author's data, not the manager's. Its name
+/// as the manager's plan writes it ("B", "12"), and the zone the author marked on the plan or the photo
+/// from above, from the manager's plan (ADR-003 pkt 3). A sector without a zone lives in the graves'
+/// addresses only (US-007 AC-4). Graves point at it, so renaming it renames every address at once.
+///
+/// Not in `cemetery_plans`: a cemetery's plan is OpenStreetMap's and goes when its point changes
+/// (`cemeteries.dart`), the author's sectors never do. The row's own name leaves `Sector` to the screens'
+/// model (`sectors.dart`).
+@DataClassName('SectorRow')
+class Sectors extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get cemeteryId => integer().references(Cemeteries, #id)();
+
+  /// As the author typed it, without "Kwatera" in front (`address_text.dart`).
+  TextColumn get name => text()();
+
+  /// [name] without case and Polish letters: "b" and "B" are one sector on a cemetery.
+  TextColumn get nameKey => text()();
+
+  /// The zone's ring as a flat JSON list [lat, lon, lat, lon, …], rounded as the plan's lines
+  /// (`sectors.dart`); null — a sector without a zone.
+  TextColumn get zone => text().nullable()();
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {cemeteryId, nameKey},
+  ];
+}
+
 /// The manager's address (sector / row / plot) is the truth, the pin is a help. Everything except the
 /// cemetery is optional: graves transcribed from the notes have neither (data-model.md → Known
 /// consequence; the open question is US-002's, not the schema's).
@@ -165,7 +196,9 @@ class Graves extends Table {
   /// surnames of the people buried: a wrong Polish genitive plural on a family grave jars
   /// (05_DESIGN/grob.md D1).
   TextColumn get name => text().nullable()();
-  TextColumn get sector => text().nullable()();
+
+  /// The sector of the address — a sector of the grave's cemetery (ADR-016; until v10 a text).
+  IntColumn get sectorId => integer().nullable().references(Sectors, #id)();
   TextColumn get row => text().nullable()();
   TextColumn get plot => text().nullable()();
   RealColumn get lat => real().nullable()();
@@ -317,6 +350,7 @@ class DataLocation {
     PersonMedia,
     Settings,
     CemeteryPlans,
+    Sectors,
   ],
 )
 class GrobingDatabase extends _$GrobingDatabase {
@@ -328,7 +362,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 10;
+  static const int currentSchemaVersion = 11;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -358,6 +392,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from7To8: _from7To8,
             from8To9: _from8To9,
             from9To10: _from9To10,
+            from10To11: _from10To11,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -495,6 +530,55 @@ class GrobingDatabase extends _$GrobingDatabase {
   /// (`plan_downloads.dart`).
   Future<void> _from9To10(Migrator m, Schema10 schema) =>
       m.createTable(schema.cemeteryPlans);
+
+  /// ISSUE-028 (ADR-016): sectors become records, and a grave points at its sector instead of naming it.
+  /// Each distinct sector of a cemetery in the v10 text becomes one row — "b" and "B" one sector, spelled
+  /// as its first grave had it — and the graves table is rebuilt without the text, rows and ids copied as
+  /// they are. **No grave is added or lost**: a restore counts the rows of a v10 backup's tables
+  /// (restore_service.dart), and `sectors` is new. Before v11 only the made-up debug data wrote a sector
+  /// (`fictional_data.dart`). Foreign keys are off here, as in `_from3To4`; the check at the end makes up
+  /// for it.
+  Future<void> _from10To11(Migrator m, Schema11 schema) async {
+    await m.createTable(schema.sectors);
+    // Read before the rebuild drops the column.
+    final List<QueryRow> named = await customSelect(
+      'SELECT id, cemetery_id, sector FROM graves '
+      'WHERE sector IS NOT NULL ORDER BY id',
+    ).get();
+    final Map<(int, String), int> sectorOf = {};
+    final Map<int, int> graveSector = {};
+    for (final QueryRow r in named) {
+      final String? name = addressPart(r.read<String>('sector'), sectorWord);
+      if (name == null) continue;
+      final int cemetery = r.read<int>('cemetery_id');
+      final String key = sectorKey(name);
+      graveSector[r.read<int>(
+        'id',
+      )] = sectorOf[(cemetery, key)] ??= await customInsert(
+        'INSERT INTO sectors (cemetery_id, name, name_key) VALUES (?, ?, ?)',
+        variables: [
+          Variable.withInt(cemetery),
+          Variable.withString(name),
+          Variable.withString(key),
+        ],
+      );
+    }
+    await m.alterTable(
+      TableMigration(schema.graves, newColumns: [schema.graves.sectorId]),
+    );
+    for (final MapEntry<int, int> e in graveSector.entries) {
+      await customUpdate(
+        'UPDATE graves SET sector_id = ? WHERE id = ?',
+        variables: [Variable.withInt(e.value), Variable.withInt(e.key)],
+      );
+    }
+    final List<QueryRow> broken = await customSelect(
+      'PRAGMA foreign_key_check',
+    ).get();
+    if (broken.isNotEmpty) {
+      throw StateError('Schema v11: ${broken.length} broken references');
+    }
+  }
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

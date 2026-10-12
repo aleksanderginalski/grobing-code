@@ -2254,6 +2254,362 @@ class CemeteriesCompanion extends UpdateCompanion<Cemetery> {
   }
 }
 
+class $SectorsTable extends Sectors with TableInfo<$SectorsTable, SectorRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SectorsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _cemeteryIdMeta = const VerificationMeta(
+    'cemeteryId',
+  );
+  @override
+  late final GeneratedColumn<int> cemeteryId = GeneratedColumn<int>(
+    'cemetery_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES cemeteries (id)',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameKeyMeta = const VerificationMeta(
+    'nameKey',
+  );
+  @override
+  late final GeneratedColumn<String> nameKey = GeneratedColumn<String>(
+    'name_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _zoneMeta = const VerificationMeta('zone');
+  @override
+  late final GeneratedColumn<String> zone = GeneratedColumn<String>(
+    'zone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, cemeteryId, name, nameKey, zone];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sectors';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SectorRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('cemetery_id')) {
+      context.handle(
+        _cemeteryIdMeta,
+        cemeteryId.isAcceptableOrUnknown(data['cemetery_id']!, _cemeteryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cemeteryIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('name_key')) {
+      context.handle(
+        _nameKeyMeta,
+        nameKey.isAcceptableOrUnknown(data['name_key']!, _nameKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameKeyMeta);
+    }
+    if (data.containsKey('zone')) {
+      context.handle(
+        _zoneMeta,
+        zone.isAcceptableOrUnknown(data['zone']!, _zoneMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {cemeteryId, nameKey},
+  ];
+  @override
+  SectorRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SectorRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      cemeteryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cemetery_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_key'],
+      )!,
+      zone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}zone'],
+      ),
+    );
+  }
+
+  @override
+  $SectorsTable createAlias(String alias) {
+    return $SectorsTable(attachedDatabase, alias);
+  }
+}
+
+class SectorRow extends DataClass implements Insertable<SectorRow> {
+  final int id;
+  final int cemeteryId;
+
+  /// As the author typed it, without "Kwatera" in front (`address_text.dart`).
+  final String name;
+
+  /// [name] without case and Polish letters: "b" and "B" are one sector on a cemetery.
+  final String nameKey;
+
+  /// The zone's ring as a flat JSON list [lat, lon, lat, lon, …], rounded as the plan's lines
+  /// (`sectors.dart`); null — a sector without a zone.
+  final String? zone;
+  const SectorRow({
+    required this.id,
+    required this.cemeteryId,
+    required this.name,
+    required this.nameKey,
+    this.zone,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['cemetery_id'] = Variable<int>(cemeteryId);
+    map['name'] = Variable<String>(name);
+    map['name_key'] = Variable<String>(nameKey);
+    if (!nullToAbsent || zone != null) {
+      map['zone'] = Variable<String>(zone);
+    }
+    return map;
+  }
+
+  SectorsCompanion toCompanion(bool nullToAbsent) {
+    return SectorsCompanion(
+      id: Value(id),
+      cemeteryId: Value(cemeteryId),
+      name: Value(name),
+      nameKey: Value(nameKey),
+      zone: zone == null && nullToAbsent ? const Value.absent() : Value(zone),
+    );
+  }
+
+  factory SectorRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SectorRow(
+      id: serializer.fromJson<int>(json['id']),
+      cemeteryId: serializer.fromJson<int>(json['cemeteryId']),
+      name: serializer.fromJson<String>(json['name']),
+      nameKey: serializer.fromJson<String>(json['nameKey']),
+      zone: serializer.fromJson<String?>(json['zone']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'cemeteryId': serializer.toJson<int>(cemeteryId),
+      'name': serializer.toJson<String>(name),
+      'nameKey': serializer.toJson<String>(nameKey),
+      'zone': serializer.toJson<String?>(zone),
+    };
+  }
+
+  SectorRow copyWith({
+    int? id,
+    int? cemeteryId,
+    String? name,
+    String? nameKey,
+    Value<String?> zone = const Value.absent(),
+  }) => SectorRow(
+    id: id ?? this.id,
+    cemeteryId: cemeteryId ?? this.cemeteryId,
+    name: name ?? this.name,
+    nameKey: nameKey ?? this.nameKey,
+    zone: zone.present ? zone.value : this.zone,
+  );
+  SectorRow copyWithCompanion(SectorsCompanion data) {
+    return SectorRow(
+      id: data.id.present ? data.id.value : this.id,
+      cemeteryId: data.cemeteryId.present
+          ? data.cemeteryId.value
+          : this.cemeteryId,
+      name: data.name.present ? data.name.value : this.name,
+      nameKey: data.nameKey.present ? data.nameKey.value : this.nameKey,
+      zone: data.zone.present ? data.zone.value : this.zone,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SectorRow(')
+          ..write('id: $id, ')
+          ..write('cemeteryId: $cemeteryId, ')
+          ..write('name: $name, ')
+          ..write('nameKey: $nameKey, ')
+          ..write('zone: $zone')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, cemeteryId, name, nameKey, zone);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SectorRow &&
+          other.id == this.id &&
+          other.cemeteryId == this.cemeteryId &&
+          other.name == this.name &&
+          other.nameKey == this.nameKey &&
+          other.zone == this.zone);
+}
+
+class SectorsCompanion extends UpdateCompanion<SectorRow> {
+  final Value<int> id;
+  final Value<int> cemeteryId;
+  final Value<String> name;
+  final Value<String> nameKey;
+  final Value<String?> zone;
+  const SectorsCompanion({
+    this.id = const Value.absent(),
+    this.cemeteryId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameKey = const Value.absent(),
+    this.zone = const Value.absent(),
+  });
+  SectorsCompanion.insert({
+    this.id = const Value.absent(),
+    required int cemeteryId,
+    required String name,
+    required String nameKey,
+    this.zone = const Value.absent(),
+  }) : cemeteryId = Value(cemeteryId),
+       name = Value(name),
+       nameKey = Value(nameKey);
+  static Insertable<SectorRow> custom({
+    Expression<int>? id,
+    Expression<int>? cemeteryId,
+    Expression<String>? name,
+    Expression<String>? nameKey,
+    Expression<String>? zone,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (cemeteryId != null) 'cemetery_id': cemeteryId,
+      if (name != null) 'name': name,
+      if (nameKey != null) 'name_key': nameKey,
+      if (zone != null) 'zone': zone,
+    });
+  }
+
+  SectorsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? cemeteryId,
+    Value<String>? name,
+    Value<String>? nameKey,
+    Value<String?>? zone,
+  }) {
+    return SectorsCompanion(
+      id: id ?? this.id,
+      cemeteryId: cemeteryId ?? this.cemeteryId,
+      name: name ?? this.name,
+      nameKey: nameKey ?? this.nameKey,
+      zone: zone ?? this.zone,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (cemeteryId.present) {
+      map['cemetery_id'] = Variable<int>(cemeteryId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameKey.present) {
+      map['name_key'] = Variable<String>(nameKey.value);
+    }
+    if (zone.present) {
+      map['zone'] = Variable<String>(zone.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SectorsCompanion(')
+          ..write('id: $id, ')
+          ..write('cemeteryId: $cemeteryId, ')
+          ..write('name: $name, ')
+          ..write('nameKey: $nameKey, ')
+          ..write('zone: $zone')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -2295,14 +2651,19 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _sectorMeta = const VerificationMeta('sector');
+  static const VerificationMeta _sectorIdMeta = const VerificationMeta(
+    'sectorId',
+  );
   @override
-  late final GeneratedColumn<String> sector = GeneratedColumn<String>(
-    'sector',
+  late final GeneratedColumn<int> sectorId = GeneratedColumn<int>(
+    'sector_id',
     aliasedName,
     true,
-    type: DriftSqlType.string,
+    type: DriftSqlType.int,
     requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES sectors (id)',
+    ),
   );
   static const VerificationMeta _rowMeta = const VerificationMeta('row');
   @override
@@ -2366,7 +2727,7 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
     id,
     cemeteryId,
     name,
-    sector,
+    sectorId,
     row,
     plot,
     lat,
@@ -2403,10 +2764,10 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         name.isAcceptableOrUnknown(data['name']!, _nameMeta),
       );
     }
-    if (data.containsKey('sector')) {
+    if (data.containsKey('sector_id')) {
       context.handle(
-        _sectorMeta,
-        sector.isAcceptableOrUnknown(data['sector']!, _sectorMeta),
+        _sectorIdMeta,
+        sectorId.isAcceptableOrUnknown(data['sector_id']!, _sectorIdMeta),
       );
     }
     if (data.containsKey('row')) {
@@ -2463,9 +2824,9 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       ),
-      sector: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}sector'],
+      sectorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sector_id'],
       ),
       row: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -2519,7 +2880,9 @@ class Grave extends DataClass implements Insertable<Grave> {
   /// surnames of the people buried: a wrong Polish genitive plural on a family grave jars
   /// (05_DESIGN/grob.md D1).
   final String? name;
-  final String? sector;
+
+  /// The sector of the address — a sector of the grave's cemetery (ADR-016; until v10 a text).
+  final int? sectorId;
   final String? row;
   final String? plot;
   final double? lat;
@@ -2530,7 +2893,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     required this.id,
     required this.cemeteryId,
     this.name,
-    this.sector,
+    this.sectorId,
     this.row,
     this.plot,
     this.lat,
@@ -2546,8 +2909,8 @@ class Grave extends DataClass implements Insertable<Grave> {
     if (!nullToAbsent || name != null) {
       map['name'] = Variable<String>(name);
     }
-    if (!nullToAbsent || sector != null) {
-      map['sector'] = Variable<String>(sector);
+    if (!nullToAbsent || sectorId != null) {
+      map['sector_id'] = Variable<int>(sectorId);
     }
     if (!nullToAbsent || row != null) {
       map['row'] = Variable<String>(row);
@@ -2577,9 +2940,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       id: Value(id),
       cemeteryId: Value(cemeteryId),
       name: name == null && nullToAbsent ? const Value.absent() : Value(name),
-      sector: sector == null && nullToAbsent
+      sectorId: sectorId == null && nullToAbsent
           ? const Value.absent()
-          : Value(sector),
+          : Value(sectorId),
       row: row == null && nullToAbsent ? const Value.absent() : Value(row),
       plot: plot == null && nullToAbsent ? const Value.absent() : Value(plot),
       lat: lat == null && nullToAbsent ? const Value.absent() : Value(lat),
@@ -2602,7 +2965,7 @@ class Grave extends DataClass implements Insertable<Grave> {
       id: serializer.fromJson<int>(json['id']),
       cemeteryId: serializer.fromJson<int>(json['cemeteryId']),
       name: serializer.fromJson<String?>(json['name']),
-      sector: serializer.fromJson<String?>(json['sector']),
+      sectorId: serializer.fromJson<int?>(json['sectorId']),
       row: serializer.fromJson<String?>(json['row']),
       plot: serializer.fromJson<String?>(json['plot']),
       lat: serializer.fromJson<double?>(json['lat']),
@@ -2622,7 +2985,7 @@ class Grave extends DataClass implements Insertable<Grave> {
       'id': serializer.toJson<int>(id),
       'cemeteryId': serializer.toJson<int>(cemeteryId),
       'name': serializer.toJson<String?>(name),
-      'sector': serializer.toJson<String?>(sector),
+      'sectorId': serializer.toJson<int?>(sectorId),
       'row': serializer.toJson<String?>(row),
       'plot': serializer.toJson<String?>(plot),
       'lat': serializer.toJson<double?>(lat),
@@ -2638,7 +3001,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     int? id,
     int? cemeteryId,
     Value<String?> name = const Value.absent(),
-    Value<String?> sector = const Value.absent(),
+    Value<int?> sectorId = const Value.absent(),
     Value<String?> row = const Value.absent(),
     Value<String?> plot = const Value.absent(),
     Value<double?> lat = const Value.absent(),
@@ -2649,7 +3012,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     id: id ?? this.id,
     cemeteryId: cemeteryId ?? this.cemeteryId,
     name: name.present ? name.value : this.name,
-    sector: sector.present ? sector.value : this.sector,
+    sectorId: sectorId.present ? sectorId.value : this.sectorId,
     row: row.present ? row.value : this.row,
     plot: plot.present ? plot.value : this.plot,
     lat: lat.present ? lat.value : this.lat,
@@ -2668,7 +3031,7 @@ class Grave extends DataClass implements Insertable<Grave> {
           ? data.cemeteryId.value
           : this.cemeteryId,
       name: data.name.present ? data.name.value : this.name,
-      sector: data.sector.present ? data.sector.value : this.sector,
+      sectorId: data.sectorId.present ? data.sectorId.value : this.sectorId,
       row: data.row.present ? data.row.value : this.row,
       plot: data.plot.present ? data.plot.value : this.plot,
       lat: data.lat.present ? data.lat.value : this.lat,
@@ -2688,7 +3051,7 @@ class Grave extends DataClass implements Insertable<Grave> {
           ..write('id: $id, ')
           ..write('cemeteryId: $cemeteryId, ')
           ..write('name: $name, ')
-          ..write('sector: $sector, ')
+          ..write('sectorId: $sectorId, ')
           ..write('row: $row, ')
           ..write('plot: $plot, ')
           ..write('lat: $lat, ')
@@ -2704,7 +3067,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     id,
     cemeteryId,
     name,
-    sector,
+    sectorId,
     row,
     plot,
     lat,
@@ -2719,7 +3082,7 @@ class Grave extends DataClass implements Insertable<Grave> {
           other.id == this.id &&
           other.cemeteryId == this.cemeteryId &&
           other.name == this.name &&
-          other.sector == this.sector &&
+          other.sectorId == this.sectorId &&
           other.row == this.row &&
           other.plot == this.plot &&
           other.lat == this.lat &&
@@ -2732,7 +3095,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   final Value<int> id;
   final Value<int> cemeteryId;
   final Value<String?> name;
-  final Value<String?> sector;
+  final Value<int?> sectorId;
   final Value<String?> row;
   final Value<String?> plot;
   final Value<double?> lat;
@@ -2743,7 +3106,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.id = const Value.absent(),
     this.cemeteryId = const Value.absent(),
     this.name = const Value.absent(),
-    this.sector = const Value.absent(),
+    this.sectorId = const Value.absent(),
     this.row = const Value.absent(),
     this.plot = const Value.absent(),
     this.lat = const Value.absent(),
@@ -2755,7 +3118,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.id = const Value.absent(),
     required int cemeteryId,
     this.name = const Value.absent(),
-    this.sector = const Value.absent(),
+    this.sectorId = const Value.absent(),
     this.row = const Value.absent(),
     this.plot = const Value.absent(),
     this.lat = const Value.absent(),
@@ -2767,7 +3130,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Expression<int>? id,
     Expression<int>? cemeteryId,
     Expression<String>? name,
-    Expression<String>? sector,
+    Expression<int>? sectorId,
     Expression<String>? row,
     Expression<String>? plot,
     Expression<double>? lat,
@@ -2779,7 +3142,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       if (id != null) 'id': id,
       if (cemeteryId != null) 'cemetery_id': cemeteryId,
       if (name != null) 'name': name,
-      if (sector != null) 'sector': sector,
+      if (sectorId != null) 'sector_id': sectorId,
       if (row != null) 'row': row,
       if (plot != null) 'plot': plot,
       if (lat != null) 'lat': lat,
@@ -2793,7 +3156,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Value<int>? id,
     Value<int>? cemeteryId,
     Value<String?>? name,
-    Value<String?>? sector,
+    Value<int?>? sectorId,
     Value<String?>? row,
     Value<String?>? plot,
     Value<double?>? lat,
@@ -2805,7 +3168,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       id: id ?? this.id,
       cemeteryId: cemeteryId ?? this.cemeteryId,
       name: name ?? this.name,
-      sector: sector ?? this.sector,
+      sectorId: sectorId ?? this.sectorId,
       row: row ?? this.row,
       plot: plot ?? this.plot,
       lat: lat ?? this.lat,
@@ -2827,8 +3190,8 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
-    if (sector.present) {
-      map['sector'] = Variable<String>(sector.value);
+    if (sectorId.present) {
+      map['sector_id'] = Variable<int>(sectorId.value);
     }
     if (row.present) {
       map['row'] = Variable<String>(row.value);
@@ -2859,7 +3222,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
           ..write('id: $id, ')
           ..write('cemeteryId: $cemeteryId, ')
           ..write('name: $name, ')
-          ..write('sector: $sector, ')
+          ..write('sectorId: $sectorId, ')
           ..write('row: $row, ')
           ..write('plot: $plot, ')
           ..write('lat: $lat, ')
@@ -5203,6 +5566,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final $FamilyChildrenTable familyChildren = $FamilyChildrenTable(this);
   late final $EventsTable events = $EventsTable(this);
   late final $CemeteriesTable cemeteries = $CemeteriesTable(this);
+  late final $SectorsTable sectors = $SectorsTable(this);
   late final $GravesTable graves = $GravesTable(this);
   late final $BurialsTable burials = $BurialsTable(this);
   late final $AssertionsTable assertions = $AssertionsTable(this);
@@ -5229,6 +5593,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     familyChildren,
     events,
     cemeteries,
+    sectors,
     graves,
     burials,
     assertions,
@@ -8055,6 +8420,25 @@ final class $$CemeteriesTableReferences
     extends BaseReferences<_$GrobingDatabase, $CemeteriesTable, Cemetery> {
   $$CemeteriesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
+  static MultiTypedResultKey<$SectorsTable, List<SectorRow>> _sectorsRefsTable(
+    _$GrobingDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.sectors,
+    aliasName: 'cemeteries__id__sectors__cemetery_id',
+  );
+
+  $$SectorsTableProcessedTableManager get sectorsRefs {
+    final manager = $$SectorsTableTableManager(
+      $_db,
+      $_db.sectors,
+    ).filter((f) => f.cemeteryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_sectorsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$GravesTable, List<Grave>> _gravesRefsTable(
     _$GrobingDatabase db,
   ) => MultiTypedResultKey.fromTable(
@@ -8151,6 +8535,31 @@ class $$CemeteriesTableFilterComposer
     column: $table.grobonetUrl,
     builder: (column) => ColumnFilters(column),
   );
+
+  Expression<bool> sectorsRefs(
+    Expression<bool> Function($$SectorsTableFilterComposer f) f,
+  ) {
+    final $$SectorsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectors,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectorsTableFilterComposer(
+            $db: $db,
+            $table: $db.sectors,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 
   Expression<bool> gravesRefs(
     Expression<bool> Function($$GravesTableFilterComposer f) f,
@@ -8297,6 +8706,31 @@ class $$CemeteriesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  Expression<T> sectorsRefs<T extends Object>(
+    Expression<T> Function($$SectorsTableAnnotationComposer a) f,
+  ) {
+    final $$SectorsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectors,
+      getReferencedColumn: (t) => t.cemeteryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectorsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sectors,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> gravesRefs<T extends Object>(
     Expression<T> Function($$GravesTableAnnotationComposer a) f,
   ) {
@@ -8387,6 +8821,7 @@ class $$CemeteriesTableTableManager
           (Cemetery, $$CemeteriesTableReferences),
           Cemetery,
           PrefetchHooks Function({
+            bool sectorsRefs,
             bool gravesRefs,
             bool mediaRefs,
             bool cemeteryPlansRefs,
@@ -8445,6 +8880,7 @@ class $$CemeteriesTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
+                sectorsRefs = false,
                 gravesRefs = false,
                 mediaRefs = false,
                 cemeteryPlansRefs = false,
@@ -8452,6 +8888,7 @@ class $$CemeteriesTableTableManager
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (sectorsRefs) db.sectors,
                     if (gravesRefs) db.graves,
                     if (mediaRefs) db.media,
                     if (cemeteryPlansRefs) db.cemeteryPlans,
@@ -8459,6 +8896,27 @@ class $$CemeteriesTableTableManager
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (sectorsRefs)
+                        await $_getPrefetchedData<
+                          Cemetery,
+                          $CemeteriesTable,
+                          SectorRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CemeteriesTableReferences
+                              ._sectorsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CemeteriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).sectorsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.cemeteryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (gravesRefs)
                         await $_getPrefetchedData<
                           Cemetery,
@@ -8543,17 +9001,410 @@ typedef $$CemeteriesTableProcessedTableManager =
       (Cemetery, $$CemeteriesTableReferences),
       Cemetery,
       PrefetchHooks Function({
+        bool sectorsRefs,
         bool gravesRefs,
         bool mediaRefs,
         bool cemeteryPlansRefs,
       })
+    >;
+typedef $$SectorsTableCreateCompanionBuilder =
+    SectorsCompanion Function({
+      Value<int> id,
+      required int cemeteryId,
+      required String name,
+      required String nameKey,
+      Value<String?> zone,
+    });
+typedef $$SectorsTableUpdateCompanionBuilder =
+    SectorsCompanion Function({
+      Value<int> id,
+      Value<int> cemeteryId,
+      Value<String> name,
+      Value<String> nameKey,
+      Value<String?> zone,
+    });
+
+final class $$SectorsTableReferences
+    extends BaseReferences<_$GrobingDatabase, $SectorsTable, SectorRow> {
+  $$SectorsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CemeteriesTable _cemeteryIdTable(_$GrobingDatabase db) =>
+      db.cemeteries.createAlias('sectors__cemetery_id__cemeteries__id');
+
+  $$CemeteriesTableProcessedTableManager get cemeteryId {
+    final $_column = $_itemColumn<int>('cemetery_id')!;
+
+    final manager = $$CemeteriesTableTableManager(
+      $_db,
+      $_db.cemeteries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_cemeteryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$GravesTable, List<Grave>> _gravesRefsTable(
+    _$GrobingDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.graves,
+    aliasName: 'sectors__id__graves__sector_id',
+  );
+
+  $$GravesTableProcessedTableManager get gravesRefs {
+    final manager = $$GravesTableTableManager(
+      $_db,
+      $_db.graves,
+    ).filter((f) => f.sectorId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_gravesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$SectorsTableFilterComposer
+    extends Composer<_$GrobingDatabase, $SectorsTable> {
+  $$SectorsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameKey => $composableBuilder(
+    column: $table.nameKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get zone => $composableBuilder(
+    column: $table.zone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CemeteriesTableFilterComposer get cemeteryId {
+    final $$CemeteriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableFilterComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> gravesRefs(
+    Expression<bool> Function($$GravesTableFilterComposer f) f,
+  ) {
+    final $$GravesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.graves,
+      getReferencedColumn: (t) => t.sectorId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GravesTableFilterComposer(
+            $db: $db,
+            $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SectorsTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $SectorsTable> {
+  $$SectorsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameKey => $composableBuilder(
+    column: $table.nameKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get zone => $composableBuilder(
+    column: $table.zone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CemeteriesTableOrderingComposer get cemeteryId {
+    final $$CemeteriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SectorsTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $SectorsTable> {
+  $$SectorsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameKey =>
+      $composableBuilder(column: $table.nameKey, builder: (column) => column);
+
+  GeneratedColumn<String> get zone =>
+      $composableBuilder(column: $table.zone, builder: (column) => column);
+
+  $$CemeteriesTableAnnotationComposer get cemeteryId {
+    final $$CemeteriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.cemeteryId,
+      referencedTable: $db.cemeteries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CemeteriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> gravesRefs<T extends Object>(
+    Expression<T> Function($$GravesTableAnnotationComposer a) f,
+  ) {
+    final $$GravesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.graves,
+      getReferencedColumn: (t) => t.sectorId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GravesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.graves,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SectorsTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $SectorsTable,
+          SectorRow,
+          $$SectorsTableFilterComposer,
+          $$SectorsTableOrderingComposer,
+          $$SectorsTableAnnotationComposer,
+          $$SectorsTableCreateCompanionBuilder,
+          $$SectorsTableUpdateCompanionBuilder,
+          (SectorRow, $$SectorsTableReferences),
+          SectorRow,
+          PrefetchHooks Function({bool cemeteryId, bool gravesRefs})
+        > {
+  $$SectorsTableTableManager(_$GrobingDatabase db, $SectorsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SectorsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SectorsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SectorsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> cemeteryId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> nameKey = const Value.absent(),
+                Value<String?> zone = const Value.absent(),
+              }) => SectorsCompanion(
+                id: id,
+                cemeteryId: cemeteryId,
+                name: name,
+                nameKey: nameKey,
+                zone: zone,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int cemeteryId,
+                required String name,
+                required String nameKey,
+                Value<String?> zone = const Value.absent(),
+              }) => SectorsCompanion.insert(
+                id: id,
+                cemeteryId: cemeteryId,
+                name: name,
+                nameKey: nameKey,
+                zone: zone,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SectorsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({cemeteryId = false, gravesRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (gravesRefs) db.graves],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (cemeteryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.cemeteryId,
+                                referencedTable: $$SectorsTableReferences
+                                    ._cemeteryIdTable(db),
+                                referencedColumn: $$SectorsTableReferences
+                                    ._cemeteryIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (gravesRefs)
+                    await $_getPrefetchedData<SectorRow, $SectorsTable, Grave>(
+                      currentTable: table,
+                      referencedTable: $$SectorsTableReferences
+                          ._gravesRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$SectorsTableReferences(db, table, p0).gravesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.sectorId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SectorsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $SectorsTable,
+      SectorRow,
+      $$SectorsTableFilterComposer,
+      $$SectorsTableOrderingComposer,
+      $$SectorsTableAnnotationComposer,
+      $$SectorsTableCreateCompanionBuilder,
+      $$SectorsTableUpdateCompanionBuilder,
+      (SectorRow, $$SectorsTableReferences),
+      SectorRow,
+      PrefetchHooks Function({bool cemeteryId, bool gravesRefs})
     >;
 typedef $$GravesTableCreateCompanionBuilder =
     GravesCompanion Function({
       Value<int> id,
       required int cemeteryId,
       Value<String?> name,
-      Value<String?> sector,
+      Value<int?> sectorId,
       Value<String?> row,
       Value<String?> plot,
       Value<double?> lat,
@@ -8566,7 +9417,7 @@ typedef $$GravesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> cemeteryId,
       Value<String?> name,
-      Value<String?> sector,
+      Value<int?> sectorId,
       Value<String?> row,
       Value<String?> plot,
       Value<double?> lat,
@@ -8590,6 +9441,23 @@ final class $$GravesTableReferences
       $_db.cemeteries,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_cemeteryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $SectorsTable _sectorIdTable(_$GrobingDatabase db) =>
+      db.sectors.createAlias('graves__sector_id__sectors__id');
+
+  $$SectorsTableProcessedTableManager? get sectorId {
+    final $_column = $_itemColumn<int>('sector_id');
+    if ($_column == null) return null;
+    final manager = $$SectorsTableTableManager(
+      $_db,
+      $_db.sectors,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sectorIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -8654,11 +9522,6 @@ class $$GravesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get sector => $composableBuilder(
-    column: $table.sector,
-    builder: (column) => ColumnFilters(column),
-  );
-
   ColumnFilters<String> get row => $composableBuilder(
     column: $table.row,
     builder: (column) => ColumnFilters(column),
@@ -8704,6 +9567,29 @@ class $$GravesTableFilterComposer
           }) => $$CemeteriesTableFilterComposer(
             $db: $db,
             $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SectorsTableFilterComposer get sectorId {
+    final $$SectorsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectorId,
+      referencedTable: $db.sectors,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectorsTableFilterComposer(
+            $db: $db,
+            $table: $db.sectors,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8783,11 +9669,6 @@ class $$GravesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get sector => $composableBuilder(
-    column: $table.sector,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get row => $composableBuilder(
     column: $table.row,
     builder: (column) => ColumnOrderings(column),
@@ -8840,6 +9721,29 @@ class $$GravesTableOrderingComposer
     );
     return composer;
   }
+
+  $$SectorsTableOrderingComposer get sectorId {
+    final $$SectorsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectorId,
+      referencedTable: $db.sectors,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectorsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sectors,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$GravesTableAnnotationComposer
@@ -8856,9 +9760,6 @@ class $$GravesTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
-
-  GeneratedColumn<String> get sector =>
-      $composableBuilder(column: $table.sector, builder: (column) => column);
 
   GeneratedColumn<String> get row =>
       $composableBuilder(column: $table.row, builder: (column) => column);
@@ -8897,6 +9798,29 @@ class $$GravesTableAnnotationComposer
           }) => $$CemeteriesTableAnnotationComposer(
             $db: $db,
             $table: $db.cemeteries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$SectorsTableAnnotationComposer get sectorId {
+    final $$SectorsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectorId,
+      referencedTable: $db.sectors,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectorsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sectors,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8972,6 +9896,7 @@ class $$GravesTableTableManager
           Grave,
           PrefetchHooks Function({
             bool cemeteryId,
+            bool sectorId,
             bool burialsRefs,
             bool mediaRefs,
           })
@@ -8992,7 +9917,7 @@ class $$GravesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> cemeteryId = const Value.absent(),
                 Value<String?> name = const Value.absent(),
-                Value<String?> sector = const Value.absent(),
+                Value<int?> sectorId = const Value.absent(),
                 Value<String?> row = const Value.absent(),
                 Value<String?> plot = const Value.absent(),
                 Value<double?> lat = const Value.absent(),
@@ -9003,7 +9928,7 @@ class $$GravesTableTableManager
                 id: id,
                 cemeteryId: cemeteryId,
                 name: name,
-                sector: sector,
+                sectorId: sectorId,
                 row: row,
                 plot: plot,
                 lat: lat,
@@ -9016,7 +9941,7 @@ class $$GravesTableTableManager
                 Value<int> id = const Value.absent(),
                 required int cemeteryId,
                 Value<String?> name = const Value.absent(),
-                Value<String?> sector = const Value.absent(),
+                Value<int?> sectorId = const Value.absent(),
                 Value<String?> row = const Value.absent(),
                 Value<String?> plot = const Value.absent(),
                 Value<double?> lat = const Value.absent(),
@@ -9027,7 +9952,7 @@ class $$GravesTableTableManager
                 id: id,
                 cemeteryId: cemeteryId,
                 name: name,
-                sector: sector,
+                sectorId: sectorId,
                 row: row,
                 plot: plot,
                 lat: lat,
@@ -9042,7 +9967,12 @@ class $$GravesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({cemeteryId = false, burialsRefs = false, mediaRefs = false}) {
+              ({
+                cemeteryId = false,
+                sectorId = false,
+                burialsRefs = false,
+                mediaRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
@@ -9074,6 +10004,19 @@ class $$GravesTableTableManager
                                         ._cemeteryIdTable(db),
                                     referencedColumn: $$GravesTableReferences
                                         ._cemeteryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (sectorId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.sectorId,
+                                    referencedTable: $$GravesTableReferences
+                                        ._sectorIdTable(db),
+                                    referencedColumn: $$GravesTableReferences
+                                        ._sectorIdTable(db)
                                         .id,
                                   )
                                   as T;
@@ -9139,6 +10082,7 @@ typedef $$GravesTableProcessedTableManager =
       Grave,
       PrefetchHooks Function({
         bool cemeteryId,
+        bool sectorId,
         bool burialsRefs,
         bool mediaRefs,
       })
@@ -11816,6 +12760,8 @@ class $GrobingDatabaseManager {
       $$EventsTableTableManager(_db, _db.events);
   $$CemeteriesTableTableManager get cemeteries =>
       $$CemeteriesTableTableManager(_db, _db.cemeteries);
+  $$SectorsTableTableManager get sectors =>
+      $$SectorsTableTableManager(_db, _db.sectors);
   $$GravesTableTableManager get graves =>
       $$GravesTableTableManager(_db, _db.graves);
   $$BurialsTableTableManager get burials =>

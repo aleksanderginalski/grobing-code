@@ -8,11 +8,11 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-// v10 (ISSUE-027, ADR-015) adds cemetery_plans to the tables of v7; v9 (ISSUE-023) — a photo may point at a
+// v11 (ISSUE-028, ADR-016) adds sectors; v10 (ISSUE-027, ADR-015) adds cemetery_plans to the tables of v7; v9 (ISSUE-023) — a photo may point at a
 // cemetery; v8 (ISSUE-024) — a photo link got its
 // background mark; v7 (ISSUE-025) — persons got a sex; v6 (ISSUE-019) gave family_children an id and let
 // assertions cite a family or a child's link (ADR-011).
-const List<String> _v10Tables = [
+const List<String> _v11Tables = [
   'assertions',
   'burials',
   'cemeteries',
@@ -25,6 +25,7 @@ const List<String> _v10Tables = [
   'media',
   'person_media',
   'persons',
+  'sectors',
   'settings',
 ];
 
@@ -42,7 +43,7 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 10, integrity ok, exactly the v10 tables, foreign keys on, the crop and the background '
+      'user_version 11, integrity ok, exactly the v11 tables, foreign keys on, the crop and the background '
       'on the photo link, claims on families and on children\'s links, a person\'s sex, a photo\'s '
       'cemetery',
       () async {
@@ -51,7 +52,7 @@ void main() {
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 10);
+        expect(await _single(db, 'PRAGMA user_version'), 11);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -64,7 +65,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v10Tables);
+        expect(tables, _v11Tables);
         final List<String> linkColumns =
             (await db.customSelect('PRAGMA table_info(person_media)').get())
                 .map((r) => r.read<String>('name'))

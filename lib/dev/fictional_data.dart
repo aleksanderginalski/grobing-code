@@ -8,6 +8,7 @@ import '../data/claims.dart';
 import '../data/database.dart';
 import '../data/families.dart';
 import '../data/graves.dart';
+import '../data/sectors.dart';
 import '../net/osm_plan.dart';
 import 'fictional_photo.dart';
 
@@ -79,7 +80,8 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
         .insert(
           GravesCompanion.insert(
             cemeteryId: cemetery,
-            sector: const Value('B'),
+            // A sector without a zone — in the address only (ISSUE-028, ADR-016).
+            sectorId: Value(await sectorForAddress(db, cemetery, 'B')),
             row: const Value('3'),
             plot: const Value('12'),
           ),

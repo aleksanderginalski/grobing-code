@@ -3,6 +3,9 @@
 // the same rules.
 
 import '../data/database.dart' show Sex;
+import '../data/folding.dart';
+
+export '../data/folding.dart' show fold;
 
 /// The form of a noun after [n]: 1 grób · 2–4 groby (but 12–14 grobów) · 0, 5+ grobów.
 String plural(int n, String one, String few, String many) {
@@ -18,6 +21,26 @@ String gravesLabel(int n) => '$n ${plural(n, 'grób', 'groby', 'grobów')}';
 String peopleLabel(int n) => '$n ${plural(n, 'osoba', 'osoby', 'osób')}';
 String cemeteriesLabel(int n) =>
     '$n ${plural(n, 'cmentarz', 'cmentarze', 'cmentarzy')}';
+String cornersLabel(int n) => '$n ${plural(n, 'róg', 'rogi', 'rogów')}';
+
+/// "Adresy 1 grobu", "Adresy 2 grobów" — the genitive after a number (05_DESIGN/cmentarz.md, element 19b).
+String gravesGenitive(int n) => '$n ${n == 1 ? 'grobu' : 'grobów'}';
+
+/// The order of sectors on a list (05_DESIGN/cmentarz.md, element 17a): numbers as numbers — 2 before 10 —
+/// and the rest in the Polish alphabet, digits before letters as in [polishCompare].
+int sectorOrder(String a, String b) {
+  final RegExp chunk = RegExp(r'\d+|\D+');
+  final List<String> x = [for (final m in chunk.allMatches(a)) m[0]!];
+  final List<String> y = [for (final m in chunk.allMatches(b)) m[0]!];
+  for (int i = 0; i < x.length && i < y.length; i++) {
+    final int? nx = int.tryParse(x[i]), ny = int.tryParse(y[i]);
+    final int c = nx != null && ny != null
+        ? nx.compareTo(ny)
+        : polishCompare(x[i], y[i]);
+    if (c != 0) return c;
+  }
+  return x.length.compareTo(y.length);
+}
 
 /// "Imiona Nazwisko", with " z d. Rodowe" when [birthSurname] is given (style-b.md rule 6); what there
 /// is when a part is missing.
@@ -42,30 +65,6 @@ String? graveAddress(String? sector, String? row, String? plot) {
 /// element 3c): "Kwatera B · Rząd 3 · Miejsce 12 · bez pinezki", "Bez adresu kwatery · bez pinezki".
 String addressLine(String? address, {required bool hasPin}) =>
     [address ?? 'Bez adresu kwatery', if (!hasPin) 'bez pinezki'].join(' · ');
-
-/// Polish lower-case letters → their plain letter, by UTF-16 code unit (all in one unit).
-const Map<int, int> _plain = {
-  0x0105: 0x61, // ą → a
-  0x0107: 0x63, // ć → c
-  0x0119: 0x65, // ę → e
-  0x0142: 0x6C, // ł → l
-  0x0144: 0x6E, // ń → n
-  0x00F3: 0x6F, // ó → o
-  0x015B: 0x73, // ś → s
-  0x017A: 0x7A, // ź → z
-  0x017C: 0x7A, // ż → z
-};
-
-/// Lower case without Polish diacritics: "Łódź" → "lodz". Typing "ł" or "ź" on a phone keyboard needs
-/// a long press, so the search does not ask for them. By code unit: the cemetery database folds about
-/// 16 thousand names at its first use (ISSUE-015 D5, measured).
-String fold(String s) {
-  final List<int> units = s.toLowerCase().codeUnits.toList();
-  for (int i = 0; i < units.length; i++) {
-    if (units[i] >= 0xF3) units[i] = _plain[units[i]] ?? units[i];
-  }
-  return String.fromCharCodes(units);
-}
 
 /// What a query is matched with: its words, folded, and those of 5 letters or more without the last
 /// two — Polish endings change ("Powązki" → "na Powązkach"), the stem does not (measured on the

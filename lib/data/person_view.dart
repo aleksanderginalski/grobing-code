@@ -120,6 +120,7 @@ Stream<PersonView?> watchPersonView(GrobingDatabase db, int personId) =>
       db.assertions,
       db.burials,
       db.graves,
+      db.sectors,
       db.cemeteries,
       db.media,
       db.personMedia,
@@ -220,7 +221,11 @@ Future<BurialPlace?> _burialPlace(GrobingDatabase db, int personId) async {
     cemeteryId: g.cemeteryId,
     cemeteryName: r.readTable(db.cemeteries).name,
     graveName: g.name,
-    sector: g.sector,
+    sector: g.sectorId == null
+        ? null
+        : (await (db.select(
+            db.sectors,
+          )..where((s) => s.id.equals(g.sectorId!))).getSingle()).name,
     row: g.row,
     plot: g.plot,
   );

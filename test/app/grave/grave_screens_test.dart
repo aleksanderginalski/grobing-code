@@ -11,6 +11,7 @@ import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/claims.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
+import 'package:grobing/data/sectors.dart';
 
 // ISSUE-012 — the transcription screens (05_DESIGN/cmentarz.md, grob.md, wpis-osoby.md v2), happy path
 // per AC: US-002 AC-1 a grave shows everyone in it · AC-2 names, birth surname, "kim była" · AC-3 the
@@ -133,10 +134,10 @@ void main() {
           entry: const PersonEntry(givenNames: 'Maria', surname: 'Próbna'),
         );
         await (db.update(db.graves)..where((g) => g.id.equals(other))).write(
-          const GravesCompanion(
-            sector: Value('B'),
-            row: Value('3'),
-            plot: Value('12'),
+          GravesCompanion(
+            sectorId: Value(await sectorForAddress(db, cemetery, 'B')),
+            row: const Value('3'),
+            plot: const Value('12'),
           ),
         );
       });
@@ -487,6 +488,78 @@ void main() {
       );
       await _pumpUntil(tester, () => find.text('Grób').evaluate().isNotEmpty);
       expect(find.text('Grób rodzinny Wymyślonych'), findsNothing);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-028 D3, grob.md v6 — "Wpisz adres" under the missing address: the cemetery\'s sector as a chip '
+    'fills "Kwatera", the row and the plot are typed, the address shows in full; a sector no grave has yet '
+    'is announced as new',
+    (tester) async {
+      await withCemetery(tester);
+      late int grave;
+      await tester.runAsync(() async {
+        final int other = await addPersonToNewGrave(
+          db,
+          cemeteryId: cemetery,
+          entry: const PersonEntry(givenNames: 'Anna', surname: 'Testowa'),
+        );
+        await setGraveDetails(db, other, sector: 'B');
+        grave = await addPersonToNewGrave(
+          db,
+          cemeteryId: cemetery,
+          entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+        );
+      });
+      await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
+      await _pumpUntil(
+        tester,
+        () => find.text('Wpisz adres').evaluate().isNotEmpty,
+      );
+      expect(find.text('Uzupełnisz przy wizycie.'), findsNothing);
+
+      await tester.tap(find.text('Wpisz adres'));
+      await tester.pumpAndSettle();
+      expect(find.text('Adres zarządcy'), findsOneWidget);
+      expect(
+        find.text('Z wyszukiwarki zarządcy. Zostaw puste, czego nie wiesz.'),
+        findsOneWidget,
+      );
+      ChoiceChip chip() =>
+          tester.widget(find.widgetWithText(ChoiceChip, 'Kwatera B'));
+      expect(chip().selected, isFalse);
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Kwatera B'));
+      await tester.pump();
+      expect(chip().selected, isTrue);
+      await tester.enterText(find.widgetWithText(TextField, 'Rząd'), '4');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Miejsce'),
+        'Miejsce 12',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+      await _pumpUntil(
+        tester,
+        () => find
+            .text('Kwatera B · Rząd 4 · Miejsce 12 · bez pinezki')
+            .evaluate()
+            .isNotEmpty,
+      );
+      expect(find.text('Wpisz adres'), findsNothing);
+
+      await tester.tap(find.byTooltip('Popraw grób'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'B'), 'D');
+      await tester.pump();
+      expect(chip().selected, isFalse);
+      expect(
+        find.text(
+          'Nowa kwatera „D” — powstanie bez strefy; zaznaczysz ją w „Kwaterach”.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Anuluj'));
+      await tester.pumpAndSettle();
       await cleanUp(tester);
     },
   );
