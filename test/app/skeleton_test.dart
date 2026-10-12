@@ -14,6 +14,7 @@ import 'package:grobing/app/home/home_screen.dart';
 import 'package:grobing/app/people/me_picker_screen.dart';
 import 'package:grobing/app/people/people_list.dart';
 import 'package:grobing/app/people/people_screen.dart';
+import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/settings/export_placeholder_screen.dart';
 import 'package:grobing/app/settings/hand_over_note_screen.dart';
 import 'package:grobing/app/settings/settings_screen.dart';
@@ -213,24 +214,32 @@ void main() {
       },
     );
 
-    testWidgets('the grave view has the bar; the person form does not', (
-      tester,
-    ) async {
-      await addPeople(tester);
-      final int grave = (await tester.runAsync(
-        () => db.select(db.graves).getSingle(),
-      ))!.id;
-      await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
-      await _pumpUntil(tester, () => _shown(find.text('Maria Wymyślona')));
-      expect(_activeTab(tester), AppTab.map);
+    testWidgets(
+      'the grave view and the person view have the bar; the person form does not',
+      (tester) async {
+        await addPeople(tester);
+        final int grave = (await tester.runAsync(
+          () => db.select(db.graves).getSingle(),
+        ))!.id;
+        await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
+        await _pumpUntil(tester, () => _shown(find.text('Maria Wymyślona')));
+        expect(_activeTab(tester), AppTab.map);
 
-      await tester.tap(find.text('Maria Wymyślona'));
-      await _pumpUntil(tester, () => _shown(find.text('Poprawa wpisu')));
-      await tester.pumpAndSettle();
-      expect(find.byType(PersonFormScreen), findsOneWidget);
-      expect(find.byType(GrobingTabBar), findsNothing);
-      await cleanUp(tester);
-    });
+        // ISSUE-024: the card opens the view, with the bar and the map's tab still active.
+        await tester.tap(find.text('Maria Wymyślona'));
+        await _pumpUntil(tester, () => _shown(find.byType(PersonScreen)));
+        await tester.pumpAndSettle();
+        expect(find.byType(GrobingTabBar), findsOneWidget);
+        expect(_activeTab(tester), AppTab.map);
+
+        await tester.tap(find.byTooltip('Popraw wpis'));
+        await _pumpUntil(tester, () => _shown(find.text('Poprawa wpisu')));
+        await tester.pumpAndSettle();
+        expect(find.byType(PersonFormScreen), findsOneWidget);
+        expect(find.byType(GrobingTabBar), findsNothing);
+        await cleanUp(tester);
+      },
+    );
   });
 
   group('AC-2 — the Osoby tab', () {
@@ -298,8 +307,8 @@ void main() {
     );
 
     testWidgets(
-      'D2: a card opens the entry ("Poprawa wpisu") of a person without a grave; '
-      'back returns with the same text in the search',
+      'ISSUE-024: a card opens the view of a person without a grave (Osoby stays the active tab), ✎ their '
+      'entry ("Poprawa wpisu"); back returns with the same text in the search',
       (tester) async {
         await addPeople(tester);
         await pumpScreen(tester, PeopleScreen(database: db));
@@ -308,6 +317,14 @@ void main() {
         await tester.pump();
 
         await tester.tap(find.text('Jan Łukasik'));
+        await _pumpUntil(tester, () => _shown(find.byType(PersonScreen)));
+        await tester.pumpAndSettle();
+        expect(find.byType(PersonFormScreen), findsNothing);
+        expect(_activeTab(tester), AppTab.people);
+        // A person buried nowhere: no "Pochówek" row.
+        expect(find.text('Pochówek'), findsNothing);
+
+        await tester.tap(find.byTooltip('Popraw wpis'));
         await _pumpUntil(tester, () => _shown(find.text('Poprawa wpisu')));
         await tester.pumpAndSettle();
         expect(find.byType(PersonFormScreen), findsOneWidget);
@@ -319,6 +336,9 @@ void main() {
           'Jan',
         );
 
+        await tester.pageBack();
+        await _pumpUntil(tester, () => !_shown(find.byType(PersonFormScreen)));
+        await tester.pumpAndSettle();
         await tester.pageBack();
         await _pumpUntil(tester, () => _shown(find.byType(PeopleScreen)));
         await tester.pumpAndSettle();

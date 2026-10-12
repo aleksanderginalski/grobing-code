@@ -9,17 +9,18 @@ import 'photo_people_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'profile_crop_screen.dart';
 
-/// A person's photo on the whole screen (05_DESIGN/zdjecie.md v1.4, B in the person's mode): the photos
+/// A person's photo on the whole screen (05_DESIGN/zdjecie.md v1.5, B in the person's mode): the photos
 /// turn with a swipe or ‹ › (B3), "Na zdjęciu" names everyone on it (B5), and the actions make it the
-/// profile through its crop, correct the profile's crop, or remove it from this person (B4', C1';
-/// kadr-profilowego.md). Every change goes to the [draft] and is written with the person's "Zapisz"
-/// (zdjecia-osoby.md D1).
+/// profile through its crop, correct the profile's crop, make it the background or take it off, or
+/// remove it from this person (B4'', C1'; kadr-profilowego.md). Every change goes to the [draft] and is
+/// written with the person's "Zapisz" (zdjecia-osoby.md D1).
 class PersonPhotoViewerScreen extends StatefulWidget {
   const PersonPhotoViewerScreen({
     super.key,
     required this.draft,
     required this.initialIndex,
     required this.personName,
+    this.readOnly = false,
   });
 
   final PersonPhotosDraft draft;
@@ -27,6 +28,9 @@ class PersonPhotoViewerScreen extends StatefulWidget {
 
   /// The person as the form has them now, for the bar and "Na zdjęciu".
   final String personName;
+
+  /// From the person's view (zdjecie.md v1.5, "tryb oglądania"; osoba.md W2): no actions, no "Zmień".
+  final bool readOnly;
 
   @override
   State<PersonPhotoViewerScreen> createState() =>
@@ -158,6 +162,7 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         staysWith: [for (final int id in _others) _nameOf(id)],
         isProfile: _index == 0,
         isLast: widget.draft.count == 1,
+        isBackground: widget.draft.isBackground(photo),
       ),
     );
     if (removed != true || !mounted) return;
@@ -172,6 +177,16 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
     return 'Osoba bez imienia';
   }
 
+  /// B1: the photo's state is told by the bar, not by a mark on the photo (style-b.md rule 14).
+  String get _subtitle {
+    final DraftPhoto? photo = _photo;
+    final bool background = photo != null && widget.draft.isBackground(photo);
+    if (_index == 0) {
+      return background ? 'Zdjęcie profilowe i tło' : 'Zdjęcie profilowe';
+    }
+    return background ? 'Zdjęcie w tle' : 'Zdjęcie osoby';
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<DraftPhoto> items = widget.draft.items;
@@ -181,11 +196,8 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // The profile is told by the bar, not by colour (kadr-profilowego.md D8).
-            PhotoViewerBar(
-              title: widget.personName,
-              subtitle: _index == 0 ? 'Zdjęcie profilowe' : 'Zdjęcie osoby',
-            ),
+            // The profile and the background are told by the bar, not by colour (kadr-profilowego.md D8).
+            PhotoViewerBar(title: widget.personName, subtitle: _subtitle),
             Expanded(
               child: PageView.builder(
                 controller: _pages,
@@ -212,7 +224,7 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
             ),
             _onPhoto(),
             if (items.length > 1) _turning(items.length),
-            _actions(),
+            if (widget.readOnly) const SizedBox(height: 16) else _actions(),
           ],
         ),
       ),
@@ -247,10 +259,13 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
             ),
           ),
         ),
-        TextButton(
-          onPressed: _choices == null ? null : _choosePeople,
-          child: const Text('Zmień'),
-        ),
+        if (widget.readOnly)
+          const SizedBox(height: 48)
+        else
+          TextButton(
+            onPressed: _choices == null ? null : _choosePeople,
+            child: const Text('Zmień'),
+          ),
       ],
     ),
   );
@@ -280,52 +295,103 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
     ],
   );
 
-  /// B4': "Ustaw jako profilowe" in amber — on the profile photo "Popraw kadr" instead, the state being in
-  /// the bar (zdjecie.md v1.4, kadr-profilowego.md D8) — and "Usuń z tej osoby" in the text colour
-  /// (style-b.md rule 14). Two fixed places, so turning the photos never moves "Usuń z tej osoby" under
-  /// the finger; a long label wraps instead of being cut (SC 1.4.4; ui review).
-  Widget _actions() => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Center(
+  /// B4'' (zdjecie.md v1.5): three equal columns, the icon over the label. The profile action in amber —
+  /// "Ustaw jako profilowe", or "Popraw kadr" on the profile photo, the state being in the bar
+  /// (kadr-profilowego.md D8); "Ustaw jako tło" with its icon in amber and the label in the text colour (a
+  /// secondary action, style-b.md rule 1), or "Usuń z tła" on the background; "Usuń z tej osoby" in the text
+  /// colour (rule 14). Fixed places, so turning the photos never moves "Usuń z tej osoby" under the
+  /// finger; a long label wraps instead of being cut (SC 1.4.4).
+  Widget _actions() {
+    final DraftPhoto? photo = _photo;
+    final bool background = photo != null && widget.draft.isBackground(photo);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
             child: _index == 0
-                ? TextButton.icon(
+                ? _StackedAction(
+                    icon: Icons.crop_outlined,
+                    label: 'Popraw kadr',
                     onPressed: _correctCrop,
-                    icon: const Icon(Icons.crop_outlined),
-                    label: const Text(
-                      'Popraw kadr',
-                      textAlign: TextAlign.center,
-                    ),
                   )
-                : TextButton.icon(
+                : _StackedAction(
+                    icon: Icons.account_circle_outlined,
+                    label: 'Ustaw jako profilowe',
                     onPressed: _makeProfile,
-                    icon: const Icon(Icons.account_circle_outlined),
-                    label: const Text(
-                      'Ustaw jako profilowe',
-                      textAlign: TextAlign.center,
-                    ),
                   ),
           ),
-        ),
-        Expanded(
-          child: Center(
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: GrobingColors.text,
-                iconColor: GrobingColors.text,
-              ),
+          Expanded(
+            child: background
+                ? _StackedAction(
+                    icon: Icons.hide_image_outlined,
+                    label: 'Usuń z tła',
+                    color: GrobingColors.text,
+                    iconColor: GrobingColors.text,
+                    onPressed: widget.draft.clearBackground,
+                  )
+                : _StackedAction(
+                    icon: Icons.wallpaper_outlined,
+                    label: 'Ustaw jako tło',
+                    color: GrobingColors.text,
+                    onPressed: photo == null
+                        ? null
+                        : () => widget.draft.setBackground(photo),
+                  ),
+          ),
+          Expanded(
+            child: _StackedAction(
+              icon: Icons.delete_outline,
+              label: 'Usuń z tej osoby',
+              color: GrobingColors.text,
+              iconColor: GrobingColors.text,
               onPressed: identical(_othersOf, _photo) ? _remove : null,
-              icon: const Icon(Icons.delete_outline),
-              label: const Text(
-                'Usuń z tej osoby',
-                textAlign: TextAlign.center,
-              ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One column of B4'': the icon over the label, the whole column one target of at least 48 dp.
+class _StackedAction extends StatelessWidget {
+  const _StackedAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.color,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  /// The label's colour; null — the accent (the theme's text button).
+  final Color? color;
+
+  /// The icon's colour; null — the accent (rule 3: an action's icon).
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    style: TextButton.styleFrom(
+      foregroundColor: color,
+      minimumSize: const Size(48, 64),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+    ),
+    onPressed: onPressed,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: onPressed == null ? null : (iconColor ?? GrobingColors.amber),
         ),
+        const SizedBox(height: 4),
+        Text(label, textAlign: TextAlign.center),
       ],
     ),
   );
@@ -340,11 +406,15 @@ class RemovePersonPhotoDialog extends StatelessWidget {
     required this.staysWith,
     required this.isProfile,
     required this.isLast,
+    this.isBackground = false,
   });
 
   final List<String> staysWith;
   final bool isProfile;
   final bool isLast;
+
+  /// The photo is the person's background (zdjecie.md v1.5, C1').
+  final bool isBackground;
 
   @override
   Widget build(BuildContext context) {
@@ -358,6 +428,8 @@ class RemovePersonPhotoDialog extends StatelessWidget {
         'Osoba nie będzie miała zdjęcia.'
       else if (isProfile)
         'Profilowym zostanie następne zdjęcie.',
+      // The last photo going says already that nothing is left (ui review: two sentences, one fact).
+      if (isBackground && !isLast) 'Osoba zostanie bez zdjęcia w tle.',
     ].join(' ');
     return AlertDialog(
       backgroundColor: GrobingColors.surface,

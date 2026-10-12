@@ -144,17 +144,19 @@ class PhotoCrop {
 }
 
 /// One photo in a person's list: its row, its file, relative to the media directory, and the crop of
-/// the person's link to it.
+/// the person's link to it — and whether it is the person's background (ISSUE-024, ADR-013).
 class PersonPhoto {
   const PersonPhoto({
     required this.mediaId,
     required this.relativePath,
     this.crop,
+    this.isBackground = false,
   });
 
   final int mediaId;
   final String relativePath;
   final PhotoCrop? crop;
+  final bool isBackground;
 }
 
 /// A person's profile photo — the file of their first link — and that link's crop.
@@ -187,6 +189,7 @@ Future<List<PersonPhoto>> personPhotos(GrobingDatabase db, int personId) async {
         mediaId: r.readTable(db.media).id,
         relativePath: r.readTable(db.media).relativePath,
         crop: PhotoCrop.of(r.readTable(db.personMedia)),
+        isBackground: r.readTable(db.personMedia).isBackground,
       ),
   ];
 }
@@ -268,6 +271,8 @@ class PersonPhotoEdits {
     required this.photos,
     this.others = const {},
     this.crops = const {},
+    this.backgroundChanged = false,
+    this.background,
   });
 
   /// The person's photos after the edit, in their order: the first is the profile photo. A saved photo
@@ -282,6 +287,12 @@ class PersonPhotoEdits {
   /// crop it has — so an edit that only adds, removes or reorders photos never loses one (plan F1); a
   /// new photo not here has none.
   final Map<PhotoRef, PhotoCrop> crops;
+
+  /// Whether this edit sets the background (ISSUE-024, ADR-013): then it is [background] — one of
+  /// [photos] — or none. Without it the saved background stays, as a crop does, as long as its photo
+  /// stays on the person; a photo removed takes its background with it.
+  final bool backgroundChanged;
+  final PhotoRef? background;
 
   /// The photos of this edit that need a row: on this person or on someone else.
   List<NewPhoto> get newPhotos => [
@@ -374,13 +385,18 @@ Future<void> applyPersonPhotoEdits(
     final PhotoCrop? crop = edits.crops[photo];
     if (crop != null) crops[id] = crop;
   }
-  // The links are rewritten from nothing, so the crops they have are read first and written back.
+  // The links are rewritten from nothing, so the crops and the background they have are read first and
+  // written back (ADR-010, ADR-013).
+  final List<PersonMediaData> links = await (db.select(
+    db.personMedia,
+  )..where((l) => l.personId.equals(personId))).get();
   final Map<int, PhotoCrop?> kept = {
-    for (final PersonMediaData l in await (db.select(
-      db.personMedia,
-    )..where((l) => l.personId.equals(personId))).get())
-      l.mediaId: PhotoCrop.of(l),
+    for (final PersonMediaData l in links) l.mediaId: PhotoCrop.of(l),
   };
+  final PhotoRef? newBackground = edits.background;
+  final int? background = edits.backgroundChanged
+      ? (newBackground == null ? null : await idOf(newBackground))
+      : links.where((l) => l.isBackground).firstOrNull?.mediaId;
   await (db.delete(
     db.personMedia,
   )..where((l) => l.personId.equals(personId))).go();
@@ -397,6 +413,7 @@ Future<void> applyPersonPhotoEdits(
             cropTop: Value(crop?.top),
             cropWidth: Value(crop?.width),
             cropHeight: Value(crop?.height),
+            isBackground: Value(id == background),
           ),
         );
   }

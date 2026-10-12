@@ -4072,6 +4072,21 @@ class $PersonMediaTable extends PersonMedia
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isBackgroundMeta = const VerificationMeta(
+    'isBackground',
+  );
+  @override
+  late final GeneratedColumn<bool> isBackground = GeneratedColumn<bool>(
+    'is_background',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_background" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     personId,
@@ -4081,6 +4096,7 @@ class $PersonMediaTable extends PersonMedia
     cropTop,
     cropWidth,
     cropHeight,
+    isBackground,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4142,6 +4158,15 @@ class $PersonMediaTable extends PersonMedia
         cropHeight.isAcceptableOrUnknown(data['crop_height']!, _cropHeightMeta),
       );
     }
+    if (data.containsKey('is_background')) {
+      context.handle(
+        _isBackgroundMeta,
+        isBackground.isAcceptableOrUnknown(
+          data['is_background']!,
+          _isBackgroundMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -4179,6 +4204,10 @@ class $PersonMediaTable extends PersonMedia
         DriftSqlType.int,
         data['${effectivePrefix}crop_height'],
       ),
+      isBackground: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_background'],
+      )!,
     );
   }
 
@@ -4196,6 +4225,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
   final int? cropTop;
   final int? cropWidth;
   final int? cropHeight;
+  final bool isBackground;
   const PersonMediaData({
     required this.personId,
     required this.mediaId,
@@ -4204,6 +4234,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     this.cropTop,
     this.cropWidth,
     this.cropHeight,
+    required this.isBackground,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4223,6 +4254,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     if (!nullToAbsent || cropHeight != null) {
       map['crop_height'] = Variable<int>(cropHeight);
     }
+    map['is_background'] = Variable<bool>(isBackground);
     return map;
   }
 
@@ -4243,6 +4275,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       cropHeight: cropHeight == null && nullToAbsent
           ? const Value.absent()
           : Value(cropHeight),
+      isBackground: Value(isBackground),
     );
   }
 
@@ -4259,6 +4292,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       cropTop: serializer.fromJson<int?>(json['cropTop']),
       cropWidth: serializer.fromJson<int?>(json['cropWidth']),
       cropHeight: serializer.fromJson<int?>(json['cropHeight']),
+      isBackground: serializer.fromJson<bool>(json['isBackground']),
     );
   }
   @override
@@ -4272,6 +4306,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       'cropTop': serializer.toJson<int?>(cropTop),
       'cropWidth': serializer.toJson<int?>(cropWidth),
       'cropHeight': serializer.toJson<int?>(cropHeight),
+      'isBackground': serializer.toJson<bool>(isBackground),
     };
   }
 
@@ -4283,6 +4318,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     Value<int?> cropTop = const Value.absent(),
     Value<int?> cropWidth = const Value.absent(),
     Value<int?> cropHeight = const Value.absent(),
+    bool? isBackground,
   }) => PersonMediaData(
     personId: personId ?? this.personId,
     mediaId: mediaId ?? this.mediaId,
@@ -4291,6 +4327,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     cropTop: cropTop.present ? cropTop.value : this.cropTop,
     cropWidth: cropWidth.present ? cropWidth.value : this.cropWidth,
     cropHeight: cropHeight.present ? cropHeight.value : this.cropHeight,
+    isBackground: isBackground ?? this.isBackground,
   );
   PersonMediaData copyWithCompanion(PersonMediaCompanion data) {
     return PersonMediaData(
@@ -4303,6 +4340,9 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
       cropHeight: data.cropHeight.present
           ? data.cropHeight.value
           : this.cropHeight,
+      isBackground: data.isBackground.present
+          ? data.isBackground.value
+          : this.isBackground,
     );
   }
 
@@ -4315,7 +4355,8 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
           ..write('cropLeft: $cropLeft, ')
           ..write('cropTop: $cropTop, ')
           ..write('cropWidth: $cropWidth, ')
-          ..write('cropHeight: $cropHeight')
+          ..write('cropHeight: $cropHeight, ')
+          ..write('isBackground: $isBackground')
           ..write(')'))
         .toString();
   }
@@ -4329,6 +4370,7 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
     cropTop,
     cropWidth,
     cropHeight,
+    isBackground,
   );
   @override
   bool operator ==(Object other) =>
@@ -4340,7 +4382,8 @@ class PersonMediaData extends DataClass implements Insertable<PersonMediaData> {
           other.cropLeft == this.cropLeft &&
           other.cropTop == this.cropTop &&
           other.cropWidth == this.cropWidth &&
-          other.cropHeight == this.cropHeight);
+          other.cropHeight == this.cropHeight &&
+          other.isBackground == this.isBackground);
 }
 
 class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
@@ -4351,6 +4394,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
   final Value<int?> cropTop;
   final Value<int?> cropWidth;
   final Value<int?> cropHeight;
+  final Value<bool> isBackground;
   final Value<int> rowid;
   const PersonMediaCompanion({
     this.personId = const Value.absent(),
@@ -4360,6 +4404,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     this.cropTop = const Value.absent(),
     this.cropWidth = const Value.absent(),
     this.cropHeight = const Value.absent(),
+    this.isBackground = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PersonMediaCompanion.insert({
@@ -4370,6 +4415,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     this.cropTop = const Value.absent(),
     this.cropWidth = const Value.absent(),
     this.cropHeight = const Value.absent(),
+    this.isBackground = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : personId = Value(personId),
        mediaId = Value(mediaId),
@@ -4382,6 +4428,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     Expression<int>? cropTop,
     Expression<int>? cropWidth,
     Expression<int>? cropHeight,
+    Expression<bool>? isBackground,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4392,6 +4439,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
       if (cropTop != null) 'crop_top': cropTop,
       if (cropWidth != null) 'crop_width': cropWidth,
       if (cropHeight != null) 'crop_height': cropHeight,
+      if (isBackground != null) 'is_background': isBackground,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4404,6 +4452,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     Value<int?>? cropTop,
     Value<int?>? cropWidth,
     Value<int?>? cropHeight,
+    Value<bool>? isBackground,
     Value<int>? rowid,
   }) {
     return PersonMediaCompanion(
@@ -4414,6 +4463,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
       cropTop: cropTop ?? this.cropTop,
       cropWidth: cropWidth ?? this.cropWidth,
       cropHeight: cropHeight ?? this.cropHeight,
+      isBackground: isBackground ?? this.isBackground,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4442,6 +4492,9 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
     if (cropHeight.present) {
       map['crop_height'] = Variable<int>(cropHeight.value);
     }
+    if (isBackground.present) {
+      map['is_background'] = Variable<bool>(isBackground.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4458,6 +4511,7 @@ class PersonMediaCompanion extends UpdateCompanion<PersonMediaData> {
           ..write('cropTop: $cropTop, ')
           ..write('cropWidth: $cropWidth, ')
           ..write('cropHeight: $cropHeight, ')
+          ..write('isBackground: $isBackground, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4688,6 +4742,10 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     'person_media_media',
     'CREATE INDEX person_media_media ON person_media (media_id)',
   );
+  late final Index personMediaBackground = Index(
+    'person_media_background',
+    'CREATE UNIQUE INDEX person_media_background ON person_media (person_id) WHERE is_background',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4706,6 +4764,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     personMedia,
     settings,
     personMediaMedia,
+    personMediaBackground,
   ];
 }
 
@@ -9903,6 +9962,7 @@ typedef $$PersonMediaTableCreateCompanionBuilder =
       Value<int?> cropTop,
       Value<int?> cropWidth,
       Value<int?> cropHeight,
+      Value<bool> isBackground,
       Value<int> rowid,
     });
 typedef $$PersonMediaTableUpdateCompanionBuilder =
@@ -9914,6 +9974,7 @@ typedef $$PersonMediaTableUpdateCompanionBuilder =
       Value<int?> cropTop,
       Value<int?> cropWidth,
       Value<int?> cropHeight,
+      Value<bool> isBackground,
       Value<int> rowid,
     });
 
@@ -9988,6 +10049,11 @@ class $$PersonMediaTableFilterComposer
 
   ColumnFilters<int> get cropHeight => $composableBuilder(
     column: $table.cropHeight,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isBackground => $composableBuilder(
+    column: $table.isBackground,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10072,6 +10138,11 @@ class $$PersonMediaTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isBackground => $composableBuilder(
+    column: $table.isBackground,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PersonsTableOrderingComposer get personId {
     final $$PersonsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10142,6 +10213,11 @@ class $$PersonMediaTableAnnotationComposer
 
   GeneratedColumn<int> get cropHeight => $composableBuilder(
     column: $table.cropHeight,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isBackground => $composableBuilder(
+    column: $table.isBackground,
     builder: (column) => column,
   );
 
@@ -10227,6 +10303,7 @@ class $$PersonMediaTableTableManager
                 Value<int?> cropTop = const Value.absent(),
                 Value<int?> cropWidth = const Value.absent(),
                 Value<int?> cropHeight = const Value.absent(),
+                Value<bool> isBackground = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PersonMediaCompanion(
                 personId: personId,
@@ -10236,6 +10313,7 @@ class $$PersonMediaTableTableManager
                 cropTop: cropTop,
                 cropWidth: cropWidth,
                 cropHeight: cropHeight,
+                isBackground: isBackground,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10247,6 +10325,7 @@ class $$PersonMediaTableTableManager
                 Value<int?> cropTop = const Value.absent(),
                 Value<int?> cropWidth = const Value.absent(),
                 Value<int?> cropHeight = const Value.absent(),
+                Value<bool> isBackground = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PersonMediaCompanion.insert(
                 personId: personId,
@@ -10256,6 +10335,7 @@ class $$PersonMediaTableTableManager
                 cropTop: cropTop,
                 cropWidth: cropWidth,
                 cropHeight: cropHeight,
+                isBackground: isBackground,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

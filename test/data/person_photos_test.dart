@@ -16,8 +16,10 @@ import '../support/photo_fakes.dart';
 // keeps it for the others · D2: a person ticked later, from another grave · written with the person, in
 // one transaction (D3) · F4: a photo that waited in the form is not swept · a failed write gives the
 // files back. ISSUE-018 — the crop of a link (schema v5): set with the person, read for the profile, one
-// crop per person on one photo, the file untouched, kept through every later edit (F1). Pictures drawn in
-// code, made-up people only (family-data.md).
+// crop per person on one photo, the file untouched, kept through every later edit (F1). ISSUE-024 — the
+// background on a link (schema v8, ADR-013): set with the person, one per person, moved by a second, kept
+// through every later edit like the crop, gone with its link. Pictures drawn in code, made-up people only
+// (family-data.md).
 
 void main() {
   late Directory tmp;
@@ -506,6 +508,142 @@ void main() {
           [anna, photo],
         );
         expect(await cropOf(anna, photo), isNull);
+      },
+    );
+  });
+
+  group('ISSUE-024 — the background on a link', () {
+    Future<List<int>> backgroundsOf(int personId) async => [
+      for (final PersonPhoto p in await personPhotos(db, personId))
+        if (p.isBackground) p.mediaId,
+    ];
+
+    test(
+      'AC-5 — "Ustaw jako tło" saved with the person marks that link only; a second one moves the mark; '
+      '"Usuń z tła" takes it off and the photo stays',
+      () async {
+        final NewPhoto a = waiting(1);
+        final NewPhoto b = waiting(2);
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [a, b],
+            backgroundChanged: true,
+            background: b,
+          ),
+        );
+        final List<int> photos = await photosOf(anna);
+        expect(await backgroundsOf(anna), [photos[1]]);
+
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [SavedPhoto(photos[0]), SavedPhoto(photos[1])],
+            backgroundChanged: true,
+            background: SavedPhoto(photos[0]),
+          ),
+        );
+        expect(await backgroundsOf(anna), [photos[0]]);
+
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [SavedPhoto(photos[0]), SavedPhoto(photos[1])],
+            backgroundChanged: true,
+          ),
+        );
+        expect(await backgroundsOf(anna), isEmpty);
+        expect(await photosOf(anna), photos);
+      },
+    );
+
+    test(
+      'kept like the crop (F1): an edit that reorders, adds or crops — without touching the background — '
+      'keeps it; a link removed takes its background with it',
+      () async {
+        final NewPhoto a = waiting(1);
+        final NewPhoto b = waiting(2);
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [a, b],
+            backgroundChanged: true,
+            background: b,
+          ),
+        );
+        final List<int> photos = await photosOf(anna);
+
+        // The second photo made the profile, with a crop, and a third added.
+        final NewPhoto c = waiting(3);
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [SavedPhoto(photos[1]), SavedPhoto(photos[0]), c],
+            crops: {
+              SavedPhoto(photos[1]): const PhotoCrop(
+                left: 10,
+                top: 10,
+                width: 100,
+                height: 100,
+              ),
+            },
+          ),
+        );
+        expect(await backgroundsOf(anna), [photos[1]]);
+
+        // "Usuń z tej osoby" on the background photo.
+        final List<int> now = await photosOf(anna);
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [
+              for (final int id in now)
+                if (id != photos[1]) SavedPhoto(id),
+            ],
+          ),
+        );
+        expect(await backgroundsOf(anna), isEmpty);
+      },
+    );
+
+    test(
+      'one photo, two people: Jan\'s background is his; ticking him off the photo in Anna\'s edit takes his '
+      'background with his link, and Anna\'s stays',
+      () async {
+        final NewPhoto wedding = waiting(1);
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [wedding],
+            others: {
+              wedding: {jan},
+            },
+            backgroundChanged: true,
+            background: wedding,
+          ),
+        );
+        final int photo = (await photosOf(anna)).single;
+        await save(
+          jan,
+          PersonPhotoEdits(
+            photos: [SavedPhoto(photo)],
+            backgroundChanged: true,
+            background: SavedPhoto(photo),
+          ),
+          as: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+        );
+        expect(await backgroundsOf(anna), [photo]);
+        expect(await backgroundsOf(jan), [photo]);
+
+        await save(
+          anna,
+          PersonPhotoEdits(
+            photos: [SavedPhoto(photo)],
+            others: {SavedPhoto(photo): const <int>{}},
+          ),
+        );
+        expect(await photosOf(jan), isEmpty);
+        expect(await backgroundsOf(anna), [photo]);
       },
     );
   });

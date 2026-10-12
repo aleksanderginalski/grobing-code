@@ -17,8 +17,9 @@ class DraftPhoto {
 }
 
 /// A person's photos while their form is open (05_DESIGN/zdjecia-osoby.md D1): every change — added
-/// photos, the profile and its crop (ISSUE-018), who else is on a photo, a photo removed — waits here
-/// and is written with the person's "Zapisz" ([edits]), or dropped with "Odrzuć" ([dispose]).
+/// photos, the profile and its crop (ISSUE-018), the background (ISSUE-024), who else is on a photo, a
+/// photo removed — waits here and is written with the person's "Zapisz" ([edits]), or dropped with
+/// "Odrzuć" ([dispose]). The person's view opens the same screens on a draft only to look at it.
 class PersonPhotosDraft extends ChangeNotifier {
   PersonPhotosDraft({
     required this.database,
@@ -43,6 +44,8 @@ class PersonPhotosDraft extends ChangeNotifier {
   final Map<data.PhotoRef, data.PhotoCrop> _savedCrops = {};
   final Map<data.PhotoRef, data.PhotoCrop> _crops = {};
   final List<data.NewPhoto> _created = [];
+  data.PhotoRef? _savedBackground;
+  data.PhotoRef? _background;
   int _preparing = 0;
   ({int failed, int of})? _failure;
   bool _disposed = false;
@@ -51,6 +54,18 @@ class PersonPhotosDraft extends ChangeNotifier {
   List<DraftPhoto> get items => List.unmodifiable(_items);
   DraftPhoto? get profile => _items.isEmpty ? null : _items.first;
   int get count => _items.length;
+
+  /// The person's background photo (zdjecie.md B4''), as changed in this form or as saved; null — none.
+  DraftPhoto? get background {
+    final data.PhotoRef? ref = _background;
+    if (ref == null) return null;
+    for (final DraftPhoto p in _items) {
+      if (p.ref == ref) return p;
+    }
+    return null;
+  }
+
+  bool isBackground(DraftPhoto photo) => photo.ref == _background;
 
   /// How many picked photos are still being prepared.
   int get preparing => _preparing;
@@ -61,6 +76,7 @@ class PersonPhotosDraft extends ChangeNotifier {
   bool get hasChanges =>
       _others.isNotEmpty ||
       _crops.isNotEmpty ||
+      _background != _savedBackground ||
       !listEquals(_savedOrder, [
         for (final DraftPhoto p in _items)
           if (p.ref case data.SavedPhoto(:final int mediaId)) mediaId else -1,
@@ -85,6 +101,23 @@ class PersonPhotosDraft extends ChangeNotifier {
           if (p.crop case final data.PhotoCrop crop)
             data.SavedPhoto(p.mediaId): crop,
       });
+    _savedBackground = _background = [
+      for (final data.PersonPhoto p in saved)
+        if (p.isBackground) data.SavedPhoto(p.mediaId),
+    ].firstOrNull;
+    _notify();
+  }
+
+  /// "Ustaw jako tło" (zdjecie.md B4''): one background per person, so it replaces the one before.
+  void setBackground(DraftPhoto photo) {
+    if (!_items.contains(photo)) return;
+    _background = photo.ref;
+    _notify();
+  }
+
+  /// "Usuń z tła": the photo stays on the person.
+  void clearBackground() {
+    _background = null;
     _notify();
   }
 
@@ -146,11 +179,12 @@ class PersonPhotosDraft extends ChangeNotifier {
     }
   }
 
-  /// Removes [photo] from this person only (zdjecie.md C1'); others on it keep it. Its crop goes with the
-  /// link.
+  /// Removes [photo] from this person only (zdjecie.md C1'); others on it keep it. Its crop and its being
+  /// the background go with the link.
   void remove(DraftPhoto photo) {
     if (!_items.remove(photo)) return;
     _crops.remove(photo.ref);
+    if (_background == photo.ref) _background = null;
     _notify();
   }
 
@@ -192,6 +226,8 @@ class PersonPhotosDraft extends ChangeNotifier {
               e.key: {...e.value},
           },
           crops: {..._crops},
+          backgroundChanged: _background != _savedBackground,
+          background: _background,
         )
       : null;
 

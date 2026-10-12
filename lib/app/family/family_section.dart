@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/families.dart';
+import '../../data/graves.dart' show watchTables;
+import '../../data/photos.dart' show ProfilePhoto, profilePhotos;
 import '../dates.dart';
-import '../grave/person_form_screen.dart';
+import '../people/people_list.dart' show InitialsCircle;
+import '../person/person_screen.dart';
 import '../photo/photos.dart';
+import '../photo/profile_circle.dart';
 import '../polish.dart';
+import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import 'add_child_sheet.dart';
+import 'role_names.dart';
 import 'union_summary_sheet.dart';
 import 'union_wizard.dart';
 
@@ -17,7 +23,8 @@ import 'union_wizard.dart';
 /// (together since → the wedding → the end), the children of that pair (C1) — with ✎ to the union's
 /// summary and the wizard to add more. Roles come from sex and from the wedding (rodzina.md → Role names);
 /// without a sex, the neutral ones. It shows what is written now: the wizard, the summary and a
-/// relative's form write at once, and the section follows.
+/// relative's form write at once, and the section follows. A chip or a partner's card opens that
+/// person's view, not their correction (v5.8, osoba.md D14).
 class FamilySection extends StatefulWidget {
   const FamilySection({
     super.key,
@@ -25,10 +32,14 @@ class FamilySection extends StatefulWidget {
     required this.personId,
     this.graveId,
     this.photos,
+    this.tab = AppTab.map,
   });
 
   final GrobingDatabase database;
   final int personId;
+
+  /// The tab of the form's stack, kept active in a relative's view (style-b.md rule 12).
+  final AppTab tab;
 
   /// The grave the form was opened from: its people come first in "Z kim?" (rodzina.md B4).
   final int? graveId;
@@ -40,41 +51,49 @@ class FamilySection extends StatefulWidget {
   State<FamilySection> createState() => _FamilySectionState();
 }
 
-/// What someone is to the person whose section it is (rodzina.md → Role names).
-enum _Role { parent, partner, child }
-
-/// "Matka", "Mąż", "Partnerka", "Syn" — from [sex] and, for a partner, whether there was a wedding; the
-/// neutral name without a sex ("Rodzic", "Małżonek", "Partner", "Dziecko").
-String _roleName(_Role role, Sex? sex, {bool married = false}) =>
-    switch ((role, sex)) {
-      (_Role.parent, Sex.female) => 'Matka',
-      (_Role.parent, Sex.male) => 'Ojciec',
-      (_Role.parent, null) => 'Rodzic',
-      (_Role.partner, Sex.female) => married ? 'Żona' : 'Partnerka',
-      (_Role.partner, Sex.male) => married ? 'Mąż' : 'Partner',
-      (_Role.partner, null) => married ? 'Małżonek' : 'Partner',
-      (_Role.child, Sex.female) => 'Córka',
-      (_Role.child, Sex.male) => 'Syn',
-      (_Role.child, null) => 'Dziecko',
-    };
-
 class _FamilySectionState extends State<FamilySection> {
-  late final Stream<PersonRelations> _relations = watchRelations(
-    widget.database,
-    widget.personId,
-  );
+  /// The relations, and the partners' profile photos for their cards (v5.8) — again after every write to
+  /// a table they read, the photo links too.
+  late final Stream<(PersonRelations, Map<int, ProfilePhoto>)> _relations =
+      watchTables(
+        widget.database,
+        'family_section',
+        {
+          widget.database.families,
+          widget.database.familyPartners,
+          widget.database.familyChildren,
+          widget.database.persons,
+          widget.database.events,
+          widget.database.assertions,
+          widget.database.personMedia,
+          widget.database.media,
+        },
+        () async {
+          final PersonRelations r = await loadRelations(
+            widget.database,
+            widget.personId,
+          );
+          return (
+            r,
+            await profilePhotos(widget.database, [
+              for (final PersonUnion u in r.unions) ?u.partner?.id,
+            ]),
+          );
+        },
+      );
 
   static final ButtonStyle _rowButton = secondaryButtonStyle.copyWith(
     minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
   );
 
-  /// A chip or a card: the relative's entry on top of this form, which stays below with what is typed in
-  /// it (wpis-osoby.md D-rodzina-2). Saving or going back returns here.
-  Future<void> _openPerson(int personId) => openPersonEntry(
+  /// A chip or a card: the relative's view on top of this form, which stays below with what is typed in
+  /// it (wpis-osoby.md v5.8; osoba.md D14). Going back returns here.
+  Future<void> _openPerson(int personId) => openPersonView(
     context,
     widget.database,
     personId,
     photos: widget.photos,
+    tab: widget.tab,
   );
 
   Future<void> _wizard(
@@ -130,10 +149,13 @@ class _FamilySectionState extends State<FamilySection> {
   }
 
   @override
-  Widget build(BuildContext context) => StreamBuilder<PersonRelations>(
+  Widget build(
+    BuildContext context,
+  ) => StreamBuilder<(PersonRelations, Map<int, ProfilePhoto>)>(
     stream: _relations,
     builder: (context, snapshot) {
-      final PersonRelations? r = snapshot.data;
+      final PersonRelations? r = snapshot.data?.$1;
+      final Map<int, ProfilePhoto> profiles = snapshot.data?.$2 ?? const {};
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -162,7 +184,7 @@ class _FamilySectionState extends State<FamilySection> {
               ),
               _chips([
                 for (final FamilyMember p in r.parents)
-                  (_roleName(_Role.parent, p.sex), p),
+                  (roleName(FamilyRole.parent, p.sex), p),
               ]),
             ],
             // c, d: a card for each union, by its first date, with its children (C1).
@@ -177,7 +199,8 @@ class _FamilySectionState extends State<FamilySection> {
                   ),
                 ),
               ),
-            for (final PersonUnion u in r.unions) _card(u),
+            for (final PersonUnion u in r.unions)
+              _card(u, profiles[u.partner?.id]),
             const SizedBox(height: 12),
             // e, and "Dodaj rodziców" while there are none.
             Wrap(
@@ -243,11 +266,15 @@ class _FamilySectionState extends State<FamilySection> {
     ],
   );
 
-  /// c: one union — the partner, "lata · rola", the timeline, ✎; then d, its children and "Dodaj
-  /// dziecko". The card leads to the partner's entry (style-b rule 11), ✎ to the summary.
-  Widget _card(PersonUnion u) {
+  /// c: one union — the partner, "lata · rola", the timeline, ✎ and the chevron; then d, its children and
+  /// "Dodaj dziecko". The card leads to the partner's view (style-b rule 11, v5.8), ✎ to the summary.
+  Widget _card(PersonUnion u, ProfilePhoto? profile) {
     final FamilyMember? p = u.partner;
-    final String role = _roleName(_Role.partner, p?.sex, married: u.married);
+    final String role = roleName(
+      FamilyRole.partner,
+      p?.sex,
+      married: u.married,
+    );
     final String timeline = unionTimeline(
       together: u.together,
       married: u.married,
@@ -277,7 +304,7 @@ class _FamilySectionState extends State<FamilySection> {
                     child: MergeSemantics(
                       child: Semantics(
                         button: p != null,
-                        hint: p == null ? null : 'otwórz wpis',
+                        hint: p == null ? null : 'otwórz',
                         child: InkWell(
                           borderRadius: BorderRadius.circular(8),
                           onTap: p == null ? null : () => _openPerson(p.id),
@@ -288,7 +315,7 @@ class _FamilySectionState extends State<FamilySection> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _initials(p),
+                                  _avatar(p, profile),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
@@ -340,6 +367,23 @@ class _FamilySectionState extends State<FamilySection> {
                     tooltip: 'Popraw związek',
                     onPressed: () => _summary(u.familyId, parents: false),
                   ),
+                  // The card leads further (rule 11): its chevron opens the partner's view too — out of the
+                  // screen reader, which has the card (ui review: a dead chevron next to ✎).
+                  if (p != null)
+                    ExcludeSemantics(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () => _openPerson(p.id),
+                        child: const SizedBox(
+                          width: 32,
+                          height: 48,
+                          child: Icon(
+                            Icons.chevron_right,
+                            color: GrobingColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
               Padding(
@@ -360,7 +404,7 @@ class _FamilySectionState extends State<FamilySection> {
                       ),
                       _chips([
                         for (final FamilyMember c in u.children)
-                          (_roleName(_Role.child, c.sex), c),
+                          (roleName(FamilyRole.child, c.sex), c),
                       ]),
                     ],
                     const SizedBox(height: 8),
@@ -380,25 +424,22 @@ class _FamilySectionState extends State<FamilySection> {
     );
   }
 
-  /// The partner's initials in a circle (wpis-osoby.md 9a c — the profile photo is left for later).
-  Widget _initials(FamilyMember? p) {
+  /// The partner's profile photo in a 40 dp circle, in its crop (v5.8); without one, their initials.
+  Widget _avatar(FamilyMember? p, ProfilePhoto? profile) {
     final String letters = p == null
         ? '?'
         : [?_first(p.givenNames), ?_first(p.surname)].join().toUpperCase();
+    final Widget initials = InitialsCircle(text: letters);
     return ExcludeSemantics(
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: GrobingColors.outline),
+      child: switch ((widget.photos, profile)) {
+        (final Photos photos?, final ProfilePhoto pp?) => ProfileCircle(
+          file: photos.fileOf(pp.relativePath),
+          crop: pp.crop,
+          size: 40,
+          unreadable: initials,
         ),
-        child: Text(
-          letters,
-          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 13),
-        ),
-      ),
+        _ => initials,
+      },
     );
   }
 
@@ -422,7 +463,7 @@ class _FamilySectionState extends State<FamilySection> {
           label: Text(
             '$role: ${shortPersonName(m.givenNames, m.surname)}',
             semanticsLabel:
-                '$role: ${personName(m.givenNames, m.surname)} — otwórz wpis',
+                '$role: ${personName(m.givenNames, m.surname)} — otwórz',
           ),
           labelStyle: const TextStyle(color: GrobingColors.text, fontSize: 14),
           backgroundColor: GrobingColors.surface,

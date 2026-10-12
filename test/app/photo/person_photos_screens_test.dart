@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
+import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/photo/photo_picker.dart';
 import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/app/photo/profile_circle.dart';
@@ -162,16 +163,24 @@ void main() {
     await _pumpUntil(tester, () => _shown(find.text('Jan Wymyślony')));
   }
 
-  /// The grave view → Jan's card → his form (correction).
+  /// The grave view → Jan's card → his view → ✎ → his form (correction; ISSUE-024: the card opens the
+  /// view first, style-b.md rule 15).
   Future<void> openJan(WidgetTester tester) async {
     await tester.tap(find.text('Jan Wymyślony'));
+    await _settle(tester);
+    await _pumpUntil(tester, () => _shown(find.byType(PersonScreen)));
+    await tester.tap(find.byTooltip('Popraw wpis'));
     await _settle(tester);
     await _pumpUntil(tester, () => _shown(find.byType(PersonFormScreen)));
   }
 
+  /// "Zapisz" → back to Jan's view → back to the grave, where the checks look.
   Future<void> saveForm(WidgetTester tester) async {
     await tester.tap(find.widgetWithText(FilledButton, 'Zapisz'));
     await _pumpUntil(tester, () => !_shown(find.byType(PersonFormScreen)));
+    await tester.pageBack();
+    await _settle(tester);
+    await _pumpUntil(tester, () => !_shown(find.byType(PersonScreen)));
   }
 
   Future<List<String>> photosOf(WidgetTester tester, int person) async =>
@@ -505,6 +514,87 @@ void main() {
         corrected.top + corrected.height / 2,
         closeTo(saved.top + saved.height / 2, 1),
       );
+      await tester.runAsync(db.close);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-024 AC-5 (zdjecie.md v1.5, B4\'\') — three actions; "Ustaw jako tło" → the bar says "Zdjęcie w '
+    'tle" and the action becomes "Usuń z tła"; saved with "Zapisz"; removing that photo says the person '
+    'will have no background, and after "Zapisz" none is left',
+    (tester) async {
+      await withPeople(tester, janPhotos: 2);
+      await pumpGrave(tester);
+      await openJan(tester);
+      await _pumpUntil(tester, () => _shown(find.text('2 zdjęcia')));
+      await tester.tap(find.bySemanticsLabel('Zdjęcia osoby: 2 — otwórz'));
+      await _settle(tester);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie 2 z 2 — otwórz'));
+      await _settle(tester);
+      expect(find.text('Ustaw jako profilowe'), findsOneWidget);
+      expect(find.text('Ustaw jako tło'), findsOneWidget);
+      expect(find.text('Usuń z tej osoby'), findsOneWidget);
+
+      await tester.tap(find.text('Ustaw jako tło'));
+      await _settle(tester);
+      expect(find.text('Zdjęcie w tle'), findsOneWidget);
+      expect(find.text('Usuń z tła'), findsOneWidget);
+      expect(find.text('Ustaw jako tło'), findsNothing);
+      await tester.pageBack();
+      await _settle(tester);
+      expect(
+        find.bySemanticsLabel('Zdjęcie 2 z 2, tło — otwórz'),
+        findsOneWidget,
+      );
+      await tester.pageBack();
+      await _settle(tester);
+      await saveForm(tester);
+      await leaveScreen(tester);
+      final List<bool> marks = (await tester.runAsync(
+        () async => [
+          for (final PersonPhoto p in await personPhotos(db, jan))
+            p.isBackground,
+        ],
+      ))!;
+      expect(marks, [false, true]);
+
+      await pumpGrave(tester);
+      await openJan(tester);
+      await _pumpUntil(tester, () => _shown(find.text('2 zdjęcia')));
+      await tester.tap(find.bySemanticsLabel('Zdjęcia osoby: 2 — otwórz'));
+      await _settle(tester);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie 2 z 2, tło — otwórz'));
+      await _settle(tester);
+      await _pumpUntil(
+        tester,
+        () => tester
+            .widget<TextButton>(
+              find.ancestor(
+                of: find.text('Usuń z tej osoby'),
+                matching: find.byType(TextButton),
+              ),
+            )
+            .enabled,
+      );
+      await tester.tap(find.text('Usuń z tej osoby'));
+      await _settle(tester);
+      expect(
+        find.textContaining('Osoba zostanie bez zdjęcia w tle.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Usuń'));
+      await _settle(tester);
+      await tester.pageBack();
+      await _settle(tester);
+      await saveForm(tester);
+      await leaveScreen(tester);
+      final List<bool> after = (await tester.runAsync(
+        () async => [
+          for (final PersonPhoto p in await personPhotos(db, jan))
+            p.isBackground,
+        ],
+      ))!;
+      expect(after, [false]);
       await tester.runAsync(db.close);
     },
   );

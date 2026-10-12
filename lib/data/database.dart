@@ -8,10 +8,10 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v7 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v8 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
-// claims on families and children's links (ISSUE-019) and a person's sex with the start of a union
-// (ISSUE-025), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
+// claims on families and children's links (ISSUE-019), a person's sex with the start of a union
+// (ISSUE-025) and a person's background photo (ISSUE-024), still without the grave fee (S4) and the cemetery offline-map status (SPIKE-001). Enums are
 // stored by name, not index: data lives for decades and a reordered enum must not silently change
 // meaning. Renaming an enum value is a schema change and needs a migration; a new value at the end is not.
 
@@ -206,7 +206,16 @@ class Media extends Table {
 /// the crop lies inside the image SQL cannot tell (the image's size is not in the database); one write
 /// path keeps it ([applyPersonPhotoEdits] in photos.dart, from the crop screen). A title (`TITL`)
 /// would be a column here too, when a screen needs it.
+///
+/// [isBackground] marks the photo behind the person's portrait in their view (ISSUE-024, ADR-013) — at
+/// most one per person, which the partial unique index holds. GEDCOM 7's link has only `CROP` and `TITL`,
+/// so this is the app's own extension. On the link, like the crop: a link removed takes its background
+/// with it.
 @TableIndex(name: 'person_media_media', columns: {#mediaId})
+@TableIndex.sql(
+  'CREATE UNIQUE INDEX person_media_background ON person_media (person_id) '
+  'WHERE is_background',
+)
 class PersonMedia extends Table {
   IntColumn get personId => integer().references(Persons, #id)();
   IntColumn get mediaId => integer().references(Media, #id)();
@@ -215,6 +224,7 @@ class PersonMedia extends Table {
   IntColumn get cropTop => integer().nullable()();
   IntColumn get cropWidth => integer().nullable()();
   IntColumn get cropHeight => integer().nullable()();
+  BoolColumn get isBackground => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column<Object>> get primaryKey => {personId, mediaId};
@@ -282,7 +292,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 7;
+  static const int currentSchemaVersion = 8;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -309,6 +319,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from4To5: _from4To5,
             from5To6: _from5To6,
             from6To7: _from6To7,
+            from7To8: _from7To8,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -426,6 +437,14 @@ class GrobingDatabase extends _$GrobingDatabase {
   /// needs no step: the type is stored by name, without a CHECK on its values.
   Future<void> _from6To7(Migrator m, Schema7 schema) =>
       m.addColumn(schema.persons, schema.persons.sex);
+
+  /// ISSUE-024 (ADR-013): a person's background photo, marked on the link. A new column with a default:
+  /// no row changes, nothing dropped, and every v7 link is not a background — a restored v7 backup shows
+  /// no background. The index allows one background per person.
+  Future<void> _from7To8(Migrator m, Schema8 schema) async {
+    await m.addColumn(schema.personMedia, schema.personMedia.isBackground);
+    await m.createIndex(schema.personMediaBackground);
+  }
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

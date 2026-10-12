@@ -29,6 +29,7 @@ import '../drift/grobing/generated/schema_v3.dart' as v3;
 import '../drift/grobing/generated/schema_v4.dart' as v4;
 import '../drift/grobing/generated/schema_v5.dart' as v5;
 import '../drift/grobing/generated/schema_v6.dart' as v6;
+import '../drift/grobing/generated/schema_v7.dart' as v7;
 import '../support/backup_fakes.dart';
 
 // ISSUE-009: restore from the backup file — key file + passphrase + backup file.
@@ -226,6 +227,19 @@ const List<String> _v6Rows = [
       "(NULL, NULL, 2, 'notes', 'claimed', 1791273600)",
 ];
 
+/// Made-up rows of a phone at schema v7 (ISSUE-024 AC-5): two people with a sex, a photo they share (Ewa's
+/// profile with a crop, Jan's second) and Jan's own profile — links with no background, as v7 had none.
+const List<String> _v7Rows = [
+  'INSERT INTO persons (id, given_names, surname, sex) VALUES '
+      "(1, 'Ewa', 'Wymyślona', 'female'), (2, 'Jan', 'Wymyślony', 'male')",
+  'INSERT INTO media (id, relative_path, grave_id) VALUES '
+      "(1, 'zdjecia/grupowe.png', NULL), (2, 'zdjecia/jan.png', NULL)",
+  'INSERT INTO person_media '
+      '(person_id, media_id, position, crop_left, crop_top, crop_width, crop_height) VALUES '
+      '(1, 1, 0, 10, 20, 160, 160), (2, 2, 0, NULL, NULL, NULL, NULL), '
+      '(2, 1, 1, NULL, NULL, NULL, NULL)',
+];
+
 /// Made-up rows of a phone at schema v4 (ISSUE-018 F3): a gravestone, a photo Jan and Anna share (Jan's
 /// profile, Anna's second) and Anna's own profile — links without crops, as every v4 link is.
 const List<String> _v4Rows = [
@@ -303,6 +317,13 @@ void main() {
         db.persons,
       )..where((p) => p.givenNames.equals('Matka 1'))).getSingle()).id,
     );
+    // ISSUE-024 (ADR-013): the mother's wedding photo is her background — a mark on her link, so it
+    // travels with the backup.
+    await db.customStatement(
+      'UPDATE person_media SET is_background = 1 '
+      "WHERE media_id IN (SELECT id FROM media WHERE relative_path LIKE '%slub%') "
+      "AND person_id IN (SELECT id FROM persons WHERE given_names = 'Matka 1')",
+    );
     final DataState state = await readDataState(
       db,
       mediaDir: Directory('${source.path}/media'),
@@ -375,149 +396,145 @@ void main() {
       upload(name, await _encrypt(tar, identity.recipient));
 
   group('AC-1 — the restored data is the source data', () {
-    test(
-      'end to end with the real setup: BackupService writes key and backup, a fresh phone '
-      'restores them with the fingerprint of the source; nothing is left behind',
-      () async {
-        // The source phone sets up its backup exactly as the app does (scrypt work factor 18).
-        final GrobingDatabase sourceDb = GrobingDatabase(
-          NativeDatabase(File('${source.path}/grobing.db')),
-        );
-        final FakeDocumentStore realDrive = FakeDocumentStore(
-          Directory('${tmp.path}/real-drive'),
-        );
-        final BackupService backup = BackupService(
-          database: sourceDb,
-          location: DataLocation.inDirectory(source),
-          workDir: Directory('${tmp.path}/cache'),
-          settings: BackupSettingsStore(File('${source.path}/backup.json')),
-          documents: realDrive,
-          lock: FakeDataLock(),
-        );
-        final BackupSettings settings = (await backup.setUp(_passphrase))!;
-        await sourceDb.close();
+    test('end to end with the real setup: BackupService writes key and backup, a fresh phone '
+        'restores them with the fingerprint of the source; nothing is left behind', () async {
+      // The source phone sets up its backup exactly as the app does (scrypt work factor 18).
+      final GrobingDatabase sourceDb = GrobingDatabase(
+        NativeDatabase(File('${source.path}/grobing.db')),
+      );
+      final FakeDocumentStore realDrive = FakeDocumentStore(
+        Directory('${tmp.path}/real-drive'),
+      );
+      final BackupService backup = BackupService(
+        database: sourceDb,
+        location: DataLocation.inDirectory(source),
+        workDir: Directory('${tmp.path}/cache'),
+        settings: BackupSettingsStore(File('${source.path}/backup.json')),
+        documents: realDrive,
+        lock: FakeDataLock(),
+      );
+      final BackupSettings settings = (await backup.setUp(_passphrase))!;
+      await sourceDb.close();
 
-        final ({Directory dir, GrobingDatabase db}) fresh = await phone(
-          'fresh',
-        );
-        final List<RestoreStep> steps = [];
-        final RestoreResult result =
-            await restoreServiceIn(fresh.dir, fresh.db, realDrive).restore(
-              backupUri: settings.documentUri,
-              keyUri: FakeDocumentStore.uriOf(backupKeyFileName),
-              passphrase: _passphrase,
-              onStep: steps.add,
-            );
-
-        final DataState restored = await stateOnDisk(fresh.dir);
-        expect(restored.fingerprint, sourceFingerprint);
-        expect(restored.rowCounts, sourceCounts);
-        expect(result.dataFingerprint, sourceFingerprint);
-        // US-005 AC-3 for people, read directly (US-005 review): the mother's two photos in their order
-        // (the portrait is her profile), and the father's only photo is the same row and file as her
-        // second — one shared photo, two links.
-        expect(sourceCounts['person_media'], 3);
-        final GrobingDatabase back = GrobingDatabase(
-          NativeDatabase(File('${fresh.dir.path}/grobing.db')),
-        );
-        final List<Person> people = await back.select(back.persons).get();
-        int idOf(String given) =>
-            people.firstWhere((p) => p.givenNames == given).id;
-        final List<PersonPhoto> mother = await personPhotos(
-          back,
-          idOf('Matka 1'),
-        );
-        final List<PersonPhoto> father = await personPhotos(
-          back,
-          idOf('Ojciec 1'),
-        );
-        // ISSUE-019 F3: the father's two unions come back, each with its child and its claims (ADR-011).
-        final PersonRelations fatherFamilies = await loadRelations(
-          back,
-          idOf('Ojciec 1'),
-        );
-        final int familyClaims =
-            (await back
-                    .customSelect(
-                      'SELECT count(*) AS c FROM assertions '
-                      'WHERE family_id IS NOT NULL OR family_child_id IS NOT NULL',
-                    )
-                    .getSingle())
-                .read<int>('c');
-        final int? me = await watchMe(back).first;
-        await back.close();
-        expect(me, idOf('Matka 1'), reason: 'ISSUE-022: "ja" comes back');
-        expect(fatherFamilies.unions.map((u) => u.partner!.givenNames), [
-          'Matka 1',
-          'Partnerka 1',
-        ]);
-        expect(fatherFamilies.unions.map((u) => u.children.single.givenNames), [
-          'Dziecko 1',
-          'Dziecko z drugiego związku 1',
-        ]);
-        expect(familyClaims, 4); // two unions and two children's links
-        // ISSUE-025: the sex written and the second union's "Razem od" before its wedding come back.
-        expect(
-          people.firstWhere((p) => p.givenNames == 'Ojciec 1').sex,
-          Sex.male,
-        );
-        expect(
-          people.firstWhere((p) => p.givenNames == 'Dziecko 1').sex,
-          isNull,
-        );
-        expect(fatherFamilies.unions.last.together?.from.year, 1922);
-        expect(fatherFamilies.unions.last.married, isTrue);
-        expect(mother.map((p) => p.relativePath), [
-          'wymyslone/portret-1.png',
-          'wymyslone/slub-1.png',
-        ]);
-        expect(father.single.mediaId, mother[1].mediaId);
-        // ISSUE-018 F4: each link to the shared photo comes back with its own crop; the portrait has none.
-        expect(mother[0].crop, isNull);
-        expect(
-          mother[1].crop,
-          const PhotoCrop(left: 80, top: 50, width: 160, height: 160),
-        );
-        expect(
-          father.single.crop,
-          const PhotoCrop(left: 240, top: 50, width: 160, height: 160),
-        );
-        for (final PersonPhoto p in mother) {
-          expect(
-            File('${fresh.dir.path}/media/${p.relativePath}').existsSync(),
-            isTrue,
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('fresh');
+      final List<RestoreStep> steps = [];
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, realDrive).restore(
+            backupUri: settings.documentUri,
+            keyUri: FakeDocumentStore.uriOf(backupKeyFileName),
+            passphrase: _passphrase,
+            onStep: steps.add,
           );
-        }
+
+      final DataState restored = await stateOnDisk(fresh.dir);
+      expect(restored.fingerprint, sourceFingerprint);
+      expect(restored.rowCounts, sourceCounts);
+      expect(result.dataFingerprint, sourceFingerprint);
+      // US-005 AC-3 for people, read directly (US-005 review): the mother's two photos in their order
+      // (the portrait is her profile), and the father's only photo is the same row and file as her
+      // second — one shared photo, two links.
+      expect(sourceCounts['person_media'], 3);
+      final GrobingDatabase back = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<Person> people = await back.select(back.persons).get();
+      int idOf(String given) =>
+          people.firstWhere((p) => p.givenNames == given).id;
+      final List<PersonPhoto> mother = await personPhotos(
+        back,
+        idOf('Matka 1'),
+      );
+      final List<PersonPhoto> father = await personPhotos(
+        back,
+        idOf('Ojciec 1'),
+      );
+      // ISSUE-019 F3: the father's two unions come back, each with its child and its claims (ADR-011).
+      final PersonRelations fatherFamilies = await loadRelations(
+        back,
+        idOf('Ojciec 1'),
+      );
+      final int familyClaims =
+          (await back
+                  .customSelect(
+                    'SELECT count(*) AS c FROM assertions '
+                    'WHERE family_id IS NOT NULL OR family_child_id IS NOT NULL',
+                  )
+                  .getSingle())
+              .read<int>('c');
+      final int? me = await watchMe(back).first;
+      await back.close();
+      expect(me, idOf('Matka 1'), reason: 'ISSUE-022: "ja" comes back');
+      expect(fatherFamilies.unions.map((u) => u.partner!.givenNames), [
+        'Matka 1',
+        'Partnerka 1',
+      ]);
+      expect(fatherFamilies.unions.map((u) => u.children.single.givenNames), [
+        'Dziecko 1',
+        'Dziecko z drugiego związku 1',
+      ]);
+      expect(familyClaims, 4); // two unions and two children's links
+      // ISSUE-025: the sex written and the second union's "Razem od" before its wedding come back.
+      expect(
+        people.firstWhere((p) => p.givenNames == 'Ojciec 1').sex,
+        Sex.male,
+      );
+      expect(people.firstWhere((p) => p.givenNames == 'Dziecko 1').sex, isNull);
+      expect(fatherFamilies.unions.last.together?.from.year, 1922);
+      expect(fatherFamilies.unions.last.married, isTrue);
+      expect(mother.map((p) => p.relativePath), [
+        'wymyslone/portret-1.png',
+        'wymyslone/slub-1.png',
+      ]);
+      expect(father.single.mediaId, mother[1].mediaId);
+      // ISSUE-024 AC-5: the mother's background comes back on her link only — the father's link to the
+      // same photo is not his background.
+      expect(mother.map((p) => p.isBackground), [false, true]);
+      expect(father.single.isBackground, isFalse);
+      // ISSUE-018 F4: each link to the shared photo comes back with its own crop; the portrait has none.
+      expect(mother[0].crop, isNull);
+      expect(
+        mother[1].crop,
+        const PhotoCrop(left: 80, top: 50, width: 160, height: 160),
+      );
+      expect(
+        father.single.crop,
+        const PhotoCrop(left: 240, top: 50, width: 160, height: 160),
+      );
+      for (final PersonPhoto p in mother) {
         expect(
-          (result.schemaFrom, result.schemaTo),
-          (
-            GrobingDatabase.currentSchemaVersion,
-            GrobingDatabase.currentSchemaVersion,
-          ),
+          File('${fresh.dir.path}/media/${p.relativePath}').existsSync(),
+          isTrue,
         );
-        expect(steps, [
-          RestoreStep.checkingSpace,
-          RestoreStep.unlockingKey,
-          RestoreStep.copying,
-          RestoreStep.decrypting,
-          RestoreStep.verifying,
-          RestoreStep.replacing,
-        ]);
-        // Only the data is left: no staging, no old data, no marker, no secret.
-        expect(
-          fresh.dir
-              .listSync()
-              .map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty))
-              .toSet(),
-          {'grobing.db', 'media', 'backup.json'},
-        );
-        final String stored = File(
-          '${fresh.dir.path}/backup.json',
-        ).readAsStringSync();
-        expect(stored, isNot(contains('AGE-SECRET-KEY')));
-        expect(stored, isNot(contains(_passphrase)));
-      },
-    );
+      }
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (
+          GrobingDatabase.currentSchemaVersion,
+          GrobingDatabase.currentSchemaVersion,
+        ),
+      );
+      expect(steps, [
+        RestoreStep.checkingSpace,
+        RestoreStep.unlockingKey,
+        RestoreStep.copying,
+        RestoreStep.decrypting,
+        RestoreStep.verifying,
+        RestoreStep.replacing,
+      ]);
+      // Only the data is left: no staging, no old data, no marker, no secret.
+      expect(
+        fresh.dir
+            .listSync()
+            .map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty))
+            .toSet(),
+        {'grobing.db', 'media', 'backup.json'},
+      );
+      final String stored = File(
+        '${fresh.dir.path}/backup.json',
+      ).readAsStringSync();
+      expect(stored, isNot(contains('AGE-SECRET-KEY')));
+      expect(stored, isNot(contains(_passphrase)));
+    });
 
     test(
       'a phone with other data: replaced entirely — also photos the backup does not have',
@@ -1624,6 +1641,94 @@ void main() {
       expect(father.unions.map((u) => u.together), [null, null]);
       expect(father.unions.map((u) => u.married), [true, false]);
       expect(father.unions.first.marriage?.from.year, 1920);
+    },
+  );
+
+  test(
+    'ISSUE-024 AC-5 — a v7 backup restores into the v8 app: every v7 table and count kept, every link, '
+    'position and crop kept, and nobody has a background',
+    () async {
+      final File v7File = File('${tmp.path}/v7.db');
+      final Directory v7Media = Directory('${tmp.path}/v7-media');
+      final v7.DatabaseAtV7 old = v7.DatabaseAtV7(NativeDatabase(v7File));
+      for (final String row in _v7Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 7');
+      const List<String> photoPaths = [
+        'zdjecia/grupowe.png',
+        'zdjecia/jan.png',
+      ];
+      for (final (int i, String path) in photoPaths.indexed) {
+        File('${v7Media.path}/$path')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalPeoplePng(i + 1, heads: 2));
+      }
+      final DataState v7State = await readDataState(old, mediaDir: v7Media);
+      expect(v7State.schemaVersion, 7);
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v7-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v7-snapshot.db').readAsBytesSync(),
+        ),
+        for (final String path in photoPaths)
+          (
+            path: 'media/$path',
+            data: File('${v7Media.path}/$path').readAsBytesSync(),
+          ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v7.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 7,
+              'record_counts': v7State.rowCounts,
+              'data_fingerprint': v7State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v8');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (7, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(after.rowCounts, v7State.rowCounts);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<PersonPhoto> ewa = await personPhotos(reopened, 1);
+      final List<PersonPhoto> jan = await personPhotos(reopened, 2);
+      await reopened.close();
+      expect(
+        ewa.single.crop,
+        const PhotoCrop(left: 10, top: 20, width: 160, height: 160),
+      );
+      expect(jan.map((p) => p.mediaId), [2, 1]);
+      expect(
+        [...ewa, ...jan].map((p) => p.isBackground),
+        everyElement(isFalse),
+      );
+      for (final String path in photoPaths) {
+        expect(File('${fresh.dir.path}/media/$path').existsSync(), isTrue);
+      }
     },
   );
 

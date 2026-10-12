@@ -296,6 +296,10 @@ class InitialsCircle extends StatelessWidget {
     ),
     child: Text(
       text,
+      // The letters grow with the text only so far: the full name stands next to or under the circle, and
+      // at 200% "DW" touched the outline (ui review of ISSUE-024, SC 1.4.4).
+      textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+      maxLines: 1,
       style: TextStyle(
         color: accent ? GrobingColors.amber : GrobingColors.text,
         fontSize: accent ? 13 : 14,

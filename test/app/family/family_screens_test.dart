@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
+import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
@@ -1018,8 +1019,17 @@ void main() {
         find.text('Alex Testowe'),
       ]);
 
-      // A chip opens the relative's entry over this form.
+      // ISSUE-024 (wpis-osoby.md v5.8, osoba.md D14): a chip opens the relative's view over this form —
+      // his mini tree names his parents "Ojciec" and "Matka" — and ✎ there his entry.
       await tapVisible(tester, find.text('Syn: Kuba'));
+      await waitFor(tester, find.byType(PersonScreen));
+      await waitFor(tester, find.text('Ojciec'));
+      expect(find.text('Matka'), findsOneWidget);
+      expect(
+        find.byType(PersonFormScreen, skipOffstage: false),
+        findsOneWidget,
+      ); // Maria's, below
+      await tapVisible(tester, find.byTooltip('Popraw wpis'));
       await waitFor(tester, find.text('Ojciec: Jan'));
       expect(find.text('Matka: Maria'), findsOneWidget);
       expect(find.text('Rodzice · ślub 1950'), findsOneWidget);

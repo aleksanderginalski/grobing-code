@@ -30,16 +30,36 @@ Future<void> addPersonPhotos(
   await draft.addPicked(picked);
 }
 
+/// What "Zdjęcie w tle" gives back (zdjecia-osoby.md v1.4): the photo chosen — one of the draft's, or one
+/// just added to it — or [photo] null for "Bez zdjęcia w tle". Back gives nothing.
+class BackgroundChoice {
+  const BackgroundChoice(this.photo);
+
+  final DraftPhoto? photo;
+}
+
 /// A person's photos (05_DESIGN/zdjecia-osoby.md): the profile photo in a circle, every photo in a grid
 /// of squares, "Dodaj zdjęcie" as the last cell. Nothing here is written: back returns to the form, whose
-/// "Zapisz" writes the changes (D1).
+/// "Zapisz" writes the changes (D1). From the person's view only to look at ([readOnly], v1.2), or to
+/// choose the background ([chooseBackground], v1.4) — the screen pops a [BackgroundChoice] and the view
+/// writes it.
 class PersonPhotosScreen extends StatefulWidget {
   const PersonPhotosScreen({
     super.key,
     required this.draft,
     required this.personName,
     required this.shortName,
+    this.readOnly = false,
+    this.chooseBackground = false,
   });
+
+  /// "Zdjęcie w tle" from the band of the person's view (zdjecia-osoby.md v1.4; osoba.md D21): a tap on a
+  /// photo chooses it, the tile adds one photo and chooses it, "Bez zdjęcia w tle" takes it off.
+  final bool chooseBackground;
+
+  /// From the person's view (zdjecia-osoby.md v1.2; osoba.md W2): no "Dodaj zdjęcie" tile, no line about
+  /// saving, and the photo opens without actions.
+  final bool readOnly;
 
   final PersonPhotosDraft draft;
 
@@ -76,15 +96,36 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
         draft: widget.draft,
         initialIndex: index,
         personName: widget.shortName,
+        readOnly: widget.readOnly,
       ),
     ),
   );
+
+  /// The tile in "Zdjęcie w tle": one photo, from the gallery or the camera, joins the person's photos and
+  /// is the choice (v1.4).
+  Future<void> _addBackground() async {
+    final PersonPhotosDraft draft = widget.draft;
+    final PhotoSource? source = await showPhotoSourceSheet(
+      context,
+      title: 'Zdjęcie w tle',
+    );
+    if (source == null) return;
+    final File? picked = await draft.photos.pick(source);
+    if (picked == null) return;
+    final int before = draft.count;
+    await draft.addPicked([picked]);
+    if (!mounted || draft.count == before) return;
+    Navigator.of(context).pop(BackgroundChoice(draft.items.last));
+  }
 
   @override
   Widget build(BuildContext context) {
     final PersonPhotosDraft draft = widget.draft;
     final List<DraftPhoto> items = draft.items;
     final ({int failed, int of})? failure = draft.failure;
+    if (widget.chooseBackground) {
+      return _backgroundChooser(draft, items, failure);
+    }
     return Scaffold(
       backgroundColor: GrobingColors.background,
       body: SafeArea(
@@ -124,7 +165,7 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
                       padding: const EdgeInsets.only(top: 16),
                       child: PhotoErrorLine(_failureText(failure)),
                     ),
-                  if (draft.hasChanges)
+                  if (draft.hasChanges && !widget.readOnly)
                     const Padding(
                       // Element 6.
                       padding: EdgeInsets.only(top: 16),
@@ -145,13 +186,77 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
     );
   }
 
+  /// "Zdjęcie w tle" (v1.4): the hint, the grid with the current background framed in amber, the tile, and
+  /// "Bez zdjęcia w tle" while there is one.
+  Widget _backgroundChooser(
+    PersonPhotosDraft draft,
+    List<DraftPhoto> items,
+    ({int failed, int of})? failure,
+  ) => Scaffold(
+    backgroundColor: GrobingColors.background,
+    body: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PhotoViewerBar(title: 'Zdjęcie w tle', subtitle: widget.personName),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    // Without photos there is nothing to tap yet — the empty state says the one action
+                    // (rule 9).
+                    items.isEmpty
+                        ? 'Ta osoba nie ma jeszcze zdjęć. Dodaj zdjęcie, które ma być w tle.'
+                        : 'Dotknij zdjęcia, które ma być w tle.',
+                    style: const TextStyle(
+                      color: GrobingColors.textMuted,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                _grid(items),
+                if (failure != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: PhotoErrorLine(_failureText(failure)),
+                  ),
+                if (draft.background != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: GrobingColors.text,
+                          iconColor: GrobingColors.text,
+                        ),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(const BackgroundChoice(null)),
+                        icon: const Icon(Icons.hide_image_outlined),
+                        label: const Text('Bez zdjęcia w tle'),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
   /// Elements 4–5: squares cut from the middle, then the cells of photos still being prepared, then the
-  /// tile.
+  /// tile. Choosing the background, a tap chooses the photo and the current one has a frame in amber.
   Widget _grid(List<DraftPhoto> items) => LayoutBuilder(
     builder: (context, constraints) {
       const double gap = 8;
       final double cell = (constraints.maxWidth - 2 * gap) / 3;
       final int decode = coverDecodeWidth(context, cell);
+      final PersonPhotosDraft draft = widget.draft;
       return Wrap(
         spacing: gap,
         runSpacing: gap,
@@ -159,18 +264,23 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
           for (final (int i, DraftPhoto p) in items.indexed)
             _Cell(
               size: cell,
+              selected: widget.chooseBackground && draft.isBackground(p),
               child: Semantics(
                 button: true,
-                label: i == 0
-                    ? 'Zdjęcie 1 z ${items.length}, profilowe — otwórz'
-                    : 'Zdjęcie ${i + 1} z ${items.length} — otwórz',
+                // A state of choice only where there is a choice (ui review: false is not "none").
+                selected: widget.chooseBackground
+                    ? draft.isBackground(p)
+                    : null,
+                label: widget.chooseBackground
+                    ? _chooseLabel(i, items.length, draft.isBackground(p))
+                    : _cellLabel(i, items.length, draft.isBackground(p)),
                 // The label replaces the cell's own semantics, so the tap is given here too, or a
                 // screen reader, Switch Access and Voice Access get a button they cannot press (ui
                 // review, MAJOR; WCAG 2.2 SC 4.1.2).
-                onTap: () => _open(i),
+                onTap: () => _tapCell(i, p),
                 excludeSemantics: true,
                 child: InkWell(
-                  onTap: () => _open(i),
+                  onTap: () => _tapCell(i, p),
                   child: Image.file(
                     p.file,
                     fit: BoxFit.cover,
@@ -191,16 +301,38 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
                 ),
               ),
             ),
-          _AddTile(
-            size: cell,
-            onTap: widget.draft.preparing > 0
-                ? null
-                : () => addPersonPhotos(context, widget.draft),
-          ),
+          if (!widget.readOnly)
+            _AddTile(
+              size: cell,
+              onTap: widget.draft.preparing > 0
+                  ? null
+                  : widget.chooseBackground
+                  ? _addBackground
+                  : () => addPersonPhotos(context, widget.draft),
+            ),
         ],
       );
     },
   );
+
+  void _tapCell(int index, DraftPhoto photo) {
+    if (widget.chooseBackground) {
+      Navigator.of(context).pop(BackgroundChoice(photo));
+    } else {
+      _open(index);
+    }
+  }
+
+  /// In "Zdjęcie w tle": what a tap does, and which is the background now (v1.4).
+  static String _chooseLabel(int i, int count, bool background) => background
+      ? 'Zdjęcie ${i + 1} z $count, tło — wybierz'
+      : 'Zdjęcie ${i + 1} z $count — ustaw jako tło';
+
+  /// The background has no mark on the photo (rule 14); the screen reader hears it (v1.2).
+  static String _cellLabel(int i, int count, bool background) {
+    final List<String> state = [if (i == 0) 'profilowe', if (background) 'tło'];
+    return 'Zdjęcie ${i + 1} z $count${state.isEmpty ? '' : ', ${state.join(', ')}'} — otwórz';
+  }
 
   static String _failureText(({int failed, int of}) f) => f.of == 1
       ? 'Nie udało się wczytać zdjęcia. Spróbuj jeszcze raz.'
@@ -276,21 +408,48 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _Cell extends StatelessWidget {
-  const _Cell({required this.size, required this.child, this.color});
+  const _Cell({
+    required this.size,
+    required this.child,
+    this.color,
+    this.selected = false,
+  });
 
   final double size;
   final Widget child;
   final Color? color;
 
+  /// The current background in "Zdjęcie w tle" (v1.4): a 2 dp frame in amber around the cell, then 2 dp
+  /// of the background, the photo smaller inside — as the crop's ring: amber against the background
+  /// 8.81:1 on any photo, and the photo's changed outline says it without colour (ui review, MAJOR:
+  /// drawn on the photo's edge, amber on a sepia photo was about 1:1).
+  final bool selected;
+
   @override
   Widget build(BuildContext context) => SizedBox.square(
     dimension: size,
-    child: Material(
-      color: color ?? Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: child,
-    ),
+    child: selected
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: GrobingColors.amber, width: 2),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Material(
+                color: color ?? Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                clipBehavior: Clip.antiAlias,
+                child: child,
+              ),
+            ),
+          )
+        : Material(
+            color: color ?? Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: child,
+          ),
   );
 }
 

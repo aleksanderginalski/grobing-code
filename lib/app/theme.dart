@@ -24,6 +24,14 @@ abstract final class GrobingColors {
   /// backup in the settings (05_DESIGN/ustawienia.md, element 2), later "Plan offline". Always with an
   /// icon and words, never colour alone (SC 1.4.1): 8.19:1 on the surface.
   static const Color stateOk = Color(0xFF8CC084);
+
+  /// Relation lines in the family tree and the person's mini tree (style-b.md v1.16, roles; first used by
+  /// 05_DESIGN/osoba.md element 6): parent–child 8.50:1 and partners 8.16:1 on the background (SC 1.4.11).
+  /// The two differ only in hue (1.04:1), so the kind of line is carried by its shape too — a stepped line
+  /// down for parent–child, a level one for partners, dashed for "razem" (SC 1.4.1). Never anything but
+  /// relation lines.
+  static const Color relParentChild = Color(0xFF8FB3C9);
+  static const Color relPartners = Color(0xFFD39BB0);
 }
 
 abstract final class GrobingTheme {

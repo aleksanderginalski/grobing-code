@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../data/graves.dart';
 import '../../data/photos.dart' show PhotoCrop, gravePhotoPath;
 import '../dates.dart';
+import '../person/person_screen.dart';
 import '../photo/photo_picker.dart';
 import '../photo/photo_source_sheet.dart';
 import '../photo/photo_viewer_screen.dart';
@@ -19,17 +20,21 @@ import 'person_form_screen.dart';
 
 /// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
 /// above the title (ISSUE-016) and each person's profile photo in their card (v4, ISSUE-017). The grave's
-/// name is set from the pencil next to the title.
+/// name is set from the pencil next to the title; a person's card opens their view (v5, ISSUE-024).
 class GraveScreen extends StatefulWidget {
   const GraveScreen({
     super.key,
     required this.database,
     required this.graveId,
     this.photos,
+    this.tab = AppTab.map,
   });
 
   final GrobingDatabase database;
   final int graveId;
+
+  /// The tab of the stack — the map, or Osoby through a person's view (style-b.md rule 12).
+  final AppTab tab;
 
   /// Null only in tests of other features: then the screen has no photo and no "Dodaj zdjęcie".
   final Photos? photos;
@@ -59,13 +64,13 @@ class _GraveScreenState extends State<GraveScreen> {
     ),
   );
 
-  Future<void> _correct(GraveDetail g, BuriedPerson person) => _openForm(
-    Correction(
-      person: person,
-      graveTitle: _graveTitle(g),
-      peopleCount: g.people.length,
-      graveId: g.id,
-    ),
+  /// A person's card: their view, where ✎ corrects them (style-b.md rule 15; grob.md v5).
+  Future<void> _openPerson(BuriedPerson person) => openPersonView(
+    context,
+    widget.database,
+    person.id,
+    photos: widget.photos,
+    tab: widget.tab,
   );
 
   Future<void> _openForm(PersonFormMode mode) => Navigator.of(context).push(
@@ -74,6 +79,7 @@ class _GraveScreenState extends State<GraveScreen> {
         database: widget.database,
         mode: mode,
         photos: widget.photos,
+        tab: widget.tab,
       ),
     ),
   );
@@ -138,9 +144,9 @@ class _GraveScreenState extends State<GraveScreen> {
       final bool failed =
           snapshot.hasError || (snapshot.hasData && grave == null);
       return Scaffold(
-        // Opened from the map — the only way here until the person view (ISSUE-024) adds a second.
+        // From the map's cemetery, or from a person's view in whatever tab it was opened (ISSUE-024).
         bottomNavigationBar: GrobingTabBar(
-          active: AppTab.map,
+          active: widget.tab,
           database: widget.database,
           photos: widget.photos,
         ),
@@ -229,7 +235,7 @@ class _GraveScreenState extends State<GraveScreen> {
             (final Photos photos, final String path) => photos.fileOf(path),
             _ => null,
           },
-          onTap: () => _correct(grave, p),
+          onTap: () => _openPerson(p),
         ),
       const SizedBox(height: 8),
       // Element 6: "Dodaj osobę" only — adding the photo is the field 1a (D10, D12).

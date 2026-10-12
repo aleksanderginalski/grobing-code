@@ -21,10 +21,20 @@ class CemeteryScreen extends StatefulWidget {
     required this.database,
     required this.cemeteryId,
     this.photos,
+    this.tab = AppTab.map,
+    this.highlightGraveId,
   });
 
   final GrobingDatabase database;
   final int cemeteryId;
+
+  /// The tab of the stack — the map, or the tab of the person's view whose "Pochówek" opened this
+  /// (style-b.md rule 12).
+  final AppTab tab;
+
+  /// The grave to mark — from a person's "Pochówek" (cmentarz.md v4.3; osoba.md D17): the list scrolls
+  /// to it and its card has a frame in amber, "zaznaczone" for a screen reader.
+  final int? highlightGraveId;
 
   /// Null only in tests of other features: then the cards have no thumbnails.
   final Photos? photos;
@@ -35,6 +45,8 @@ class CemeteryScreen extends StatefulWidget {
 
 class _CemeteryScreenState extends State<CemeteryScreen> {
   late Stream<CemeteryGraves?> _graves = _watch();
+  final GlobalKey _highlighted = GlobalKey();
+  bool _scrolledToHighlight = false;
 
   Stream<CemeteryGraves?> _watch() =>
       watchCemeteryGraves(widget.database, widget.cemeteryId);
@@ -45,6 +57,7 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
         database: widget.database,
         graveId: id,
         photos: widget.photos,
+        tab: widget.tab,
       ),
     ),
   );
@@ -57,6 +70,7 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
         database: widget.database,
         mode: NewGrave(cemeteryId: cemetery.id, cemeteryName: cemetery.name),
         photos: widget.photos,
+        tab: widget.tab,
       ),
     ),
   );
@@ -69,9 +83,9 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
       final bool failed =
           snapshot.hasError || (snapshot.hasData && cemetery == null);
       return Scaffold(
-        // Opened from the map — the only way here until the person view (ISSUE-024) adds a second.
+        // From the map's cemetery sheet, or from a person's "Pochówek" in whatever tab (ISSUE-024).
         bottomNavigationBar: GrobingTabBar(
-          active: AppTab.map,
+          active: widget.tab,
           database: widget.database,
           photos: widget.photos,
         ),
@@ -141,26 +155,45 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
 
   /// Elements 2 and 3: the counts, then the graves in the order they were entered. The last card keeps
   /// clear of the pinned button.
-  Widget _list(CemeteryGraves cemetery) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-    children: [
-      Text(
-        '${gravesLabel(cemetery.graves.length)} · '
-        '${peopleLabel(cemetery.personCount)}',
-        style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
-      ),
-      const SizedBox(height: 8),
-      for (final GraveSummary g in cemetery.graves)
-        _GraveCard(
-          grave: g,
-          photo: switch ((widget.photos, g.photoPath)) {
-            (final Photos photos?, final String path?) => photos.fileOf(path),
-            _ => null,
-          },
-          onTap: () => _openGrave(g.id),
+  Widget _list(CemeteryGraves cemetery) {
+    _scrollToHighlight();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      // A marked grave far down the list needs its card built to scroll to it.
+      cacheExtent: widget.highlightGraveId == null ? null : 100000,
+      children: [
+        Text(
+          '${gravesLabel(cemetery.graves.length)} · '
+          '${peopleLabel(cemetery.personCount)}',
+          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
         ),
-    ],
-  );
+        const SizedBox(height: 8),
+        for (final GraveSummary g in cemetery.graves)
+          _GraveCard(
+            key: g.id == widget.highlightGraveId ? _highlighted : null,
+            grave: g,
+            photo: switch ((widget.photos, g.photoPath)) {
+              (final Photos photos?, final String path?) => photos.fileOf(path),
+              _ => null,
+            },
+            selected: g.id == widget.highlightGraveId,
+            onTap: () => _openGrave(g.id),
+          ),
+      ],
+    );
+  }
+
+  /// Once, when the list is first built: the marked card whole on the screen (cmentarz.md v4.3).
+  void _scrollToHighlight() {
+    if (widget.highlightGraveId == null || _scrolledToHighlight) return;
+    _scrolledToHighlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final BuildContext? card = _highlighted.currentContext;
+      if (card != null && card.mounted) {
+        Scrollable.ensureVisible(card, alignment: 0.3);
+      }
+    });
+  }
 
   /// What will be here; the one action is the pinned "Dodaj grób" (style-b.md rule 9).
   Widget _empty() => const Center(
@@ -206,10 +239,20 @@ class _CemeteryScreenState extends State<CemeteryScreen> {
 /// Element 3: a grave on the surface with a chevron (style-b.md rule 11). Its title is the grave's
 /// name; without one, the people buried in it (D5).
 class _GraveCard extends StatelessWidget {
-  const _GraveCard({required this.grave, required this.onTap, this.photo});
+  const _GraveCard({
+    super.key,
+    required this.grave,
+    required this.onTap,
+    this.photo,
+    this.selected = false,
+  });
 
   final GraveSummary grave;
   final VoidCallback onTap;
+
+  /// Marked from a person's "Pochówek": a 2 dp frame in amber and "zaznaczone" — never colour alone
+  /// (cmentarz.md D11, v4.3; SC 1.4.1).
+  final bool selected;
 
   /// Element 3 (d): the gravestone photo, when the grave has one.
   final File? photo;
@@ -241,45 +284,53 @@ class _GraveCard extends StatelessWidget {
         : NamesText(names: people, style: _title);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: GrobingColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 64),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-              child: Row(
-                children: [
-                  if (photo case final File file?) _Thumbnail(file: file),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        title,
-                        if (grave.name != null && people.isNotEmpty) ...[
+      child: Semantics(
+        selected: selected,
+        child: Material(
+          color: GrobingColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: selected
+                ? const BorderSide(color: GrobingColors.amber, width: 2)
+                : BorderSide.none,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 64),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                child: Row(
+                  children: [
+                    if (photo case final File file?) _Thumbnail(file: file),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          title,
+                          if (grave.name != null && people.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            NamesText(names: people, style: _muted),
+                          ],
                           const SizedBox(height: 3),
-                          NamesText(names: people, style: _muted),
-                        ],
-                        const SizedBox(height: 3),
-                        Text(
-                          addressLine(
-                            graveAddress(grave.sector, grave.row, grave.plot),
-                            hasPin: grave.hasPin,
+                          Text(
+                            addressLine(
+                              graveAddress(grave.sector, grave.row, grave.plot),
+                              hasPin: grave.hasPin,
+                            ),
+                            style: _muted,
                           ),
-                          style: _muted,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: GrobingColors.textMuted,
-                  ),
-                ],
+                    const Icon(
+                      Icons.chevron_right,
+                      color: GrobingColors.textMuted,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

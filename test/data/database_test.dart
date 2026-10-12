@@ -8,8 +8,8 @@ import 'package:grobing/data/database.dart';
 // ISSUE-007 AC-1 and AC-2; the schema is v2 since ISSUE-011 (assertions, burials per claimed grave).
 // All data here is made up (family-data.md).
 
-// v7 (ISSUE-025) has the tables of v6 — persons got a sex; v6 (ISSUE-019) gave family_children an id and
-// let assertions cite a family or a child's link (ADR-011).
+// v8 (ISSUE-024) has the tables of v7 — a photo link got its background mark; v7 (ISSUE-025) — persons got a
+// sex; v6 (ISSUE-019) gave family_children an id and let assertions cite a family or a child's link (ADR-011).
 const List<String> _v7Tables = [
   'assertions',
   'burials',
@@ -39,15 +39,15 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 7, integrity ok, exactly the v7 tables, foreign keys on, the crop on the photo link, '
-      'claims on families and on children\'s links, a person\'s sex',
+      'user_version 8, integrity ok, exactly the v8 tables, foreign keys on, the crop and the background '
+      'on the photo link, claims on families and on children\'s links, a person\'s sex',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 7);
+        expect(await _single(db, 'PRAGMA user_version'), 8);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -67,7 +67,13 @@ void main() {
                 .toList();
         expect(
           linkColumns,
-          containsAll(['crop_left', 'crop_top', 'crop_width', 'crop_height']),
+          containsAll([
+            'crop_left',
+            'crop_top',
+            'crop_width',
+            'crop_height',
+            'is_background',
+          ]),
         );
         Future<List<String>> columns(String table) async => [
           for (final QueryRow r
@@ -83,6 +89,53 @@ void main() {
           containsAll(['family_id', 'family_child_id']),
         );
         expect(await columns('persons'), contains('sex'));
+      },
+    );
+
+    test(
+      'ISSUE-024 (ADR-013) — one background per person: the partial index refuses a second, and allows '
+      'one for each person and any number of links that are not one',
+      () async {
+        final GrobingDatabase db = GrobingDatabase(NativeDatabase.memory());
+        addTearDown(db.close);
+        final int ewa = await db
+            .into(db.persons)
+            .insert(PersonsCompanion.insert(givenNames: const Value('Ewa')));
+        final int jan = await db
+            .into(db.persons)
+            .insert(PersonsCompanion.insert(givenNames: const Value('Jan')));
+        Future<int> photo(String name) => db
+            .into(db.media)
+            .insert(MediaCompanion.insert(relativePath: 'wymyslone/$name.jpg'));
+        final int a = await photo('a');
+        final int b = await photo('b');
+        final int c = await photo('c');
+        Future<void> link(int person, int media, int position, bool bg) => db
+            .into(db.personMedia)
+            .insert(
+              PersonMediaCompanion.insert(
+                personId: person,
+                mediaId: media,
+                position: position,
+                isBackground: Value(bg),
+              ),
+            );
+        await link(ewa, a, 0, true);
+        await link(ewa, b, 1, false);
+        await link(ewa, c, 2, false);
+        await link(jan, a, 0, true); // the same photo is Jan's background too
+        await expectLater(
+          (db.update(db.personMedia)
+                ..where((l) => l.personId.equals(ewa) & l.mediaId.equals(b)))
+              .write(const PersonMediaCompanion(isBackground: Value(true))),
+          throwsA(isA<SqliteException>()),
+        );
+        expect(
+          await (db.select(
+            db.personMedia,
+          )..where((l) => l.isBackground.equals(true))).get(),
+          hasLength(2),
+        );
       },
     );
 

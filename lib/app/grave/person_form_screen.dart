@@ -9,6 +9,7 @@ import '../photo/photo_viewer_screen.dart' show PhotoErrorLine;
 import '../photo/photos.dart';
 import '../photo/profile_circle.dart';
 import '../polish.dart';
+import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
@@ -67,15 +68,30 @@ class Correction extends PersonFormMode {
   final int? graveId;
 }
 
-/// The correction of [personId]'s entry opened from outside their grave — a relative's chip in "Rodzina"
-/// (wpis-osoby.md v5) or a card of the Osoby tab until the person view exists (ISSUE-022 D2). Their first
-/// grave, when they have one, is the form's subtitle and comes first in "Kto jest na zdjęciu?".
+/// The correction of [personId]'s entry — from ✎ in their view (05_DESIGN/osoba.md element 1; wpis-osoby.md
+/// v5.8), or from "Dodaj zdjęcie" there with the photo sheet over it at once ([pickPhotosAtStart],
+/// osoba.md D20). Their first grave, when they have one, is the form's subtitle and comes first in "Kto
+/// jest na zdjęciu?".
+///
+/// One correction of a person at a time (osoba.md D15): when theirs lies lower on the stack — the form,
+/// a relative's chip, their mini tree, back to the same person — this returns to it instead of opening a
+/// second over the first, whose later "Zapisz" would write the older values over the newer.
 Future<void> openPersonEntry(
   BuildContext context,
   GrobingDatabase database,
   int personId, {
   Photos? photos,
+  AppTab tab = AppTab.map,
+  bool pickPhotosAtStart = false,
 }) async {
+  if (PersonFormScreen.isCorrecting(personId)) {
+    Navigator.of(context).popUntil(
+      (route) =>
+          route.settings.name == PersonFormScreen.correctionRoute(personId) ||
+          route.isFirst,
+    );
+    return;
+  }
   final ({
     BuriedPerson person,
     int? graveId,
@@ -86,6 +102,7 @@ Future<void> openPersonEntry(
   if (found == null || !context.mounted) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
+      settings: RouteSettings(name: PersonFormScreen.correctionRoute(personId)),
       builder: (_) => PersonFormScreen(
         database: database,
         mode: Correction(
@@ -95,6 +112,8 @@ Future<void> openPersonEntry(
           graveId: found.graveId,
         ),
         photos: photos,
+        tab: tab,
+        pickPhotosAtStart: pickPhotosAtStart,
       ),
     ),
   );
@@ -108,6 +127,8 @@ class PersonFormScreen extends StatefulWidget {
     required this.database,
     required this.mode,
     this.photos,
+    this.tab = AppTab.map,
+    this.pickPhotosAtStart = false,
   });
 
   final GrobingDatabase database;
@@ -116,6 +137,22 @@ class PersonFormScreen extends StatefulWidget {
   /// The person's photos (element 1a, ISSUE-017), and passed on to the grave view that replaces the form
   /// after a new grave (ISSUE-016). Null only in tests of other features: then the form has no photos.
   final Photos? photos;
+
+  /// The tab of the stack the form was opened in — for the views it opens (a relative's, the grave
+  /// after a new one): the bar keeps it active (style-b.md rule 12).
+  final AppTab tab;
+
+  /// "Dodaj zdjęcie" in the person's view (osoba.md D20): the photo sheet opens over the form at once, as
+  /// element 1a would.
+  final bool pickPhotosAtStart;
+
+  /// The route of [personId]'s correction (osoba.md D15).
+  static String correctionRoute(int personId) => '/correction/$personId';
+
+  /// The people whose correction is open now, lower on the stack or on top.
+  static final Set<int> _correcting = {};
+
+  static bool isCorrecting(int personId) => _correcting.contains(personId);
 
   @override
   State<PersonFormScreen> createState() => _PersonFormScreenState();
@@ -207,7 +244,17 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       }
     });
     _photos?.addListener(_photosChanged);
-    _photos?.load();
+    final Future<void>? loaded = _photos?.load();
+    if (widget.mode case Correction(:final BuriedPerson person)) {
+      PersonFormScreen._correcting.add(person.id);
+    }
+    if (widget.pickPhotosAtStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await loaded;
+        final PersonPhotosDraft? photos = _photos;
+        if (mounted && photos != null) await addPersonPhotos(context, photos);
+      });
+    }
   }
 
   void _photosChanged() {
@@ -216,6 +263,9 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 
   @override
   void dispose() {
+    if (widget.mode case Correction(:final BuriedPerson person)) {
+      PersonFormScreen._correcting.remove(person.id);
+    }
     for (final TextEditingController c in [
       _given,
       _surname,
@@ -367,6 +417,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
                 database: widget.database,
                 graveId: grave,
                 photos: widget.photos,
+                tab: widget.tab,
               ),
             ),
           );
@@ -635,6 +686,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           FamilySection(
             database: widget.database,
             personId: person.id,
+            tab: widget.tab,
             graveId: switch (widget.mode) {
               Correction(:final int? graveId) => graveId,
               _ => null,

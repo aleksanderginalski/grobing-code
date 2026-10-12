@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/grave/cemetery_screen.dart';
 import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
+import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/claims.dart';
@@ -486,91 +487,99 @@ void main() {
     },
   );
 
-  testWidgets(
-    'D1 — a person in the grave opens "Poprawa wpisu" with the values; a corrected year shows in the '
-    'grave; a date two sources gave is shown and not editable',
-    (tester) async {
-      await withCemetery(tester);
-      late int grave;
-      await tester.runAsync(() async {
-        grave = await addPersonToNewGrave(
-          db,
-          cemeteryId: cemetery,
-          entry: const PersonEntry(
-            givenNames: 'Jan',
-            surname: 'Wymyślony',
-            death: QualifiedDate(DateQualifier.exact, PartialDate(1951)),
-            // From before D7 or another source: the form has no burial date, a correction keeps it.
-            burial: QualifiedDate(
-              DateQualifier.exact,
-              PartialDate(1951, 3, 18),
-            ),
-          ),
-        );
-        final int jan = (await loadGrave(db, grave))!.people.single.id;
-        // A made-up dispute over the birth (US-004): the notes and the grandmother.
-        for (final (int year, SourceKind kind) in [
-          (1890, SourceKind.notes),
-          (1892, SourceKind.grandmother),
-        ]) {
-          await addEventWithClaim(
-            db,
-            EventsCompanion.insert(
-              type: EventType.birth,
-              personId: Value(jan),
-              qualifier: const Value(DateQualifier.exact),
-              year: Value(year),
-            ),
-            source: ClaimSource(
-              kind: kind,
-              status: AssertionStatus.contradicted,
-            ),
-          );
-        }
-      });
-      await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
-      await _pumpUntil(
-        tester,
-        () => find.text('Jan Wymyślony').evaluate().isNotEmpty,
-      );
-      expect(find.text('1890–1951 · poch. 18.03.1951'), findsOneWidget);
-
-      await tester.tap(find.text('Jan Wymyślony'));
-      await tester.pumpAndSettle();
-      expect(find.text('Poprawa wpisu'), findsOneWidget);
-      // Read against the notes first: no keyboard (ui review). No line about the dates' source any more
-      // (ISSUE-025 AC-5, SPIKE-004 D28).
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is EditableText && w.focusNode.hasFocus,
+  testWidgets('D1, ISSUE-024 AC-1 — a person in the grave opens their view, not the form; ✎ opens "Poprawa wpisu" '
+      'with the values; a corrected year shows in the view and the grave; a date two sources gave is shown '
+      'and not editable', (tester) async {
+    await withCemetery(tester);
+    late int grave;
+    await tester.runAsync(() async {
+      grave = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(
+          givenNames: 'Jan',
+          surname: 'Wymyślony',
+          death: QualifiedDate(DateQualifier.exact, PartialDate(1951)),
+          // From before D7 or another source: the form has no burial date, a correction keeps it.
+          burial: QualifiedDate(DateQualifier.exact, PartialDate(1951, 3, 18)),
         ),
-        findsNothing,
       );
-      expect(find.textContaining('Poprawa nie zmienia źródła'), findsNothing);
-      expect(
-        find.text('Kilka źródeł — tej daty tu nie poprawisz.'),
-        findsOneWidget,
-      );
-      expect(find.text('1890'), findsOneWidget); // the birth, read-only
-      // Fields: names(0), surname(1), birth surname(2), death(3), bio(4); the birth is read-only.
-      expect(tester.widget<TextField>(_field(0)).controller!.text, 'Jan');
-      expect(tester.widget<TextField>(_field(3)).controller!.text, '1951');
-      await tester.enterText(_field(3), '1952');
-      await save(tester, GraveScreen);
-      await _pumpUntil(
-        tester,
-        () => find.text('1890–1952 · poch. 18.03.1951').evaluate().isNotEmpty,
-      );
-      await leaveScreen(tester);
-      await tester.runAsync(() async {
-        final List<Event> births = await (db.select(
-          db.events,
-        )..where((e) => e.type.equalsValue(EventType.birth))).get();
-        expect(births.map((e) => e.year), [1890, 1892]);
-      });
-      await cleanUp(tester);
-    },
-  );
+      final int jan = (await loadGrave(db, grave))!.people.single.id;
+      // A made-up dispute over the birth (US-004): the notes and the grandmother.
+      for (final (int year, SourceKind kind) in [
+        (1890, SourceKind.notes),
+        (1892, SourceKind.grandmother),
+      ]) {
+        await addEventWithClaim(
+          db,
+          EventsCompanion.insert(
+            type: EventType.birth,
+            personId: Value(jan),
+            qualifier: const Value(DateQualifier.exact),
+            year: Value(year),
+          ),
+          source: ClaimSource(kind: kind, status: AssertionStatus.contradicted),
+        );
+      }
+    });
+    await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
+    await _pumpUntil(
+      tester,
+      () => find.text('Jan Wymyślony').evaluate().isNotEmpty,
+    );
+    expect(find.text('1890–1951 · poch. 18.03.1951'), findsOneWidget);
+
+    await tester.tap(find.text('Jan Wymyślony'));
+    await _pumpUntil(
+      tester,
+      () => find.byType(PersonScreen).evaluate().isNotEmpty,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    // The view first (style-b.md rule 15): the name in the header, no form yet.
+    expect(find.byType(PersonFormScreen), findsNothing);
+    await _pumpUntil(
+      tester,
+      () => find.text('1890–1951').evaluate().isNotEmpty,
+    );
+    await tester.tap(find.byTooltip('Popraw wpis'));
+    await tester.pumpAndSettle();
+    expect(find.text('Poprawa wpisu'), findsOneWidget);
+    // Read against the notes first: no keyboard (ui review). No line about the dates' source any more
+    // (ISSUE-025 AC-5, SPIKE-004 D28).
+    expect(
+      find.byWidgetPredicate((w) => w is EditableText && w.focusNode.hasFocus),
+      findsNothing,
+    );
+    expect(find.textContaining('Poprawa nie zmienia źródła'), findsNothing);
+    expect(
+      find.text('Kilka źródeł — tej daty tu nie poprawisz.'),
+      findsOneWidget,
+    );
+    expect(find.text('1890'), findsOneWidget); // the birth, read-only
+    // Fields: names(0), surname(1), birth surname(2), death(3), bio(4); the birth is read-only.
+    expect(tester.widget<TextField>(_field(0)).controller!.text, 'Jan');
+    expect(tester.widget<TextField>(_field(3)).controller!.text, '1951');
+    await tester.enterText(_field(3), '1952');
+    // "Zapisz" returns to the view, which shows the new year (rule 10), then back to the grave.
+    await save(tester, PersonScreen);
+    await _pumpUntil(
+      tester,
+      () => find.text('1890–1952').evaluate().isNotEmpty,
+    );
+    await tester.pageBack();
+    await _pumpUntil(
+      tester,
+      () => find.text('1890–1952 · poch. 18.03.1951').evaluate().isNotEmpty,
+    );
+    await leaveScreen(tester);
+    await tester.runAsync(() async {
+      final List<Event> births = await (db.select(
+        db.events,
+      )..where((e) => e.type.equalsValue(EventType.birth))).get();
+      expect(births.map((e) => e.year), [1890, 1892]);
+    });
+    await cleanUp(tester);
+  });
 
   testWidgets(
     'ISSUE-025 AC-1, D-płeć — a correction of someone without a sex starts from the suggestion, so back '

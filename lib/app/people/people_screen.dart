@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/people.dart';
-import '../grave/person_form_screen.dart';
+import '../person/person_screen.dart';
 import '../photo/photos.dart';
 import '../polish.dart';
 import '../tabs.dart';
@@ -46,11 +46,12 @@ class _PeopleScreenState extends State<PeopleScreen> {
   /// The field itself, not the route's scope: the scope remembers its last field and refocuses it.
   Future<void> _open(int personId) {
     FocusManager.instance.primaryFocus?.unfocus();
-    return openPersonEntry(
+    return openPersonView(
       context,
       widget.database,
       personId,
       photos: widget.photos,
+      tab: AppTab.people,
     );
   }
 

@@ -129,6 +129,12 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   każde inne. `saveFamily` dostaje `married` / `ended` obok dat: bez nich decyduje sama data, jak przed v7. Migracja
   v6→v7 tylko dodaje kolumnę (`addColumn`); nowy typ zdarzenia nie potrzebuje kroku, bo typ jest zapisany nazwą, bez
   `CHECK` na wartościach. Osoby sprzed v7 nie mają płci, a rodziny bez ślubu są „Razem”.
+- **Tło osoby (schemat v8, ISSUE-024).** Kolumna `person_media.is_background` — zdjęcie za portretem w widoku osoby,
+  znacznik przy łączu jak kadr. Częściowy indeks unikalny `person_media_background` (`WHERE is_background`) pozwala na
+  jedno tło na osobę. GEDCOM 7 zna przy łączu tylko `CROP` i `TITL`, więc to rozszerzenie aplikacji. Łącza osoby
+  przepisuje od zera `applyPersonPhotoEdits`: tło, jak kadr, czyta przed skasowaniem i oddaje, a łącze usunięte (także
+  przez „Kto jest na zdjęciu?”) zabiera tło ze sobą. Migracja v7→v8 dodaje kolumnę z domyślnym `false` i indeks — bez
+  nowych wierszy, więc kopia v7 odtwarza się bez tła.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
