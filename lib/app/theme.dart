@@ -40,6 +40,12 @@ abstract final class GrobingColors {
 
   /// Rivers on the map, 1 dp (same role as [water]).
   static const Color waterLine = Color(0xFF3A5E74);
+
+  /// "Tu jesteś" — the phone's position on the cemetery's map, the maps' blue dot (style-b.md → State
+  /// colours, v1.16; 05_DESIGN/cmentarz.md element 10): 6.99:1 on the background, 6.38:1 on the surface
+  /// (SC 1.4.11). The dot, its accuracy circle, the "gdzie jestem" button while it is on and the icon of the
+  /// location's state (element 10a) — never the accent's roles, never a warning.
+  static const Color here = Color(0xFF5EA2E6);
 }
 
 abstract final class GrobingTheme {

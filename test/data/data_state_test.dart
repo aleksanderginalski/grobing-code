@@ -27,11 +27,11 @@ void main() {
   });
 
   test(
-    'empty database: schema 11, zero rows in every table, no photos',
+    'empty database: schema 12, zero rows in every table, no photos',
     () async {
       final DataState state = await readDataState(db, mediaDir: media);
 
-      expect(state.schemaVersion, 11);
+      expect(state.schemaVersion, 12);
       // v4 (ISSUE-017): person_media joins the 11 tables of v3, v10 (ISSUE-027) cemetery_plans, v11
       // (ISSUE-028) sectors — and the fingerprint finds each by itself.
       expect(state.rowCounts, hasLength(14));

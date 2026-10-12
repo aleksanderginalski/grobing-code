@@ -6,6 +6,14 @@
          uploads it (ADR-004 pkt 1). Android's own backup and device transfer are off (ADR-004 pkt 4,
          res/xml/data_extraction_rules.xml). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- "Gdzie jestem" on the cemetery's map (ISSUE-029, ADR-017): the phone's position from the GNSS
+         satellites alone (HereLocation.kt, GPS_PROVIDER), only while the cemetery's screen listens, never in
+         the background and never sent anywhere. FINE and COARSE together, as Android 12+ asks; the user may
+         give only "Przybliżona", and the app then places pins by hand. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Not required: a phone without GNSS can still install the app and place pins by hand. -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <application
         android:label="Grobing"
         android:name="${applicationName}"

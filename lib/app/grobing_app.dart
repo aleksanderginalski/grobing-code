@@ -9,6 +9,7 @@ import '../backup/restore_service.dart';
 import '../data/database.dart';
 import '../net/overpass_plan_source.dart';
 import 'data_state_screen.dart';
+import 'grave/here_location.dart';
 import 'home/home_screen.dart';
 import 'map/plan_downloads.dart';
 import 'photo/photos.dart';
@@ -62,6 +63,9 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
   late RestoreService? _restore = widget.restore;
   late Photos _photos = widget.photos ?? Photos.platform(_location);
   late PlanDownloads _plans = _downloads(_database);
+
+  /// "Gdzie jestem" for every cemetery screen (ISSUE-029): the satellites alone, only while listened to.
+  final HereLocation _here = PlatformHereLocation();
 
   /// A new generation rebuilds every screen on the new data; nothing keeps the closed database.
   int _generation = 0;
@@ -150,7 +154,10 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
       supportedLocales: const [Locale('pl')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       // Above the navigator: every cemetery screen, whatever opened it, has the plans' downloads.
-      builder: (context, child) => MapNetwork(plans: _plans, child: child!),
+      builder: (context, child) => MapHereLocation(
+        location: _here,
+        child: MapNetwork(plans: _plans, child: child!),
+      ),
       // No `home`: Flutter refuses it next to `onGenerateInitialRoutes`. The home screen (the map of
       // Poland, ISSUE-014) is the only named route; after a restore "Stan danych" opens on top of it
       // with the notice.

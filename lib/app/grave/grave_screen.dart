@@ -19,7 +19,9 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import 'cemetery_plan_map.dart' show MapLayer;
 import 'person_form_screen.dart';
+import 'pin_screen.dart';
 
 /// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
 /// above the title (ISSUE-016) and each person's profile photo in their card (v4, ISSUE-017). The grave's
@@ -31,10 +33,14 @@ class GraveScreen extends StatefulWidget {
     required this.graveId,
     this.photos,
     this.tab = AppTab.map,
+    this.layer = MapLayer.plan,
   });
 
   final GrobingDatabase database;
   final int graveId;
+
+  /// The cemetery map's layer: "Postaw pinezkę" opens mode D on it (cmentarz.md D36).
+  final MapLayer layer;
 
   /// The tab of the stack — the map, or Osoby through a person's view (style-b.md rule 12).
   final AppTab tab;
@@ -322,10 +328,15 @@ class _GraveScreenState extends State<GraveScreen> {
     );
     final String? address = graveAddress(grave.sector, grave.row, grave.plot);
     if (address != null) {
-      return Text(
-        addressLine(address, hasPin: grave.hasPin),
-        textAlign: TextAlign.center,
-        style: muted,
+      return Column(
+        children: [
+          Text(
+            addressLine(address, hasPin: grave.hasPin),
+            textAlign: TextAlign.center,
+            style: muted,
+          ),
+          _pin(grave),
+        ],
       );
     }
     return Column(
@@ -362,8 +373,55 @@ class _GraveScreenState extends State<GraveScreen> {
           onPressed: () => _editGrave(grave, address: true),
           child: const Text('Wpisz adres'),
         ),
+        _pin(grave),
       ],
     );
+  }
+
+  /// Element 4, the pin (grob.md v7, D14): with one, where it came from and when — "Pinezka: GPS ±4 m ·
+  /// 12.10.2026"; without, "Postaw pinezkę" → mode D of the cemetery. Correcting a pin is on the map, next
+  /// to its candle (cmentarz.md element 11).
+  Widget _pin(GraveDetail grave) {
+    final GravePin? pin = grave.pin;
+    if (pin != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'Pinezka: ${pinLine(pin.source, pin.accuracyM, pin.recordedAt)}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 13),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Center(
+        child: OutlinedButton.icon(
+          style: secondaryButtonStyle.copyWith(
+            minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+          ),
+          onPressed: () => _placePin(grave),
+          icon: const Icon(Icons.add_location_alt_outlined),
+          label: const Text('Postaw pinezkę'),
+        ),
+      ),
+    );
+  }
+
+  /// "Postaw pinezkę" → mode D; a saved pin closes the grave too, and the cemetery shows its new candle
+  /// (cmentarz.md D36).
+  Future<void> _placePin(GraveDetail grave) async {
+    final PinSaved? saved = await Navigator.of(context).push<PinSaved>(
+      MaterialPageRoute<PinSaved>(
+        builder: (_) => PinScreen(
+          database: widget.database,
+          cemeteryId: grave.cemeteryId,
+          graveId: grave.id,
+          layer: widget.layer,
+        ),
+      ),
+    );
+    if (saved != null && mounted) Navigator.of(context).pop(saved);
   }
 
   Widget _readError() => Center(

@@ -54,7 +54,8 @@ void main() {
   }
 
   test(
-    'pins inside the outline for two of every three graves, "set at home"; a cemetery without a plan gets none',
+    'pins inside the outline for two of every three graves, with each source the pin\'s line can say — the photo, '
+    'GPS with its accuracy, the plan (ISSUE-029) — and a date; a cemetery without a plan gets none',
     () async {
       final int withPlan = await cemeteryWith(6, plan: true);
       final int without = await cemeteryWith(2, plan: false);
@@ -74,8 +75,19 @@ void main() {
       ]);
       for (final Grave g in pinned.where((g) => g.lat != null)) {
         expect(insideAreas(GeoPoint(g.lat!, g.lon!), areas), isTrue);
-        expect(g.positionSource, PositionSource.satellite);
+        expect(g.positionRecordedAt, isNotNull);
       }
+      expect(
+        pinned
+            .where((g) => g.lat != null)
+            .map((g) => (g.positionSource, g.positionAccuracyM)),
+        [
+          (PositionSource.satellite, null),
+          (PositionSource.gps, 6.0),
+          (PositionSource.gps, 6.0),
+          (PositionSource.plan, null),
+        ],
+      );
       final List<Grave> none = await (db.select(
         db.graves,
       )..where((g) => g.cemeteryId.equals(without))).get();

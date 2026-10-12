@@ -298,12 +298,15 @@ Future<void> addFictionalPins(GrobingDatabase db) async {
     for (final (int k, Grave g) in graves.indexed) {
       if (g.lat != null || k % 3 == 2) continue;
       final GeoPoint at = spots[(k * 5) % spots.length];
-      await (db.update(db.graves)..where((x) => x.id.equals(g.id))).write(
-        GravesCompanion(
-          lat: Value(at.lat),
-          lon: Value(at.lon),
-          positionSource: const Value(PositionSource.satellite),
-        ),
+      // Each source the pin's line can say (cmentarz.md element 14, ISSUE-029): GPS with its accuracy, the
+      // plan, the photo from above.
+      final PositionSource source = PositionSource.values[(k + k ~/ 3) % 3];
+      await setGravePin(
+        db,
+        g.id,
+        at,
+        source,
+        accuracyM: source == PositionSource.gps ? 6 : null,
       );
     }
   }

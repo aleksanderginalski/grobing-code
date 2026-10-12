@@ -32,8 +32,10 @@ enum Sex { female, male }
 /// FR-004: a date is a value plus a qualifier; `between` uses both bounds.
 enum DateQualifier { exact, about, before, after, between }
 
-/// How a grave position was obtained (glossary: pinezka carries its source).
-enum PositionSource { satellite, gps }
+/// How a grave position was obtained (glossary: pinezka carries its source): the phone's GPS where the
+/// author stood, or the author's hand on the photo from above or on the plan. Stored by name, so `plan`,
+/// added at the end in v12 (ISSUE-029, cmentarz.md D33), needed no step for the rows before it.
+enum PositionSource { satellite, gps, plan }
 
 /// FR-001: where a claim comes from — nagrobek · notatki · babcia · krewny · akt.
 enum SourceKind { gravestone, notes, grandmother, relative, record }
@@ -204,7 +206,14 @@ class Graves extends Table {
   RealColumn get lat => real().nullable()();
   RealColumn get lon => real().nullable()();
   TextColumn get positionSource => textEnum<PositionSource>().nullable()();
+
+  /// The phone's accuracy in metres at the 68th percentile — `gps` pins only; a pin the author placed by
+  /// hand is a choice, not a measurement, and has none (cmentarz.md D33).
   RealColumn get positionAccuracyM => real().nullable()();
+
+  /// When the pin was saved (ISSUE-029, v12). Pins written before v12 — only the made-up debug data — have
+  /// none.
+  DateTimeColumn get positionRecordedAt => dateTime().nullable()();
 }
 
 /// FR-003: many burials per grave. A person is buried in one place, but the sources may disagree on
@@ -362,7 +371,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 11;
+  static const int currentSchemaVersion = 12;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -393,6 +402,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from8To9: _from8To9,
             from9To10: _from9To10,
             from10To11: _from10To11,
+            from11To12: _from11To12,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -579,6 +589,12 @@ class GrobingDatabase extends _$GrobingDatabase {
       throw StateError('Schema v11: ${broken.length} broken references');
     }
   }
+
+  /// ISSUE-029: a pin gets the date it was saved. A new nullable column: no row changes, nothing dropped,
+  /// and the pins before v12 (only the made-up debug data) have no date. The new source `plan` needs no
+  /// step: the source is stored by name, without a CHECK on its values.
+  Future<void> _from11To12(Migrator m, Schema12 schema) =>
+      m.addColumn(schema.graves, schema.graves.positionRecordedAt);
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

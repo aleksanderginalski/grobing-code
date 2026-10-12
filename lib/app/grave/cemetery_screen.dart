@@ -23,8 +23,10 @@ import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
 import 'cemetery_plan_map.dart';
 import 'grave_screen.dart';
+import 'here_location.dart';
 import 'map_chrome.dart';
 import 'person_form_screen.dart';
+import 'pin_screen.dart';
 import 'plan_placeholder.dart';
 import 'sectors_screen.dart';
 
@@ -120,6 +122,22 @@ class _CemeteryScreenState extends State<CemeteryScreen>
   LatLng? _glideFrom;
   LatLng? _glideTo;
 
+  /// "Gdzie jestem" (element 10, ISSUE-029); null without the phone's location (tests of other features).
+  HereTracker? _here;
+
+  /// The map stands on the dot and goes with it (D31) — until a finger moves it.
+  bool _atDot = false;
+
+  /// The first position after switching on brings the map to the dot.
+  bool _toDotOnFix = false;
+
+  /// "Lokalizacja w telefonie jest wyłączona." said once while it stays off.
+  bool _toldOff = false;
+
+  /// The bottom panel as now measured — the bar (A) or the grave's sheet (B): "gdzie jestem" and the pills
+  /// stand above it.
+  double _panelHeight = 170;
+
   @override
   void initState() {
     super.initState();
@@ -130,7 +148,18 @@ class _CemeteryScreenState extends State<CemeteryScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final HereLocation? location = MapHereLocation.maybeOf(context);
+    if (_here == null && location != null) {
+      _here = HereTracker(location)..addListener(_onHere);
+    }
+  }
+
+  @override
   void dispose() {
+    _here?.removeListener(_onHere);
+    _here?.dispose();
     _glide.dispose();
     _map.dispose();
     super.dispose();
@@ -139,16 +168,225 @@ class _CemeteryScreenState extends State<CemeteryScreen>
   Stream<CemeteryGraves?> _watch() =>
       watchCemeteryGraves(widget.database, widget.cemeteryId);
 
-  Future<void> _openGrave(int id) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => GraveScreen(
-        database: widget.database,
-        graveId: id,
-        photos: widget.photos,
-        tab: widget.tab,
+  Future<void> _openGrave(int id) async {
+    final Object? result = await Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        builder: (_) => GraveScreen(
+          database: widget.database,
+          graveId: id,
+          photos: widget.photos,
+          tab: widget.tab,
+          layer: _layer,
+        ),
       ),
-    ),
-  );
+    );
+    if (result is PinSaved && mounted) _showPinned(result.graveId);
+  }
+
+  /// "Popraw pinezkę" (element 11) → mode D for the grave of B, on the layer the map has now.
+  Future<void> _openPin(int graveId) async {
+    final PinSaved? saved = await Navigator.of(context).push<PinSaved>(
+      MaterialPageRoute<PinSaved>(
+        builder: (_) => PinScreen(
+          database: widget.database,
+          cemeteryId: widget.cemeteryId,
+          graveId: graveId,
+          layer: _layer,
+        ),
+      ),
+    );
+    if (saved != null && mounted) _showPinned(saved.graveId);
+  }
+
+  /// After "Zapisz pinezkę": state B with that grave, its new candle in the room above the sheet (D36).
+  void _showPinned(int graveId) {
+    _atDot = false;
+    _selectGrave(graveId);
+    // The graves' stream brings the new pin a moment later.
+    Future<void>.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      final LatLng? pin = _selectedPin();
+      final MapCamera? camera = _cameraOrNull;
+      if (pin == null || camera == null) return;
+      _glideCentre(_centreFor(camera, pin, _badgesHeight, _panelHeight));
+    });
+  }
+
+  MapCamera? get _cameraOrNull {
+    try {
+      return _map.camera;
+    } on Object {
+      return null;
+    }
+  }
+
+  // --- "gdzie jestem" (element 10, D31) ---
+
+  /// Off → on and to the dot; on the dot → off; moved away → back to the dot.
+  Future<void> _hereTap() async {
+    final HereTracker? here = _here;
+    if (here == null) return;
+    if (!here.on) {
+      final HereAccess access = await here.turnOn();
+      if (!mounted) return;
+      if (access == HereAccess.denied || access == HereAccess.blocked) {
+        _say(
+          'Bez zgody na lokalizację pinezki postawisz tylko ręcznie.',
+          action: access == HereAccess.blocked
+              ? SnackBarAction(
+                  label: 'Ustawienia',
+                  onPressed: () => unawaited(here.location.openAppSettings()),
+                )
+              : null,
+        );
+        return;
+      }
+      _toDotOnFix = true;
+      _toldOff = false;
+      _onHere();
+      return;
+    }
+    // On the dot — or with no dot to go back to (only "Przybliżona", no position yet, away from the
+    // cemetery): a tap switches off. Otherwise it was a way out that did nothing (found by qa, ISSUE-029).
+    if (_atDot || !_dotToReturnTo) {
+      here.turnOff();
+      setState(() => _atDot = false);
+      return;
+    }
+    _toDotOnFix = true;
+    _onHere();
+  }
+
+  /// A position at the cemetery that "gdzie jestem" can bring the map back to.
+  bool get _dotToReturnTo {
+    final HereFix? fix = _here?.fix;
+    return fix != null && _hereAtCemetery(fix.point);
+  }
+
+  /// A new position or state: with the map on the dot, the map goes with it; a dot away from the cemetery
+  /// leaves the map where it is (10a says how far).
+  void _onHere() {
+    final HereTracker? here = _here;
+    if (!mounted || here == null) return;
+    if (here.on && here.access == HereAccess.precise && !here.enabled) {
+      if (!_toldOff) {
+        _toldOff = true;
+        _say(
+          'Lokalizacja w telefonie jest wyłączona.',
+          action: SnackBarAction(
+            label: 'Włącz',
+            onPressed: () async {
+              await here.location.openLocationSettings();
+              await here.recheck();
+            },
+          ),
+        );
+      }
+    } else {
+      _toldOff = false;
+    }
+    final HereFix? fix = here.fix;
+    if (fix != null && _hereAtCemetery(fix.point) && (_toDotOnFix || _atDot)) {
+      final bool first = _toDotOnFix;
+      _toDotOnFix = false;
+      _atDot = true;
+      _toDot(fix.point, zoomIn: first);
+    }
+    setState(() {});
+  }
+
+  void _toDot(LatLng point, {required bool zoomIn}) {
+    final MapCamera? camera = _cameraOrNull;
+    if (camera == null) return;
+    // From now on the dot has the camera: a badge appearing or going (10a) must not fit the whole cemetery
+    // again (seen on the emulator — the zoom fell back to the least).
+    _userMoved = true;
+    final double zoom = zoomIn && camera.zoom < 18 ? 18 : camera.zoom;
+    if (zoom != camera.zoom) {
+      _glide.stop();
+      _map.move(
+        _centreFor(
+          camera.withPosition(zoom: zoom),
+          point,
+          _badgesHeight,
+          _panelHeight,
+        ),
+        zoom,
+      );
+      return;
+    }
+    _glideCentre(_centreFor(camera, point, _badgesHeight, _panelHeight));
+  }
+
+  bool _hereAtCemetery(LatLng p) {
+    final CemeteryPlan? plan = _currentPlan;
+    if (_hasPlan(plan)) {
+      final LatLngBounds b = planBounds(plan!.areas);
+      return atCemetery(
+        p,
+        box: (southWest: b.southWest, northEast: b.northEast),
+      );
+    }
+    final GeoPoint? c = _currentCemetery?.point;
+    return atCemetery(p, point: c == null ? null : LatLng(c.lat, c.lon));
+  }
+
+  CemeteryGraves? _currentCemetery;
+
+  /// A finger's drag or pinch takes the map off the dot (the button shows "away").
+  void _onMapEvent(MapEvent e) {
+    switch (e.source) {
+      case MapEventSource.dragStart:
+      case MapEventSource.onDrag:
+      case MapEventSource.multiFingerGestureStart:
+      case MapEventSource.onMultiFinger:
+      case MapEventSource.doubleTap:
+      case MapEventSource.doubleTapZoomAnimationController:
+        if (_atDot) setState(() => _atDot = false);
+      default:
+        break;
+    }
+  }
+
+  HereButtonState get _hereState {
+    final HereTracker? here = _here;
+    if (here == null || !here.on) return HereButtonState.off;
+    // "Away" only when a tap brings the map back to a dot; otherwise the tap switches off, as on the dot.
+    return _atDot || !_dotToReturnTo
+        ? HereButtonState.atDot
+        : HereButtonState.away;
+  }
+
+  /// Element 10a — or nothing while the dot can be shown.
+  Widget? _hereStatus() {
+    final HereTracker? here = _here;
+    if (here == null || !here.on) return null;
+    if (here.access == HereAccess.approximate) {
+      return const HereStatus(text: 'tylko przybliżona lokalizacja');
+    }
+    if (!here.enabled) return null; // the bar with "Włącz" says it
+    final HereFix? fix = here.fix;
+    if (fix == null) return const HereStatus(text: 'Szukam pozycji…');
+    if (!_hereAtCemetery(fix.point)) {
+      final LatLng? middle = _hasPlan(_currentPlan)
+          ? planBounds(_currentPlan!.areas).center
+          : switch (_currentCemetery?.point) {
+              final GeoPoint p? => LatLng(p.lat, p.lon),
+              null => null,
+            };
+      return HereStatus(
+        text: middle == null
+            ? 'poza cmentarzem'
+            : 'poza cmentarzem · ${distanceText(fix.point, middle)}',
+      );
+    }
+    return null;
+  }
+
+  void _say(String text, {SnackBarAction? action}) =>
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text), action: action));
 
   /// "Dodaj grób" opens the form of the grave's first person at once: the grave is written with them
   /// (05_DESIGN/cmentarz.md → Navigation).
@@ -210,6 +448,12 @@ class _CemeteryScreenState extends State<CemeteryScreen>
       _afterLayout(_settle);
     } else {
       _view = _View.list;
+      // Pins can be placed now (US-008), so the person's view says why the list (osoba.md D9).
+      _afterLayout(
+        () => _say(
+          'Ten grób nie ma jeszcze pinezki — jest zaznaczony na liście.',
+        ),
+      );
     }
   }
 
@@ -272,6 +516,10 @@ class _CemeteryScreenState extends State<CemeteryScreen>
     }
     if (_view == _View.map && panel != null && (panel - _barHeight).abs() > 1) {
       _barHeight = panel;
+      changed = true;
+    }
+    if (panel != null && (panel - _panelHeight).abs() > 1) {
+      _panelHeight = panel;
       changed = true;
     }
     if (changed) setState(() {});
@@ -454,6 +702,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                       graves.hasError || (graves.hasData && cemetery == null);
                   final CemeteryPlan? plan = planSnapshot.data;
                   _currentPlan = plan;
+                  _currentCemetery = cemetery;
                   if (cemetery != null) {
                     _enter(cemetery);
                     _pins = {
@@ -614,6 +863,15 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                 onCandle: _selectGrave,
                 onMapTap: _view == _View.grave ? _toMap : null,
                 onPointerDown: _fingerDown,
+                onMapEvent: _onMapEvent,
+                here: switch (_here?.fix) {
+                  final HereFix f => (
+                    point: f.point,
+                    accuracyM: f.accuracyM,
+                    label: true,
+                  ),
+                  null => null,
+                },
                 photoTiles: net?.photoTiles,
                 // Drawn, never touched here (D29): the sectors' mode manages them.
                 sectors: [
@@ -672,6 +930,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                 photoOnline: _photoOnline,
                 withSwitch: gap != PlanGap.noPoint && net != null,
                 onLayer: _choose,
+                hereStatus: showsMap ? _hereStatus() : null,
               ),
             ),
           ),
@@ -680,7 +939,37 @@ class _CemeteryScreenState extends State<CemeteryScreen>
           Positioned(
             left: 12,
             bottom: _barHeight + 8,
-            child: _SectorsPill(onTap: _openSectors),
+            child: MapPill(
+              icon: Icons.pentagon_outlined,
+              label: 'Kwatery',
+              onTap: _openSectors,
+            ),
+          ),
+        // Element 11: in B, where "Kwatery" stands in A — with something to stand the pin on, as "gdzie jestem"
+        // (ui review M3).
+        if (grave != null &&
+            grave.hasPin &&
+            showsMap &&
+            !(photo && _photoOnline == false))
+          Positioned(
+            left: 12,
+            bottom: _panelHeight + 8,
+            child: MapPill(
+              icon: Icons.edit_location_alt_outlined,
+              label: 'Popraw pinezkę',
+              onTap: () => _openPin(grave.id),
+            ),
+          ),
+        // Element 10: over the bar (A) or the grave's sheet (B), on the right.
+        if (_here != null && showsMap && !(photo && _photoOnline == false))
+          Positioned(
+            right: 12,
+            bottom: _panelHeight + 8,
+            child: HereButton(
+              state: _hereState,
+              accuracyM: _here!.fix?.accuracyM,
+              onTap: _hereTap,
+            ),
           ),
         Positioned(
           left: 0,
@@ -697,13 +986,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
     );
   }
 
-  String _titleText(GraveSummary g) {
-    if (g.name != null) return g.name!;
-    final List<String> people = [
-      for (final p in g.people) personName(p.givenNames, p.surname),
-    ];
-    return people.isEmpty ? 'Grób bez wpisanych osób' : people.join(', ');
-  }
+  String _titleText(GraveSummary g) => graveTitle(g);
 
   /// Element 6 (A): the counts, how many graves have no pin, and "Dodaj grób" — the same as under the
   /// list. A tap or a drag up opens the list (D14, D21).
@@ -965,58 +1248,6 @@ class _CemeteryScreenState extends State<CemeteryScreen>
     onPressed: cemetery == null ? null : () => _addGrave(cemetery),
     icon: const Icon(Icons.add),
     label: const Text('Dodaj grób'),
-  );
-}
-
-/// Element 15: "Kwatery" — a pill on the surface, 40 dp high in a 48 dp target, the icon in amber.
-class _SectorsPill extends StatelessWidget {
-  const _SectorsPill({required this.onTap});
-
-  final VoidCallback onTap;
-
-  // The whole 48 dp box takes the touch, not only the 40 dp pill (ui review, ISSUE-028: 39 dp measured).
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    button: true,
-    label: 'Kwatery',
-    onTap: onTap,
-    excludeSemantics: true,
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Center(
-          child: Material(
-            color: GrobingColors.surface,
-            elevation: 2,
-            shape: const StadiumBorder(),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 40),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.pentagon_outlined,
-                      size: 18,
-                      color: GrobingColors.amber,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Kwatery',
-                      style: TextStyle(color: GrobingColors.text, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
   );
 }
 

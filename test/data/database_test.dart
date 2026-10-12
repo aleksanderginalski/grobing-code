@@ -43,16 +43,16 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 11, integrity ok, exactly the v11 tables, foreign keys on, the crop and the background '
+      'user_version 12, integrity ok, exactly the v11 tables (v12 adds a column), foreign keys on, the crop and the background '
       'on the photo link, claims on families and on children\'s links, a person\'s sex, a photo\'s '
-      'cemetery',
+      'cemetery, a pin with its date',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 11);
+        expect(await _single(db, 'PRAGMA user_version'), 12);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -97,6 +97,14 @@ void main() {
         expect(
           await columns('media'),
           containsAll(['grave_id', 'cemetery_id']),
+        );
+        expect(
+          await columns('graves'),
+          containsAll([
+            'position_source',
+            'position_accuracy_m',
+            'position_recorded_at',
+          ]),
         );
       },
     );

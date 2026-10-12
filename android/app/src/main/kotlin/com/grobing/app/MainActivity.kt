@@ -7,6 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private var documents: BackupDocuments? = null
     private var background: BackgroundChannel? = null
+    private var here: HereLocation? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -19,6 +20,18 @@ class MainActivity : FlutterActivity() {
         ExternalLinks(messenger) { intent -> startActivity(intent) }
         // The 2048 px JPEG the app keeps of a picked photo (ISSUE-016, D2').
         PhotoPreparation(messenger)
+        // "Gdzie jestem" on the cemetery's map — the satellites alone, only while listened to (ISSUE-029).
+        here = HereLocation(this, messenger)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (here?.onRequestPermissionsResult(requestCode) != true) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

@@ -2442,4 +2442,94 @@ void main() {
       await used.db.close();
     },
   );
+
+  test(
+    'ISSUE-029 — a v12 backup with pins restores with them: the same fingerprint, each pin with its point, '
+    'source, accuracy and date — the GPS one and the one placed on the plan',
+    () async {
+      final Directory v12 = Directory('${tmp.path}/v12-source')..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${v12.path}/grobing.db')),
+      );
+      final Directory media = Directory('${v12.path}/media');
+      final int cemetery = await addCemetery(db, name: 'Cmentarz Wymyślony');
+      final int gps = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      final int byHand = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: const PersonEntry(givenNames: 'Anna', surname: 'Testowa'),
+      );
+      await setGravePin(
+        db,
+        gps,
+        const GeoPoint(51.50012, 19.50034),
+        PositionSource.gps,
+        accuracyM: 4.6,
+        clock: () => DateTime(2026, 10, 12, 14, 30),
+      );
+      await setGravePin(
+        db,
+        byHand,
+        const GeoPoint(51.5002, 19.5004),
+        PositionSource.plan,
+        clock: () => DateTime(2026, 11, 2, 10),
+      );
+      final DataState state = await readDataState(db, mediaDir: media);
+      await db.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v12-snapshot.db',
+      ]);
+      await db.close();
+      final File backup = drive.fileFor(
+        FakeDocumentStore.uriOf('kopia-v12.age'),
+      );
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/v12-snapshot.db'),
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+        'v12-fresh',
+      );
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia-v12.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.dataFingerprint, state.fingerprint);
+      expect((await stateOnDisk(fresh.dir)).fingerprint, state.fingerprint);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final GravePin first = (await loadGrave(reopened, gps))!.pin!;
+      final GravePin second = (await loadGrave(reopened, byHand))!.pin!;
+      await reopened.close();
+      expect(
+        (first.point, first.source, first.accuracyM, first.recordedAt),
+        (
+          const GeoPoint(51.50012, 19.50034),
+          PositionSource.gps,
+          4.6,
+          DateTime(2026, 10, 12, 14, 30),
+        ),
+      );
+      expect(
+        (second.point, second.source, second.accuracyM, second.recordedAt),
+        (
+          const GeoPoint(51.5002, 19.5004),
+          PositionSource.plan,
+          null,
+          DateTime(2026, 11, 2, 10),
+        ),
+      );
+    },
+  );
 }

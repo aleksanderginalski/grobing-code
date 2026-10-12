@@ -102,6 +102,28 @@ class PersonEntry {
 /// 05_DESIGN/wpis-osoby.md v5.4).
 const String defaultBioSource = 'notatki';
 
+/// A grave's pin (05_DESIGN/cmentarz.md, element 14): where it stands, where the position came from, the
+/// phone's accuracy for a GPS pin and when it was saved — none for pins written before v12.
+class GravePin {
+  const GravePin(this.point, this.source, {this.accuracyM, this.recordedAt});
+
+  final GeoPoint point;
+  final PositionSource source;
+  final double? accuracyM;
+  final DateTime? recordedAt;
+
+  /// The pin of a grave row; null without a position. A row with a position but no source (never
+  /// written by the app) reads as placed on the plan.
+  static GravePin? of(Grave g) => g.lat == null || g.lon == null
+      ? null
+      : GravePin(
+          GeoPoint(g.lat!, g.lon!),
+          g.positionSource ?? PositionSource.plan,
+          accuracyM: g.positionAccuracyM,
+          recordedAt: g.positionRecordedAt,
+        );
+}
+
 /// One grave on the cemetery screen (05_DESIGN/cmentarz.md, element 3).
 class GraveSummary {
   const GraveSummary({
@@ -110,7 +132,7 @@ class GraveSummary {
     this.sector,
     this.row,
     this.plot,
-    this.pin,
+    this.pinned,
     required this.people,
     this.photoPath,
   });
@@ -121,11 +143,14 @@ class GraveSummary {
   final String? row;
   final String? plot;
 
+  /// The grave's pin; null without one.
+  final GravePin? pinned;
+
   /// Where the grave's candle stands on the cemetery's map (05_DESIGN/cmentarz.md, element 5); null
   /// without a pin.
-  final GeoPoint? pin;
+  GeoPoint? get pin => pinned?.point;
 
-  bool get hasPin => pin != null;
+  bool get hasPin => pinned != null;
 
   /// The grave's photo, relative to the media directory (05_DESIGN/cmentarz.md, element 3 (d)).
   final String? photoPath;
@@ -233,7 +258,7 @@ class GraveDetail {
     this.sector,
     this.row,
     this.plot,
-    required this.hasPin,
+    this.pin,
     required this.people,
     this.photoPath,
   });
@@ -246,7 +271,11 @@ class GraveDetail {
   final String? sector;
   final String? row;
   final String? plot;
-  final bool hasPin;
+
+  /// The grave's pin with its source and date (05_DESIGN/grob.md v7, element 4); null without one.
+  final GravePin? pin;
+
+  bool get hasPin => pin != null;
   final List<BuriedPerson> people;
 
   /// The grave's only photo, relative to the media directory (05_DESIGN/grob.md, element 1a).
@@ -348,7 +377,7 @@ Future<CemeteryGraves?> loadCemeteryGraves(
           sector: sectors[g.sectorId],
           row: g.row,
           plot: g.plot,
-          pin: g.lat != null && g.lon != null ? GeoPoint(g.lat!, g.lon!) : null,
+          pinned: GravePin.of(g),
           people: people[g.id] ?? const [],
           photoPath: photos[g.id],
         ),
@@ -400,7 +429,7 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
     sector: (await _sectorNames(db, cemetery.id))[grave.sectorId],
     row: grave.row,
     plot: grave.plot,
-    hasPin: grave.lat != null && grave.lon != null,
+    pin: GravePin.of(grave),
     people: [
       for (final Person p in persons) await _buried(db, p, profiles[p.id]),
     ],
@@ -732,6 +761,32 @@ Future<void> setGraveDetails(
     await dropSectorIfUnused(db, before);
   }
 });
+
+/// Saves the grave's pin (ISSUE-029; 05_DESIGN/cmentarz.md 12a, 14): the point, where it came from, and
+/// the date from [clock]. The phone's accuracy is kept for a GPS pin only — a pin placed by hand on the
+/// plan or the photo is the author's choice, not a measurement (cmentarz.md D33).
+Future<void> setGravePin(
+  GrobingDatabase db,
+  int graveId,
+  GeoPoint point,
+  PositionSource source, {
+  double? accuracyM,
+  DateTime Function()? clock,
+}) async {
+  final int updated =
+      await (db.update(db.graves)..where((g) => g.id.equals(graveId))).write(
+        GravesCompanion(
+          lat: Value(point.lat),
+          lon: Value(point.lon),
+          positionSource: Value(source),
+          positionAccuracyM: Value(
+            source == PositionSource.gps ? accuracyM : null,
+          ),
+          positionRecordedAt: Value((clock ?? DateTime.now)()),
+        ),
+      );
+  if (updated != 1) throw StateError('No grave with id $graveId');
+}
 
 /// The names of [cemeteryId]'s sectors by id — what a grave's address says (ADR-016).
 Future<Map<int, String>> _sectorNames(

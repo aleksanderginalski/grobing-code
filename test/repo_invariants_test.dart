@@ -129,8 +129,9 @@ void main() {
   // lib/net/hosts.dart (test/net/hosts_test.dart), no cleartext. Debug and profile manifests add INTERNET for
   // the Flutter tools too; the release APK is checked with aapt (Verification in the item).
   test(
-    'the main manifest asks for INTERNET and nothing else, without cleartext, and says where the addresses '
-    'are (ISSUE-027; ISSUE-008 AC-5 before it)',
+    'the main manifest asks for INTERNET and the phone\'s location (FINE with COARSE, ISSUE-029) and nothing else, '
+    'without cleartext, says where the addresses are, and does not require GPS (ISSUE-027; ISSUE-008 AC-5 before '
+    'it)',
     () {
       final String manifest = File(
         'android/app/src/main/AndroidManifest.xml',
@@ -139,7 +140,19 @@ void main() {
         RegExp(
           r'<uses-permission[^>]*android:name="([^"]+)"',
         ).allMatches(manifest).map((m) => m.group(1)),
-        ['android.permission.INTERNET'],
+        [
+          'android.permission.INTERNET',
+          'android.permission.ACCESS_FINE_LOCATION',
+          'android.permission.ACCESS_COARSE_LOCATION',
+        ],
+      );
+      expect(manifest, isNot(contains('ACCESS_BACKGROUND_LOCATION')));
+      expect(
+        manifest,
+        contains(
+          '<uses-feature android:name="android.hardware.location.gps" '
+          'android:required="false" />',
+        ),
       );
       expect(manifest, contains('android:usesCleartextTraffic="false"'));
       expect(manifest, contains('lib/net/hosts.dart'));

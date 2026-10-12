@@ -2,7 +2,7 @@
 // endings (05_DESIGN/cmentarze.md D3; style-b.md rule 6). One place, because every later screen needs
 // the same rules.
 
-import '../data/database.dart' show Sex;
+import '../data/database.dart' show PositionSource, Sex;
 import '../data/folding.dart';
 
 export '../data/folding.dart' show fold;
@@ -65,6 +65,26 @@ String? graveAddress(String? sector, String? row, String? plot) {
 /// element 3c): "Kwatera B · Rząd 3 · Miejsce 12 · bez pinezki", "Bez adresu kwatery · bez pinezki".
 String addressLine(String? address, {required bool hasPin}) =>
     [address ?? 'Bez adresu kwatery', if (!hasPin) 'bez pinezki'].join(' · ');
+
+/// Where a pin's position came from (05_DESIGN/cmentarz.md, element 14, D33): "GPS ±4 m" with the phone's
+/// accuracy in whole metres, or the layer the author's hand placed it on.
+String pinSourceText(PositionSource source, double? accuracyM) =>
+    switch (source) {
+      PositionSource.gps =>
+        accuracyM == null ? 'GPS' : 'GPS ±${accuracyM.round()} m',
+      PositionSource.plan => 'postawiona na planie',
+      PositionSource.satellite => 'postawiona na zdjęciu z góry',
+    };
+
+/// The pin's line under the grave's address (05_DESIGN/grob.md v7, element 4): "GPS ±4 m · 12.10.2026";
+/// a pin without a date (written before v12) has none.
+String pinLine(PositionSource source, double? accuracyM, DateTime? recordedAt) {
+  final String what = pinSourceText(source, accuracyM);
+  if (recordedAt == null) return what;
+  String two(int v) => v.toString().padLeft(2, '0');
+  final DateTime d = recordedAt.toLocal();
+  return '$what · ${two(d.day)}.${two(d.month)}.${d.year}';
+}
 
 /// What a query is matched with: its words, folded, and those of 5 letters or more without the last
 /// two — Polish endings change ("Powązki" → "na Powązkach"), the stem does not (measured on the

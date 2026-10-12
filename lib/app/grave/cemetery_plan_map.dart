@@ -26,6 +26,11 @@ typedef MapSector = ({int id, String name, List<LatLng> zone});
 /// A zone being marked (element 18): its corners in order, and the name its label says from three corners on.
 typedef MapDrawing = ({List<LatLng> corners, String name});
 
+/// The phone's position on the map (05_DESIGN/cmentarz.md v7, element 10): the point, the accuracy in metres
+/// at the 68th percentile when the phone gave one, and whether the "tu jesteś · ±5 m" label is drawn — not in
+/// mode D, whose panel says the accuracy (element 12).
+typedef MapHere = ({LatLng point, double? accuracyM, bool label});
+
 /// The deepest zoom of the cemetery's map: the photo's last level (ADR-003 pkt 2), and the plan follows it,
 /// so switching layers never jumps.
 const double cemeteryMaxZoom = 19;
@@ -84,7 +89,15 @@ class CemeteryPlanMap extends StatelessWidget {
     this.ghost,
     this.candlesDimmed = false,
     this.roomy = false,
+    this.here,
+    this.onMapEvent,
   });
+
+  /// Every move of the map, with where it came from — mode D tells a finger's drag from a pinch.
+  final MapEventCallback? onMapEvent;
+
+  /// The blue dot with its accuracy circle (element 10); null — location off, or no position yet.
+  final MapHere? here;
 
   /// Mode F: the centre may go half the cemetery's size past its box. The crosshair stands in the middle of
   /// the room above the panel, not of the map, so a corner on the cemetery's edge needs the centre outside.
@@ -171,6 +184,7 @@ class CemeteryPlanMap extends StatelessWidget {
           onPointerDown: onPointerDown == null
               ? null
               : (_, _) => onPointerDown!(),
+          onMapEvent: onMapEvent,
         ),
         children: [
           if (layer == MapLayer.photo && photoTiles != null)
@@ -256,10 +270,88 @@ class CemeteryPlanMap extends StatelessWidget {
               ),
             _CornerLayer(corners: drawing!.corners),
           ],
+          if (here != null) ..._hereLayers(here!),
         ],
       );
     },
   );
+
+  /// Element 10: the accuracy circle — its radius the phone's accuracy in metres, in the dot's colour at 18% —
+  /// the dot, 16 dp with a 2 dp ring in the background colour, and beside it "tu jesteś · ±5 m" on the surface,
+  /// 12 sp, growing with the system text up to 1.3× like every label pinned to the map (style-b.md rule 13).
+  /// A drawing, not a control: the "gdzie jestem" button says the state to a screen reader.
+  List<Widget> _hereLayers(MapHere h) => [
+    if (h.accuracyM case final double r? when r > 0)
+      ExcludeSemantics(
+        child: CircleLayer(
+          circles: [
+            CircleMarker(
+              point: h.point,
+              radius: r,
+              useRadiusInMeter: true,
+              color: GrobingColors.here.withValues(alpha: 0.18),
+            ),
+          ],
+        ),
+      ),
+    IgnorePointer(
+      child: ExcludeSemantics(
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.3,
+          child: MarkerLayer(
+            markers: [
+              Marker(
+                point: h.point,
+                width: 20,
+                height: 20,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: GrobingColors.here,
+                    shape: BoxShape.circle,
+                    border: Border.fromBorderSide(
+                      BorderSide(color: GrobingColors.background, width: 2),
+                    ),
+                  ),
+                ),
+              ),
+              if (h.label)
+                Marker(
+                  point: h.point,
+                  width: 200,
+                  height: 30,
+                  // The label's left edge 14 dp right of the dot's middle.
+                  alignment: const Alignment(1.14, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: GrobingColors.surface,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        child: Text(
+                          h.accuracyM == null
+                              ? 'tu jesteś'
+                              : 'tu jesteś · ±${h.accuracyM!.round()} m',
+                          style: const TextStyle(
+                            color: GrobingColors.text,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  ];
 
   /// The author's line of a zone (element 4, D13): dashed 5/4, never filled (D28) — the text colour at 75%,
   /// 1.5 dp; the selected sector's in amber, 2.5 dp (mode E). For a screen reader the zones are part of

@@ -155,6 +155,11 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   znika w tej samej transakcji (`dropSectorIfUnused`). Kwatery są osobno od planu, bo plan kasuje się przy zmianie punktu.
   Migracja v10→v11 zamienia tekst kwatery na wiersze `sectors` i przebudowuje `graves` bez kolumny tekstu — liczba grobów
   się nie zmienia, więc kopia v10 odtwarza się w v11.
+- **Pinezka grobu (schemat v12, ISSUE-029).** `graves.lat`/`lon` (od v1), skąd pozycja (`position_source`: `gps` — telefon
+  przy grobie, `plan` albo `satellite` — ręka autora na planie albo na zdjęciu z góry), dokładność telefonu w metrach (tylko
+  `gps`) i data zapisu (`position_recorded_at`, od v12). Zapis: `setGravePin` w `lib/data/graves.dart`. Migracja v11→v12 to
+  jedna kolumna — pinezki sprzed v12 (tylko wymyślone) zostają bez daty. Wartość `plan` nie potrzebowała kroku, bo źródło
+  jest zapisane nazwą.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
@@ -165,8 +170,8 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
 - **Wymyślone dane** (`lib/dev/`) są dostępne tylko w buildzie debug: przycisk na ekranie „Stan danych”.
   W buildzie release tego kodu nie ma. Wymyślone cmentarze mają wymyślone punkty w Polsce: partie 1 i 2
   stoją w jednym miejscu (znicz z liczbą), co trzecia partia jest bez punktu. Drugi przycisk, **„Wymyślone pinezki na
-  planach”**, stawia wymyślone pinezki grobom na cmentarzach z pobranym planem (co trzeci grób zostaje bez) — do US-008
-  to jedyny sposób, żeby zobaczyć znicze na mapie cmentarza.
+  planach”**, stawia wymyślone pinezki grobom na cmentarzach z pobranym planem (co trzeci grób zostaje bez), po kolei z
+  każdym źródłem pinezki (GPS, plan, zdjęcie z góry).
 
 ## Mapa
 
@@ -227,6 +232,33 @@ Od ISSUE-027 (ADR-003 w vaulcie) aplikacja ma uprawnienie `INTERNET` — **wył�
 - **Build release na emulator jako aktualizacja:** dotychczasowe buildy szły z `--split-per-abi` (kod wersji 4001 dla
   x86_64). Zwykły `flutter build apk --release` ma kod 1 i Android odrzuca go jako „downgrade” — na emulator
   `flutter build apk --release --split-per-abi --target-platform android-x64`.
+
+## Lokalizacja — „gdzie jestem” i pinezka
+
+Od ISSUE-029 (ADR-017 w vaulcie) aplikacja zna pozycję telefonu, **tylko z satelitów i tylko na ekranie cmentarza**:
+- **własny kanał** `android/.../HereLocation.kt` na `LocationManager.GPS_PROVIDER` — bez Wi-Fi i masztów, bez usług Google,
+  bez nowej zależności; nakładka w Dart: `lib/app/grave/here_location.dart`. Pozycje płyną tylko, gdy ekran słucha
+  (`EventChannel`), i **nigdy nie trafiają do logu** — przy prawdziwym użyciu to miejsce, gdzie leży rodzina (NFR-005);
+- uprawnienia `ACCESS_FINE_LOCATION` i `ACCESS_COARSE_LOCATION` w jednym żądaniu (Android 12+ pozwala dać tylko
+  „Przybliżoną” — wtedy pinezki stawia się ręcznie). Po dwóch odmowach system już nie pyta: komunikat prowadzi do ustawień
+  aplikacji;
+- **próg „słaby sygnał”** to jedna stała, `weakSignalM` (15 m) w `here_location.dart` — **tymczasowa**: ustawi ją pomiar
+  przy grobach (vault → `CURRENT_STATE.md` → *Parked*). Dokładność z Androida to promień przy 68% pewności.
+
+**Emulator:** pozycję podaje `adb emu geo fix <długość> <szerokość> <wysokość> <satelity>`, np. `… 100 8` — najpierw długość; bez wysokości i satelitów emulator zostawiał swoją domyślną pozycję (ISSUE-029). Ta komenda **nie ustawia
+dokładności**, więc słaby sygnał sprawdzają testy, a nie emulator. Punkt bierz z bazy aplikacji (cmentarz testowy), nie z
+pamięci.
+
+**Telefon przed wizytą na cmentarzu** (wyjątek DoD: GPS na miejscu): build release podpisany kluczem wydania, ten sam co
+przyszłe MVP, więc MVP wejdzie później jako aktualizacja:
+
+```sh
+flutter build apk --release --split-per-abi --target-platform android-arm64
+adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+```
+
+Na telefonie tylko wymyślone dane. **Przed prawdziwymi danymi** (po instalacji MVP) wyczyść dane aplikacji: Ustawienia
+telefonu → Aplikacje → Grobing → Pamięć → Wyczyść dane.
 
 ## Baza cmentarzy
 

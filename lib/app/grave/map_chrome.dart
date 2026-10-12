@@ -110,6 +110,7 @@ class MapBadges extends StatelessWidget {
     required this.photoOnline,
     required this.withSwitch,
     required this.onLayer,
+    this.hereStatus,
   });
 
   final bool planShown;
@@ -117,6 +118,9 @@ class MapBadges extends StatelessWidget {
   final bool? photoOnline;
   final bool withSwitch;
   final void Function(MapLayer layer) onLayer;
+
+  /// Element 10a: the location's state, on the right under the switch (ISSUE-029).
+  final Widget? hereStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +190,10 @@ class MapBadges extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Align(alignment: Alignment.centerLeft, child: state),
+            ],
+            if (hereStatus != null) ...[
+              const SizedBox(height: 4),
+              Align(alignment: Alignment.centerRight, child: hereStatus),
             ],
             if (source != null) ...[
               const SizedBox(height: 4),
@@ -325,6 +333,158 @@ class LayerSwitch extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A pill on the map (elements 11 and 15 — "Popraw pinezkę", "Kwatery"): 40 dp high on the surface, the icon
+/// in amber; the whole 48 dp box takes the touch, not only the pill (ui review, ISSUE-028: 39 dp measured),
+/// and a screen reader hears a button.
+class MapPill extends StatelessWidget {
+  const MapPill({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    button: true,
+    label: label,
+    onTap: onTap,
+    excludeSemantics: true,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Center(
+          child: Material(
+            color: GrobingColors.surface,
+            elevation: 2,
+            shape: const StadiumBorder(),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 18, color: GrobingColors.amber),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: GrobingColors.text,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// What "gdzie jestem" shows (element 10, D31).
+enum HereButtonState {
+  /// Location off — `my_location` in the text colour.
+  off,
+
+  /// On, the map at the dot — `my_location` in the dot's colour; a tap switches off.
+  atDot,
+
+  /// On, the map moved away — `location_searching` in the dot's colour; a tap returns to the dot.
+  away,
+}
+
+/// Element 10: "Gdzie jestem" — a round 48 dp button on the surface, its state for a screen reader too.
+/// [label] is the tooltip and what a screen reader says before the state ("Gdzie jestem"; in mode D "Pinezka
+/// w Twojej pozycji").
+class HereButton extends StatelessWidget {
+  const HereButton({
+    super.key,
+    required this.state,
+    required this.onTap,
+    this.label = 'Gdzie jestem',
+    this.accuracyM,
+  });
+
+  final HereButtonState state;
+  final VoidCallback onTap;
+  final String label;
+  final double? accuracyM;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool on = state != HereButtonState.off;
+    final String said = !on
+        ? '$label, wyłączone'
+        : accuracyM == null
+        ? '$label, włączone'
+        : '$label, włączone, ±${accuracyM!.round()} m';
+    return Semantics(
+      container: true,
+      button: true,
+      label: said,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: GrobingColors.surface,
+          elevation: 2,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Icon(
+                state == HereButtonState.away
+                    ? Icons.location_searching
+                    : Icons.my_location,
+                size: 24,
+                color: on ? GrobingColors.here : GrobingColors.text,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Element 10a: the location's state when the dot cannot be shown or trusted — "poza cmentarzem · 2,5 km",
+/// "Szukam pozycji…", "tylko przybliżona lokalizacja" — on the surface, 13 sp, the icon in the dot's colour.
+class HereStatus extends StatelessWidget {
+  const HereStatus({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    child: MapBadge(
+      icon: Icons.my_location,
+      iconColor: GrobingColors.here,
+      text: text,
+    ),
+  );
 }
 
 /// Element 13: the photo needs the internet; the plan works without it.

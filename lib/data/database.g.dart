@@ -2722,6 +2722,17 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         type: DriftSqlType.double,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _positionRecordedAtMeta =
+      const VerificationMeta('positionRecordedAt');
+  @override
+  late final GeneratedColumn<DateTime> positionRecordedAt =
+      GeneratedColumn<DateTime>(
+        'position_recorded_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2734,6 +2745,7 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
     lon,
     positionSource,
     positionAccuracyM,
+    positionRecordedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2803,6 +2815,15 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         ),
       );
     }
+    if (data.containsKey('position_recorded_at')) {
+      context.handle(
+        _positionRecordedAtMeta,
+        positionRecordedAt.isAcceptableOrUnknown(
+          data['position_recorded_at']!,
+          _positionRecordedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2854,6 +2875,10 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         DriftSqlType.double,
         data['${effectivePrefix}position_accuracy_m'],
       ),
+      positionRecordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}position_recorded_at'],
+      ),
     );
   }
 
@@ -2888,7 +2913,14 @@ class Grave extends DataClass implements Insertable<Grave> {
   final double? lat;
   final double? lon;
   final PositionSource? positionSource;
+
+  /// The phone's accuracy in metres at the 68th percentile — `gps` pins only; a pin the author placed by
+  /// hand is a choice, not a measurement, and has none (cmentarz.md D33).
   final double? positionAccuracyM;
+
+  /// When the pin was saved (ISSUE-029, v12). Pins written before v12 — only the made-up debug data — have
+  /// none.
+  final DateTime? positionRecordedAt;
   const Grave({
     required this.id,
     required this.cemeteryId,
@@ -2900,6 +2932,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     this.lon,
     this.positionSource,
     this.positionAccuracyM,
+    this.positionRecordedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2932,6 +2965,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     if (!nullToAbsent || positionAccuracyM != null) {
       map['position_accuracy_m'] = Variable<double>(positionAccuracyM);
     }
+    if (!nullToAbsent || positionRecordedAt != null) {
+      map['position_recorded_at'] = Variable<DateTime>(positionRecordedAt);
+    }
     return map;
   }
 
@@ -2953,6 +2989,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionAccuracyM: positionAccuracyM == null && nullToAbsent
           ? const Value.absent()
           : Value(positionAccuracyM),
+      positionRecordedAt: positionRecordedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(positionRecordedAt),
     );
   }
 
@@ -2976,6 +3015,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionAccuracyM: serializer.fromJson<double?>(
         json['positionAccuracyM'],
       ),
+      positionRecordedAt: serializer.fromJson<DateTime?>(
+        json['positionRecordedAt'],
+      ),
     );
   }
   @override
@@ -2994,6 +3036,7 @@ class Grave extends DataClass implements Insertable<Grave> {
         $GravesTable.$converterpositionSourcen.toJson(positionSource),
       ),
       'positionAccuracyM': serializer.toJson<double?>(positionAccuracyM),
+      'positionRecordedAt': serializer.toJson<DateTime?>(positionRecordedAt),
     };
   }
 
@@ -3008,6 +3051,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     Value<double?> lon = const Value.absent(),
     Value<PositionSource?> positionSource = const Value.absent(),
     Value<double?> positionAccuracyM = const Value.absent(),
+    Value<DateTime?> positionRecordedAt = const Value.absent(),
   }) => Grave(
     id: id ?? this.id,
     cemeteryId: cemeteryId ?? this.cemeteryId,
@@ -3023,6 +3067,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     positionAccuracyM: positionAccuracyM.present
         ? positionAccuracyM.value
         : this.positionAccuracyM,
+    positionRecordedAt: positionRecordedAt.present
+        ? positionRecordedAt.value
+        : this.positionRecordedAt,
   );
   Grave copyWithCompanion(GravesCompanion data) {
     return Grave(
@@ -3042,6 +3089,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionAccuracyM: data.positionAccuracyM.present
           ? data.positionAccuracyM.value
           : this.positionAccuracyM,
+      positionRecordedAt: data.positionRecordedAt.present
+          ? data.positionRecordedAt.value
+          : this.positionRecordedAt,
     );
   }
 
@@ -3057,7 +3107,8 @@ class Grave extends DataClass implements Insertable<Grave> {
           ..write('lat: $lat, ')
           ..write('lon: $lon, ')
           ..write('positionSource: $positionSource, ')
-          ..write('positionAccuracyM: $positionAccuracyM')
+          ..write('positionAccuracyM: $positionAccuracyM, ')
+          ..write('positionRecordedAt: $positionRecordedAt')
           ..write(')'))
         .toString();
   }
@@ -3074,6 +3125,7 @@ class Grave extends DataClass implements Insertable<Grave> {
     lon,
     positionSource,
     positionAccuracyM,
+    positionRecordedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -3088,7 +3140,8 @@ class Grave extends DataClass implements Insertable<Grave> {
           other.lat == this.lat &&
           other.lon == this.lon &&
           other.positionSource == this.positionSource &&
-          other.positionAccuracyM == this.positionAccuracyM);
+          other.positionAccuracyM == this.positionAccuracyM &&
+          other.positionRecordedAt == this.positionRecordedAt);
 }
 
 class GravesCompanion extends UpdateCompanion<Grave> {
@@ -3102,6 +3155,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   final Value<double?> lon;
   final Value<PositionSource?> positionSource;
   final Value<double?> positionAccuracyM;
+  final Value<DateTime?> positionRecordedAt;
   const GravesCompanion({
     this.id = const Value.absent(),
     this.cemeteryId = const Value.absent(),
@@ -3113,6 +3167,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.lon = const Value.absent(),
     this.positionSource = const Value.absent(),
     this.positionAccuracyM = const Value.absent(),
+    this.positionRecordedAt = const Value.absent(),
   });
   GravesCompanion.insert({
     this.id = const Value.absent(),
@@ -3125,6 +3180,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.lon = const Value.absent(),
     this.positionSource = const Value.absent(),
     this.positionAccuracyM = const Value.absent(),
+    this.positionRecordedAt = const Value.absent(),
   }) : cemeteryId = Value(cemeteryId);
   static Insertable<Grave> custom({
     Expression<int>? id,
@@ -3137,6 +3193,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Expression<double>? lon,
     Expression<String>? positionSource,
     Expression<double>? positionAccuracyM,
+    Expression<DateTime>? positionRecordedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3149,6 +3206,8 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       if (lon != null) 'lon': lon,
       if (positionSource != null) 'position_source': positionSource,
       if (positionAccuracyM != null) 'position_accuracy_m': positionAccuracyM,
+      if (positionRecordedAt != null)
+        'position_recorded_at': positionRecordedAt,
     });
   }
 
@@ -3163,6 +3222,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Value<double?>? lon,
     Value<PositionSource?>? positionSource,
     Value<double?>? positionAccuracyM,
+    Value<DateTime?>? positionRecordedAt,
   }) {
     return GravesCompanion(
       id: id ?? this.id,
@@ -3175,6 +3235,7 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       lon: lon ?? this.lon,
       positionSource: positionSource ?? this.positionSource,
       positionAccuracyM: positionAccuracyM ?? this.positionAccuracyM,
+      positionRecordedAt: positionRecordedAt ?? this.positionRecordedAt,
     );
   }
 
@@ -3213,6 +3274,11 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     if (positionAccuracyM.present) {
       map['position_accuracy_m'] = Variable<double>(positionAccuracyM.value);
     }
+    if (positionRecordedAt.present) {
+      map['position_recorded_at'] = Variable<DateTime>(
+        positionRecordedAt.value,
+      );
+    }
     return map;
   }
 
@@ -3228,7 +3294,8 @@ class GravesCompanion extends UpdateCompanion<Grave> {
           ..write('lat: $lat, ')
           ..write('lon: $lon, ')
           ..write('positionSource: $positionSource, ')
-          ..write('positionAccuracyM: $positionAccuracyM')
+          ..write('positionAccuracyM: $positionAccuracyM, ')
+          ..write('positionRecordedAt: $positionRecordedAt')
           ..write(')'))
         .toString();
   }
@@ -9411,6 +9478,7 @@ typedef $$GravesTableCreateCompanionBuilder =
       Value<double?> lon,
       Value<PositionSource?> positionSource,
       Value<double?> positionAccuracyM,
+      Value<DateTime?> positionRecordedAt,
     });
 typedef $$GravesTableUpdateCompanionBuilder =
     GravesCompanion Function({
@@ -9424,6 +9492,7 @@ typedef $$GravesTableUpdateCompanionBuilder =
       Value<double?> lon,
       Value<PositionSource?> positionSource,
       Value<double?> positionAccuracyM,
+      Value<DateTime?> positionRecordedAt,
     });
 
 final class $$GravesTableReferences
@@ -9550,6 +9619,11 @@ class $$GravesTableFilterComposer
 
   ColumnFilters<double> get positionAccuracyM => $composableBuilder(
     column: $table.positionAccuracyM,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get positionRecordedAt => $composableBuilder(
+    column: $table.positionRecordedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9699,6 +9773,11 @@ class $$GravesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get positionRecordedAt => $composableBuilder(
+    column: $table.positionRecordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$CemeteriesTableOrderingComposer get cemeteryId {
     final $$CemeteriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9781,6 +9860,11 @@ class $$GravesTableAnnotationComposer
 
   GeneratedColumn<double> get positionAccuracyM => $composableBuilder(
     column: $table.positionAccuracyM,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get positionRecordedAt => $composableBuilder(
+    column: $table.positionRecordedAt,
     builder: (column) => column,
   );
 
@@ -9924,6 +10008,7 @@ class $$GravesTableTableManager
                 Value<double?> lon = const Value.absent(),
                 Value<PositionSource?> positionSource = const Value.absent(),
                 Value<double?> positionAccuracyM = const Value.absent(),
+                Value<DateTime?> positionRecordedAt = const Value.absent(),
               }) => GravesCompanion(
                 id: id,
                 cemeteryId: cemeteryId,
@@ -9935,6 +10020,7 @@ class $$GravesTableTableManager
                 lon: lon,
                 positionSource: positionSource,
                 positionAccuracyM: positionAccuracyM,
+                positionRecordedAt: positionRecordedAt,
               ),
           createCompanionCallback:
               ({
@@ -9948,6 +10034,7 @@ class $$GravesTableTableManager
                 Value<double?> lon = const Value.absent(),
                 Value<PositionSource?> positionSource = const Value.absent(),
                 Value<double?> positionAccuracyM = const Value.absent(),
+                Value<DateTime?> positionRecordedAt = const Value.absent(),
               }) => GravesCompanion.insert(
                 id: id,
                 cemeteryId: cemeteryId,
@@ -9959,6 +10046,7 @@ class $$GravesTableTableManager
                 lon: lon,
                 positionSource: positionSource,
                 positionAccuracyM: positionAccuracyM,
+                positionRecordedAt: positionRecordedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
