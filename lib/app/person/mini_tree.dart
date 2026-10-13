@@ -446,13 +446,12 @@ class _Node extends StatelessWidget {
     final Widget body = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // The ring over the photo: under it, the opaque circle would hide it (ui review).
+        // The ring over the photo: under it, the opaque circle would hide it (ui review). The glow under the
+        // circle: over it, it toned the circle amber (ui review of ISSUE-033; style-b.md rules 2 and 14).
         DecoratedBox(
-          position: DecorationPosition.foreground,
           decoration: self
               ? BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: GrobingColors.amber, width: 2),
                   boxShadow: [
                     BoxShadow(
                       color: GrobingColors.amber.withValues(alpha: 0.35),
@@ -461,7 +460,16 @@ class _Node extends StatelessWidget {
                   ],
                 )
               : const BoxDecoration(),
-          child: circle,
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: self
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: GrobingColors.amber, width: 2),
+                  )
+                : const BoxDecoration(),
+            child: circle,
+          ),
         ),
         const SizedBox(height: _labelGap),
         SizedBox(

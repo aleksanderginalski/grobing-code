@@ -14,9 +14,11 @@ import 'backup/documents.dart';
 import 'backup/restore_service.dart';
 import 'backup/restore_swap.dart';
 import 'data/database.dart';
+import 'dev/frame_log.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  startFrameLog();
   // App-private storage. Excluded from Android's own backup and device transfer (ADR-004 pkt 4,
   // res/xml/data_extraction_rules.xml): the one way off the phone is the backup below.
   final Directory support = await getApplicationSupportDirectory();

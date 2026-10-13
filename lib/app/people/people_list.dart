@@ -268,19 +268,32 @@ class PersonAvatar extends StatelessWidget {
   }
 }
 
+/// The initials of a name: the first letter of the given names and of the surname; "?" without either.
+String initialsOf(String? givenNames, String? surname) {
+  final String letters = [
+    for (final String? part in [givenNames, surname])
+      if (part != null && part.trim().isNotEmpty)
+        part.trim().characters.first.toUpperCase(),
+  ].join();
+  return letters.isEmpty ? '?' : letters;
+}
+
 /// Letters in a circle on the surface with an outline; "Ja" in amber ([accent]) — the mark of the
-/// author (osoby.md, element 3).
+/// author (osoby.md, element 3). On the tree the "Ja" mark keeps the outline's colour ([accentOutline]
+/// false): an amber ring there means the person in the middle (drzewo.md D14).
 class InitialsCircle extends StatelessWidget {
   const InitialsCircle({
     super.key,
     required this.text,
     this.size = 40,
     this.accent = false,
+    this.accentOutline = true,
   });
 
   final String text;
   final double size;
   final bool accent;
+  final bool accentOutline;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -291,7 +304,9 @@ class InitialsCircle extends StatelessWidget {
       color: GrobingColors.surface,
       shape: BoxShape.circle,
       border: Border.all(
-        color: accent ? GrobingColors.amber : GrobingColors.outline,
+        color: accent && accentOutline
+            ? GrobingColors.amber
+            : GrobingColors.outline,
       ),
     ),
     child: Text(

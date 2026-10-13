@@ -4,7 +4,7 @@ import '../data/database.dart';
 import 'people/people_screen.dart';
 import 'photo/photos.dart';
 import 'theme.dart';
-import 'tree/tree_placeholder_screen.dart';
+import 'tree/tree_screen.dart';
 
 /// The destinations of the bottom bar (style-b.md rule 12; 05_DESIGN/cmentarze.md, element 18).
 enum AppTab {
@@ -25,17 +25,22 @@ enum AppTab {
 /// first route — Android's fixed start destination, the last screen before back leaves the app
 /// (developer.android.com → Principles of navigation) — so back from another tab's main screen returns
 /// to the map. On a tab's main screen its tab does nothing; deeper in its stack it returns there.
+///
+/// The tree starts from "ja" (drzewo.md D15, US-009 AC-1); [treeFocus] — "Pokaż w drzewie" in a person's view
+/// (osoba.md element 6, AC-6) — opens it afresh with that person in the middle, even from inside its own stack.
 void openTab(
   BuildContext context,
   AppTab tab, {
   required GrobingDatabase database,
   Photos? photos,
+  int? treeFocus,
 }) {
   final NavigatorState navigator = Navigator.of(context);
+  final bool fresh = tab == AppTab.tree && treeFocus != null;
   bool atMain = false;
   navigator.popUntil((route) {
     if (route.isFirst) return true;
-    if (route.settings.name == tab.routeName) atMain = true;
+    if (!fresh && route.settings.name == tab.routeName) atMain = true;
     return atMain;
   });
   if (tab == AppTab.map || atMain) return;
@@ -47,9 +52,10 @@ void openTab(
       reverseTransitionDuration: Duration.zero,
       pageBuilder: (_, _, _) => switch (tab) {
         AppTab.people => PeopleScreen(database: database, photos: photos),
-        AppTab.tree => TreePlaceholderScreen(
+        AppTab.tree => TreeScreen(
           database: database,
           photos: photos,
+          focusPersonId: treeFocus,
         ),
         AppTab.map => throw StateError('The map is the first route'),
       },

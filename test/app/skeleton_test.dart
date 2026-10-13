@@ -20,7 +20,7 @@ import 'package:grobing/app/settings/hand_over_note_screen.dart';
 import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
-import 'package:grobing/app/tree/tree_placeholder_screen.dart';
+import 'package:grobing/app/tree/tree_screen.dart';
 import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
@@ -175,21 +175,22 @@ void main() {
         expect(_activeTab(tester), AppTab.people);
 
         await tester.tap(find.text('Drzewo'));
+        await _pumpUntil(tester, () => _shown(find.byType(TreeScreen)));
+        expect(_activeTab(tester), AppTab.tree);
+        // The tree itself (ISSUE-033) replaced the placeholder; these people have no "ja" yet (drzewo.md →
+        // States).
         await _pumpUntil(
           tester,
-          () => _shown(find.byType(TreePlaceholderScreen)),
-        );
-        expect(_activeTab(tester), AppTab.tree);
-        expect(
-          find.textContaining('Drzewo powstanie po SPIKE-002'),
-          findsOneWidget,
+          () => _shown(
+            find.text('Aplikacja nie wie jeszcze, która osoba to Ty.'),
+          ),
         );
         expect(find.byType(PeopleScreen, skipOffstage: false), findsNothing);
 
         // Back from a tab's main screen returns to the map — the fixed start destination.
         await tester.binding.handlePopRoute();
         await _pumpUntil(tester, () => _shown(find.byType(HomeScreen)));
-        expect(find.byType(TreePlaceholderScreen), findsNothing);
+        expect(find.byType(TreeScreen), findsNothing);
         expect(_activeTab(tester), AppTab.map);
 
         // A cemetery opened from the map keeps Mapa active; "Mapa" brings back the map of Poland.

@@ -76,4 +76,117 @@ void main() {
   );
 
   test('no steps — no rows', () => expect(chainLabels(const []), isEmpty));
+
+  // ISSUE-033, US-009 AC-5 (05_DESIGN/drzewo.md v1.6 element 5, D12, D13, G1) — the tree's card: who the person
+  // is to "ja", from the dictionary of ISSUE-025 D2 with its bracket, farther ones told in segments counted
+  // from the other person, in the genitive, "Twój / Twoja" by the word. A made-up family (family-data.md).
+  group('kinshipName — the tree\'s card', () {
+    // Ids of the made-up family; sexes below.
+    const int ja = 1, tata = 2, mama = 3, dziadek = 4, babcia = 5;
+    const int ciotka = 6, stryj = 7, wujek = 8, mazCiotki = 9, kuzynka = 10;
+    const int zona = 11, tesc = 12, tesciowa = 13, szwagier = 14;
+    const int babciaZony = 15, dziadekZony = 16, prababkaZony = 17;
+    const int pradziadekZony = 18, siostraPrababki = 19, jejMaz = 20;
+    const int kuzynkaBabci = 21, praprababka = 22, prapradziadek = 23;
+    const int brat = 24, partnerkaBrata = 25, dziecko = 26, rodzicMamy = 27;
+    const int dziadekMamy = 28;
+    final Map<int, Sex?> sex = {
+      ja: Sex.male,
+      tata: Sex.male,
+      mama: Sex.female,
+      dziadek: Sex.male,
+      babcia: Sex.female,
+      ciotka: Sex.female,
+      stryj: Sex.male,
+      wujek: Sex.male,
+      mazCiotki: Sex.male,
+      kuzynka: Sex.female,
+      zona: Sex.female,
+      tesc: Sex.male,
+      tesciowa: Sex.female,
+      szwagier: Sex.male,
+      babciaZony: Sex.female,
+      dziadekZony: Sex.male,
+      prababkaZony: Sex.female,
+      pradziadekZony: Sex.male,
+      siostraPrababki: Sex.female,
+      jejMaz: Sex.male,
+      kuzynkaBabci: Sex.female,
+      praprababka: Sex.female,
+      prapradziadek: Sex.male,
+      brat: Sex.male,
+      partnerkaBrata: Sex.female,
+      dziecko: null,
+      rodzicMamy: null,
+      dziadekMamy: Sex.male,
+    };
+    // family → partners, family → children; the married ones below.
+    final KinGraph kin = KinGraph.of(
+      partners: {
+        1: [dziadek, babcia],
+        2: [tata, mama],
+        3: [ciotka, mazCiotki],
+        4: [ja, zona],
+        5: [tesc, tesciowa],
+        6: [dziadekZony, babciaZony],
+        7: [pradziadekZony, prababkaZony],
+        8: [prapradziadek, praprababka],
+        9: [jejMaz, siostraPrababki],
+        10: [brat, partnerkaBrata],
+        11: [rodzicMamy, dziadekMamy],
+      },
+      children: {
+        1: [tata, ciotka, stryj],
+        2: [ja, brat],
+        3: [kuzynka],
+        4: [dziecko],
+        5: [zona, szwagier],
+        6: [tesciowa],
+        7: [babciaZony],
+        8: [prababkaZony, siostraPrababki],
+        9: [kuzynkaBabci],
+        11: [mama, wujek],
+      },
+      married: {1, 2, 3, 4, 5, 6, 7, 8, 9, 11},
+    );
+    String? name(int to) => kinshipName(kin.path(ja, to)!, (id) => sex[id]);
+
+    test('the dictionary with its brackets (AC-5)', () {
+      expect(name(ciotka), 'Twoja ciotka (siostra taty)');
+      expect(name(stryj), 'Twój stryj (brat taty)');
+      expect(name(wujek), 'Twój wuj (brat mamy)');
+      expect(name(kuzynka), 'Twoja siostra cioteczna (córka siostry taty)');
+      expect(name(mazCiotki), 'Twój wuj (mąż siostry taty)');
+      expect(name(tesc), 'Twój teść (tata żony)');
+      expect(name(szwagier), 'Twój szwagier (brat żony)');
+      expect(name(babcia), 'Twoja babcia');
+      expect(name(zona), 'Twoja żona');
+    });
+
+    test(
+      'farther — segments from the other person: "Siostra cioteczna babci Twojej żony" (AC-5, D12)',
+      () {
+        expect(name(kuzynkaBabci), 'Siostra cioteczna babci Twojej żony');
+        // Counted from "ja", "teściowa" would take the first two steps (ISSUE-025 D2 before D12).
+        expect(
+          name(kuzynkaBabci),
+          isNot('Siostrzenica babci Twojej teściowej'),
+        );
+        expect(name(babciaZony), 'Babcia Twojej żony');
+        expect(name(siostraPrababki), 'Ciotka babci Twojej żony');
+      },
+    );
+
+    test('"razem" and no sex: partnerka; the neutral words', () {
+      expect(name(partnerkaBrata), 'Partnerka Twojego brata');
+      expect(name(dziecko), 'Twoje dziecko');
+      // The mother's parent without a sex: no "dziadek" or "babcia" — one step at a time (ISSUE-025 D2).
+      expect(name(rodzicMamy), 'Rodzic Twojej mamy');
+      expect(name(dziadekMamy), 'Twój dziadek');
+    });
+
+    test('"ja" themselves has no name', () {
+      expect(kinshipName(const [], (id) => sex[id]), isNull);
+    });
+  });
 }

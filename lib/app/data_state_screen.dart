@@ -8,6 +8,7 @@ import '../backup/restore_service.dart';
 import '../data/data_state.dart';
 import '../data/database.dart';
 import '../dev/fictional_data.dart';
+import '../dev/fictional_family.dart';
 import 'backup_setup_screen.dart';
 import 'restore_screen.dart';
 import 'theme.dart';
@@ -129,6 +130,11 @@ class _DataStateScreenState extends State<DataStateScreen> {
     _refresh();
   }
 
+  Future<void> _addFictionalFamily() async {
+    await addFictionalFamily(widget.database);
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,11 +209,20 @@ class _DataStateScreenState extends State<DataStateScreen> {
                   child: const Text('Odtwórz z kopii'),
                 ),
               ],
-              if (kDebugMode) ...[
+              // Debug and profile, never release: kReleaseMode is a constant, so all of this leaves the release
+              // build as before (ISSUE-007 D3). Profile too, so the tree's frames and the author's feel of
+              // it are judged on an AOT build (ISSUE-033 D6).
+              if (!kReleaseMode) ...[
                 const SizedBox(height: 32),
                 OutlinedButton(
                   onPressed: _addFictionalData,
                   child: const Text('Wgraj wymyślone dane'),
+                ),
+                const SizedBox(height: 12),
+                // A family shaped like the real one, for the tree (ISSUE-033; SPIKE-002 D6).
+                OutlinedButton(
+                  onPressed: _addFictionalFamily,
+                  child: const Text('Wymyślona rodzina do drzewa'),
                 ),
                 const SizedBox(height: 12),
                 // Until US-008 the only way to see the candles of a cemetery's map (ISSUE-027).

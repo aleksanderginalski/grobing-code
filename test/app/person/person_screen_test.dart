@@ -20,6 +20,7 @@ import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 
 import '../../support/photo_fakes.dart';
+import '../../support/style_checks.dart';
 
 // ISSUE-024 — the person's view (05_DESIGN/osoba.md v2.1), happy path per AC: AC-2 the mini tree with role
 // names and a node to the relative's view · AC-3 the chain from "ja" by first names and one-step relations;
@@ -258,8 +259,10 @@ void main() {
         find.bySemanticsLabel(RegExp(r'^Matka: Zofia Testowa')),
         findsOneWidget,
       );
-      // "Pokaż w drzewie" is not there while the tree is a placeholder (D11).
-      expect(find.text('Pokaż w drzewie'), findsNothing);
+      // "Pokaż w drzewie" came back with the tree (osoba.md v2.4, D11) — tree_screen_test.dart, AC-6.
+      // The glow of the person in the middle and of the portrait lies under the circle, not over it (ui
+      // review of ISSUE-033; the author's "ok" at its stop #2).
+      expectNoGlowOverContent(tester);
 
       await tester.tap(find.text('Zofia'));
       await _pumpUntil(tester, () => _shown(find.text('Zofia Testowa')));

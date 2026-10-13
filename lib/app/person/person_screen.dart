@@ -366,7 +366,7 @@ class _PersonScreenState extends State<PersonScreen> {
         _padded(
           const _SectionHeader(icon: Icons.people_outline, text: 'Rodzina'),
         ),
-        if (hasRelatives)
+        if (hasRelatives) ...[
           MiniTree(
             person: FamilyMember(
               id: v.id,
@@ -381,8 +381,30 @@ class _PersonScreenState extends State<PersonScreen> {
             profiles: v.relativeProfiles,
             photos: photos,
             onOpen: _open,
-          )
-        else
+          ),
+          // "Pokaż w drzewie" (osoba.md v2.4, D11; US-009 AC-6): the Drzewo tab with this person in the
+          // middle — a change of tab, not a tree on this stack (drzewo.md D15). Only with a family: without
+          // one the tree would show the person alone.
+          _padded(
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: GrobingColors.amber,
+                ),
+                onPressed: () => openTab(
+                  context,
+                  AppTab.tree,
+                  database: widget.database,
+                  photos: photos,
+                  treeFocus: v.id,
+                ),
+                icon: const Icon(Icons.account_tree_outlined),
+                label: const Text('Pokaż w drzewie'),
+              ),
+            ),
+          ),
+        ] else
           _padded(
             const Text(
               'Rodziny jeszcze nie ma. Dodasz ją pod ✎.',
@@ -459,12 +481,12 @@ class _PersonScreenState extends State<PersonScreen> {
       onTap: () => _lookAt(v, grid: false),
       child: GestureDetector(
         onTap: () => _lookAt(v, grid: false),
-        // The ring over the photo: under it, the opaque circle of the same size would hide it (ui review).
+        // The ring over the photo: under it, the opaque circle of the same size would hide it (ui review). The
+        // glow under the photo: over it, it toned the portrait amber (ui review of ISSUE-033; style-b.md rule 14
+        // — no filters, nothing on the photo; author's "ok" at its stop #2).
         child: DecoratedBox(
-          position: DecorationPosition.foreground,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: GrobingColors.amber, width: 2),
             boxShadow: [
               BoxShadow(
                 color: GrobingColors.amber.withValues(alpha: 0.25),
@@ -472,11 +494,18 @@ class _PersonScreenState extends State<PersonScreen> {
               ),
             ],
           ),
-          child: ProfileCircle(
-            file: photos.fileOf(profile.relativePath),
-            crop: profile.crop,
-            size: 104,
-            unreadable: const _Unreadable(size: 104),
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: GrobingColors.amber, width: 2),
+            ),
+            child: ProfileCircle(
+              file: photos.fileOf(profile.relativePath),
+              crop: profile.crop,
+              size: 104,
+              unreadable: const _Unreadable(size: 104),
+            ),
           ),
         ),
       ),
