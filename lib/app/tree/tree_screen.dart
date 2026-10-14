@@ -20,6 +20,7 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import 'presentation_mode.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
 import 'tree_painter.dart';
@@ -50,6 +51,8 @@ const double _middleHeight = 0.42;
 /// first (AC-1). A touch puts a person in the middle (AC-2); zooming out adds the wider family level by
 /// level (AC-3); a short dashed trace says where the family goes on (AC-4); the card says who the person
 /// is to "ja" (AC-5). "Pokaż w drzewie" opens it with a given person in the middle ([focusPersonId], AC-6).
+/// The TV icon turns it into presentation mode (element 11, AC-8; ISSUE-034): landscape, full screen, level 2
+/// fitted to the screen, no buttons.
 class TreeScreen extends StatefulWidget {
   const TreeScreen({
     super.key,
@@ -119,6 +122,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _pillShown = false;
   Timer? _pillTimer;
 
+  /// Presentation mode (element 11, D16): level 2 fitted to the screen, no bar, card or + / −; a tap on the
+  /// empty space shows "Zakończ prezentację" for 3 s.
+  bool _presenting = false;
+  bool _exitShown = false;
+  Timer? _exitTimer;
+
   // A double tap on the tree's empty space zooms in (AC-3, SC 2.5.1). Read from raw pointer events, so a
   // tap on a person is not held back waiting for a second one.
   int _pointers = 0;
@@ -168,7 +177,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void dispose() {
     _subscription?.cancel();
     _pillTimer?.cancel();
+    _exitTimer?.cancel();
     _settle?.cancel();
+    // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
+    if (_presenting) unawaited(leavePresentation());
     _move.dispose();
     _glide.dispose();
     _view
@@ -251,7 +263,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               if (!next.positions.containsKey(e.key)) e.key: e.value + shift,
           }
         : const {};
-    final Matrix4? target = centre ? _centreOn(focus) : null;
+    final Matrix4? target = centre ? _home(focus) : null;
     if (moving) {
       _viewMove = target == null
           ? null
@@ -336,8 +348,53 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Where the view rests: [person] in the middle — or, in presentation, the whole level fitted.
+  Matrix4? _home(int person) => _presenting ? _fitted() : _centreOn(person);
+
+  /// Presentation (D4): the whole level in the view, 24 dp from its edges, at a scale within the tree's
+  /// (D17, D18). An axis that does not fit even at the smallest scale — large text, a wide family — keeps
+  /// the person in the middle in the middle; dragging shows the rest.
+  Matrix4? _fitted() {
+    final Size? v = _viewport;
+    final TreeLayout? layout = _layout;
+    if (v == null || layout == null || layout.positions.isEmpty) return null;
+    final double half = _metrics.slot / 2;
+    final Iterable<Offset> places = layout.positions.values;
+    final Rect people = Rect.fromLTRB(
+      places.map((p) => p.dx).reduce(math.min) - half,
+      places.map((p) => p.dy).reduce(math.min),
+      places.map((p) => p.dx).reduce(math.max) + half,
+      places.map((p) => p.dy).reduce(math.max) + _metrics.labelBottom,
+    );
+    const double margin = 24;
+    final double scale = math
+        .min(
+          (v.width - 2 * margin) / people.width,
+          (v.height - 2 * margin) / people.height,
+        )
+        .clamp(treeMinScale, treeMaxScale);
+    final Offset focus = layout.positions[layout.focus]!;
+    double along(double room, double size, double start, double focusAt) =>
+        size * scale <= room - 2 * margin
+        ? (room - size * scale) / 2 - start * scale
+        : room / 2 - focusAt * scale;
+    return _matrix(
+      scale,
+      Offset(
+        along(v.width, people.width, people.left, focus.dx),
+        along(
+          v.height,
+          people.height,
+          people.top,
+          focus.dy + _metrics.labelBottom / 2,
+        ),
+      ),
+    );
+  }
+
   /// Every change of the view: the names follow the scale (D1 — I2), and a threshold crossed changes the
-  /// level, the person in the middle kept in place (AC-3).
+  /// level, the person in the middle kept in place (AC-3) — except in presentation, where level 2 stays at
+  /// whatever scale fits it to the screen (D16).
   void _onView() {
     // Once the view has stood still for a moment — after a fling too — check that the tree is in it.
     _settle?.cancel();
@@ -347,7 +404,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final int level = treeLevelAtScale(s);
     setState(() {
       _scale = s;
-      if (level != _level && _layout != null) {
+      if (!_presenting && level != _level && _layout != null) {
         _level = level;
         _relayout(keep: _focus, animate: true);
         _showPill();
@@ -375,7 +432,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       ),
     );
     if (anyone) return;
-    final Matrix4? target = _centreOn(focus);
+    _glideHome(focus);
+  }
+
+  void _glideHome(int focus) {
+    final Matrix4? target = _home(focus);
     if (target == null) return;
     if (_noMotion) {
       _view.value = target;
@@ -395,11 +456,76 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void _showPill() {
     final TreeLayout? layout = _layout;
     if (layout == null) return;
-    _pill = 'Poziom $_level · ${peopleLabel(layout.count)}';
+    _flash(
+      'Poziom $_level · ${peopleLabel(layout.count)}',
+      const Duration(milliseconds: 1500),
+    );
+  }
+
+  /// The pill at the top of the tree for [time]: the level after a change, the hint on entering presentation.
+  void _flash(String text, Duration time) {
+    _pill = text;
     _pillShown = true;
     _pillTimer?.cancel();
-    _pillTimer = Timer(const Duration(milliseconds: 1500), () {
+    _pillTimer = Timer(time, () {
       if (mounted) setState(() => _pillShown = false);
+    });
+  }
+
+  // ---- presentation mode (element 11, D11, D16) ----
+
+  /// The TV icon: landscape, full screen, level 2 fitted once the screen has turned; the hint about
+  /// "Przesyłaj ekran" on every entry, since the mode itself sends nothing anywhere.
+  void _present() {
+    setState(() {
+      _presenting = true;
+      _exitShown = false;
+      if (_level != 2) {
+        _level = 2;
+        _relayout(keep: _focus);
+      }
+      // Fitted when the landscape size comes (_treeArea), as a new size before any touch.
+      _centred = false;
+      _touched = false;
+      _flash(
+        // The function, not a tile's name: "Przesyłanie" on a Pixel, "Smart View" on a Samsung (drzewo.md D26);
+        // a hard space after the one-letter word (style-b.md rule 6).
+        'Obraz na telewizor: przesyłanie ekranu w szybkich ustawieniach telefonu',
+        const Duration(seconds: 4),
+      );
+    });
+    unawaited(enterPresentation());
+  }
+
+  /// "Zakończ prezentację" or back: portrait again, with the bars, the same person in the middle, level 2 at
+  /// the tree's own scale.
+  void _leave() {
+    _exitTimer?.cancel();
+    setState(() {
+      _presenting = false;
+      _exitShown = false;
+      _pillShown = false;
+      _scale = 1;
+      final int? focus = _focus;
+      final Matrix4? home = focus == null ? null : _centreOn(focus);
+      if (home != null) _view.value = home;
+      // And again when the portrait size comes.
+      _centred = false;
+      _touched = false;
+    });
+    unawaited(leavePresentation());
+  }
+
+  /// A tap on the empty space in presentation: "Zakończ prezentację" for 3 s. The hint makes room for it.
+  void _showExit() {
+    _exitTimer?.cancel();
+    _pillTimer?.cancel();
+    setState(() {
+      _exitShown = true;
+      _pillShown = false;
+    });
+    _exitTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _exitShown = false);
     });
   }
 
@@ -419,7 +545,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   void _tap(int person) {
     if (person == _focus) {
-      _open(person);
+      // In presentation the person in the middle does not open their view — in portrait, it would end the
+      // show (D5); the level is fitted anew, as after any touch of a person (element 11).
+      _presenting ? _glideHome(person) : _open(person);
       return;
     }
     setState(() {
@@ -472,6 +600,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _lastTap = null;
       return;
     }
+    // In presentation the level stays (D16): a tap on the empty space only offers the way out.
+    if (_presenting) {
+      _showExit();
+      return;
+    }
     final ({Offset at, Duration time})? last = _lastTap;
     if (last != null &&
         e.timeStamp - last.time < const Duration(milliseconds: 300) &&
@@ -505,44 +638,71 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   // ---- building ----
 
+  // In presentation the same widgets lose the bar, the card, + / − and the tab bar: the tree's area keeps its
+  // place in the tree of widgets, so the view and the moves go on through the change.
   @override
-  Widget build(BuildContext context) => Scaffold(
-    bottomNavigationBar: GrobingTabBar(
-      active: AppTab.tree,
-      database: widget.database,
-      photos: widget.photos,
-    ),
-    body: SafeArea(
-      bottom: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _bar(),
-          Expanded(child: _content()),
-        ],
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_presenting,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop && _presenting) _leave();
+    },
+    child: Scaffold(
+      bottomNavigationBar: _presenting
+          ? null
+          : GrobingTabBar(
+              active: AppTab.tree,
+              database: widget.database,
+              photos: widget.photos,
+            ),
+      body: SafeArea(
+        bottom: _presenting,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!_presenting) _bar(),
+            Expanded(child: _content()),
+          ],
+        ),
       ),
     ),
   );
 
-  /// Element 1: "Drzewo". The icons in the bar come with their items — presentation mode (ISSUE-034),
-  /// "Połącz dwie osoby" (US-011).
+  /// The tree is on the screen — not the states without it (drzewo.md → States).
+  bool get _treeShown =>
+      _error == null &&
+      (_family?.people.isNotEmpty ?? false) &&
+      _focus != null &&
+      _layout != null;
+
+  /// Element 1: "Drzewo" and, with a tree, the TV icon — presentation mode (AC-8). "Połącz dwie osoby" comes
+  /// with US-011.
   Widget _bar() => ConstrainedBox(
     constraints: const BoxConstraints(minHeight: 64),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Semantics(
-          header: true,
-          child: const Text(
-            'Drzewo',
-            style: TextStyle(
-              color: GrobingColors.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
+      padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: const Text(
+                'Drzewo',
+                style: TextStyle(
+                  color: GrobingColors.text,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
-        ),
+          if (_treeShown)
+            IconButton(
+              icon: const Icon(Icons.tv_outlined),
+              color: GrobingColors.amber,
+              tooltip: 'Tryb prezentacji',
+              onPressed: _present,
+            ),
+        ],
       ),
     ),
   );
@@ -572,13 +732,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: _treeArea(family, layout)),
-        _TreeCard(
-          person: family.people[focus]!,
-          isMe: focus == family.meId,
-          kin: family.meId == null ? null : _kin[focus],
-          photos: widget.photos,
-          onShow: () => _open(focus),
-        ),
+        if (!_presenting)
+          _TreeCard(
+            person: family.people[focus]!,
+            isMe: focus == family.meId,
+            kin: family.meId == null ? null : _kin[focus],
+            photos: widget.photos,
+            onShow: () => _open(focus),
+          ),
       ],
     );
   }
@@ -639,7 +800,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         if (!_centred) {
           _centred = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            final Matrix4? m = _focus == null ? null : _centreOn(_focus!);
+            final Matrix4? m = _focus == null ? null : _home(_focus!);
             if (mounted && m != null) _view.value = m;
           });
         }
@@ -662,12 +823,37 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 boundaryMargin: const EdgeInsets.all(double.infinity),
                 minScale: treeMinScale,
                 maxScale: treeMaxScale,
+                // In presentation dragging moves, but the level stays: no pinch (D16).
+                scaleEnabled: !_presenting,
                 child: _world(layout, nodes),
               ),
             ),
           ),
-          Positioned(right: 12, bottom: 12, child: _zoomButtons()),
+          if (!_presenting)
+            Positioned(right: 12, bottom: 12, child: _zoomButtons()),
+          // In immersive sticky mode the system's swipe from the edge, which shows the bars for a moment,
+          // reaches the app too: it dragged the tree away (found on the emulator) — from the top and the
+          // bottom, and from the side where a three-button navigation bar stands in landscape. Along every
+          // edge the tree takes no touch; the fitted level keeps 24 dp from them anyway (D4; drzewo.md D25).
+          if (_presenting)
+            for (final Alignment edge in const [
+              Alignment.topCenter,
+              Alignment.bottomCenter,
+              Alignment.centerLeft,
+              Alignment.centerRight,
+            ])
+              Align(
+                alignment: edge,
+                child: AbsorbPointer(
+                  child: SizedBox(
+                    width: edge.x == 0 ? double.infinity : 24,
+                    height: edge.x == 0 ? 24 : double.infinity,
+                  ),
+                ),
+              ),
           Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
+          if (_presenting && _exitShown)
+            Positioned(top: 12, right: 12, child: _exitButton()),
         ],
       );
     },
@@ -782,6 +968,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       labelScale: _labelScale,
       showLabel: false,
       semanticsLabel: '',
+      hint: null,
       onTap: null,
     );
   }
@@ -828,6 +1015,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         if (p.dead && p.death == null) 'nie żyje',
         ?kin,
       ].join(', '),
+      // In presentation the person in the middle opens nothing (D5): no hint, the touch only fits the level anew.
+      hint: n != layout.focus
+          ? 'w środek'
+          : _presenting
+          ? null
+          : 'otwórz',
       onTap: () => _tap(n),
     );
   }
@@ -888,7 +1081,20 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     ],
   );
 
+  /// Element 11: "Zakończ prezentację" in the top right corner — close in amber, the words in the text colour,
+  /// the surface with an outline, 48 dp.
+  Widget _exitButton() => OutlinedButton.icon(
+    style: secondaryButtonStyle.copyWith(
+      backgroundColor: const WidgetStatePropertyAll(GrobingColors.surface),
+      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+    ),
+    onPressed: _leave,
+    icon: const Icon(Icons.close),
+    label: const Text('Zakończ prezentację'),
+  );
+
   /// "Poziom 3 · 66 osób" for a moment after a change of level; a screen reader hears the same (element 3).
+  /// In presentation, the hint about "Przesyłaj ekran" (element 11).
   Widget _levelPill() => IgnorePointer(
     child: Center(
       child: AnimatedOpacity(
@@ -905,6 +1111,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               child: Text(
                 _pill,
+                textAlign: TextAlign.center,
                 style: const TextStyle(color: GrobingColors.text, fontSize: 13),
               ),
             ),
@@ -932,6 +1139,7 @@ class _TreeNode extends StatelessWidget {
     required this.labelScale,
     required this.showLabel,
     required this.semanticsLabel,
+    required this.hint,
     required this.onTap,
   });
 
@@ -947,6 +1155,9 @@ class _TreeNode extends StatelessWidget {
   final double labelScale;
   final bool showLabel;
   final String semanticsLabel;
+
+  /// What a touch does, for a screen reader: "w środek", "otwórz" — none in the middle of a presentation.
+  final String? hint;
   final VoidCallback? onTap;
 
   /// The name under a node: 13 sp, semi-bold (D10).
@@ -1034,7 +1245,7 @@ class _TreeNode extends StatelessWidget {
       container: true,
       button: onTap != null,
       label: semanticsLabel,
-      hint: onTap == null ? null : (isFocus ? 'otwórz' : 'w środek'),
+      hint: hint,
       excludeSemantics: true,
       onTap: onTap,
       child: GestureDetector(

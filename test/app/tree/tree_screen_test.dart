@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart' show FlutterExceptionHandler;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/people/me_picker_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
@@ -21,6 +22,12 @@ import '../../support/style_checks.dart';
 // empty base, no "ja", a person without a family) · tap targets (retro 3, R2). AC-4 (the trace) —
 // tree_layout_test.dart; the kinship words — kinship_names_test.dart. The made-up family of the debug build
 // (family-data.md).
+//
+// ISSUE-034 — presentation mode (drzewo.md element 11, D16; US-009 AC-8): the TV icon only with a tree;
+// landscape, no bars, level 2 fitted, no buttons, the hint for 4 s; a touch puts a person in the middle, the
+// middle opens nothing, the edges of the bars take no drag, the empty space shows "Zakończ prezentację" for
+// 3 s; it and back return portrait with the same person, the card and the bar. The phone's turn is the test
+// view's new size; what the tree asks of the system — the platform channel (presentation_mode_test.dart).
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (int i = 0; i < 400; i++) {
@@ -48,6 +55,55 @@ Future<void> _afterMove(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 500));
   await tester.pump(const Duration(milliseconds: 300));
 }
+
+/// Every person on the tree, also the one in the middle of a presentation, who has no hint.
+Finder _nodes() => find.byWidgetPredicate(
+  (w) =>
+      w is Semantics &&
+      w.container &&
+      w.excludeSemantics &&
+      (w.properties.label?.isNotEmpty ?? false),
+);
+
+/// The phone turned: the test view's new size (360 × 800 dp ↔ 800 × 360 dp), then the fit after it.
+Future<void> _turn(WidgetTester tester, {required bool landscape}) async {
+  tester.view.physicalSize = landscape
+      ? const Size(2400, 1080)
+      : const Size(1080, 2400);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
+  await _afterMove(tester);
+}
+
+/// A point of the tree's area where no one stands, 40 dp in from its edges (the bars' 24 dp take no touch).
+Offset _empty(WidgetTester tester) {
+  final Rect area = tester.getRect(find.byType(InteractiveViewer));
+  final List<Rect> people = [
+    for (final Element e in _nodes().evaluate())
+      tester.getRect(find.byWidget(e.widget)),
+  ];
+  for (final Offset p in [
+    area.bottomLeft + const Offset(40, -40),
+    area.bottomRight + const Offset(-40, -40),
+    area.topLeft + const Offset(40, 40),
+  ]) {
+    if (!people.any((r) => r.inflate(8).contains(p))) return p;
+  }
+  fail('no empty space on the tree');
+}
+
+double _opacityOf(WidgetTester tester, String text) => tester
+    .widget<AnimatedOpacity>(
+      find.ancestor(
+        of: find.text(text),
+        matching: find.byType(AnimatedOpacity),
+      ),
+    )
+    .opacity;
+
+// The function, not a tile's name (drzewo.md v1.8, D26); a hard space after "w" (style-b.md rule 6).
+const String _hint =
+    'Obraz na telewizor: przesyłanie ekranu w szybkich ustawieniach telefonu';
 
 void main() {
   late GrobingDatabase db;
@@ -323,6 +379,8 @@ void main() {
         ),
       );
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
+      // No tree, no presentation (element 1, ISSUE-034).
+      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
 
       await tester.runAsync(
         () => db
@@ -334,6 +392,7 @@ void main() {
         () =>
             _shown(find.text('Aplikacja nie wie jeszcze, która osoba to Ty.')),
       );
+      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
       await tester.tap(find.text('Wybierz, która osoba to Ty'));
       await _pumpUntil(tester, () => _shown(find.byType(MePickerScreen)));
       await cleanUp(tester);
@@ -362,6 +421,194 @@ void main() {
         find.text('bez dat · nie wiadomo jeszcze, kim jest dla Ciebie'),
         findsOneWidget,
       );
+      await cleanUp(tester);
+    },
+  );
+
+  // ---- ISSUE-034 — presentation mode ----
+
+  /// What the tree asks of the system about its bars and orientation.
+  List<String> recordChrome() {
+    final List<String> chrome = [];
+    final TestDefaultBinaryMessenger messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'SystemChrome.setPreferredOrientations' ||
+          call.method == 'SystemChrome.setEnabledSystemUIMode') {
+        chrome.add('${call.method.substring(13)} ${call.arguments}');
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    return chrome;
+  }
+
+  const List<String> leaving = [
+    'setEnabledSystemUIMode SystemUiMode.edgeToEdge',
+    'setPreferredOrientations [DeviceOrientation.portraitUp]',
+    'setPreferredOrientations []',
+  ];
+
+  /// The tree from "Ja", the TV icon, the phone turned.
+  Future<List<String>> present(WidgetTester tester) async {
+    final List<String> chrome = recordChrome();
+    await tester.runAsync(() => addFictionalFamily(db));
+    await pumpTree(tester);
+    await _pumpUntil(tester, () => _shown(_people()));
+    await _afterMove(tester);
+    await tester.tap(find.byTooltip('Tryb prezentacji'));
+    await tester.pump();
+    await _turn(tester, landscape: true);
+    return chrome;
+  }
+
+  Semantics node(WidgetTester tester, String label) => tester.widget(
+    find.byWidgetPredicate(
+      (w) =>
+          w is Semantics &&
+          w.container &&
+          (w.properties.label?.startsWith(label) ?? false),
+    ),
+  );
+
+  void expectAllOnScreen(WidgetTester tester, Size screen) {
+    final Rect view = Offset.zero & screen;
+    for (final Element e in _nodes().evaluate()) {
+      final Rect r = tester.getRect(find.byWidget(e.widget));
+      expect(
+        view.contains(r.topLeft) &&
+            view.contains(r.bottomRight - const Offset(0.1, 0.1)),
+        isTrue,
+        reason: '${(e.widget as Semantics).properties.label} at $r',
+      );
+    }
+  }
+
+  testWidgets(
+    'AC-8 — the TV icon: landscape, no bars, level 2 fitted to the screen, no buttons; the hint for 4 s; tap targets (R2)',
+    (tester) async {
+      final List<String> chrome = await present(tester);
+      expect(chrome, [
+        'setPreferredOrientations '
+            '[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]',
+        'setEnabledSystemUIMode SystemUiMode.immersiveSticky',
+      ]);
+      // No bar, no tab bar, no card, no + / −.
+      expect(find.text('Drzewo'), findsNothing);
+      expect(find.byType(GrobingTabBar), findsNothing);
+      expect(find.text('ur. 1983 · to Ty'), findsNothing);
+      expect(find.text('Pokaż'), findsNothing);
+      expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
+      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
+      // Level 2 from "Ja" — 20 people, all of them on the 800 × 360 dp screen.
+      expect(_nodes(), findsNWidgets(20));
+      expectAllOnScreen(tester, const Size(800, 360));
+
+      expect(_opacityOf(tester, _hint), 1);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_opacityOf(tester, _hint), 0);
+
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'AC-8 — in presentation a touch puts Kasia in the middle, fitted anew; the middle opens nothing; a drag from '
+    'the bars\' edge leaves the tree; the empty space shows "Zakończ prezentację" for 3 s',
+    (tester) async {
+      await present(tester);
+      await tester.tap(find.text('Kasia'));
+      await _afterMove(tester);
+      // Level 2 from Kasia — 17 people, still no card; in the middle she has no hint (D5).
+      expect(_nodes(), findsNWidgets(17));
+      expect(find.text('ur. 1985 · Twoja żona'), findsNothing);
+      expect(node(tester, 'Kasia Wymyślona').properties.hint, isNull);
+      expect(node(tester, 'Mateusz Wymyślony').properties.hint, 'w środek');
+      expectAllOnScreen(tester, const Size(800, 360));
+
+      // The middle opens nothing.
+      await tester.tap(find.text('Kasia'));
+      await _afterMove(tester);
+      expect(find.byType(PersonScreen), findsNothing);
+
+      // The system's swipe from the top edge, which shows the bars, leaves the tree; a drag inside moves it.
+      final Offset fitted = tester.getCenter(find.text('Kasia'));
+      await tester.dragFrom(const Offset(400, 2), const Offset(0, 200));
+      await _afterMove(tester);
+      expect(tester.getCenter(find.text('Kasia')), fitted);
+      // And from the side, where a three-button navigation bar stands in landscape (ui review, MINOR-2).
+      await tester.dragFrom(const Offset(798, 180), const Offset(-200, 0));
+      await _afterMove(tester);
+      expect(tester.getCenter(find.text('Kasia')), fitted);
+      await tester.dragFrom(const Offset(400, 300), const Offset(120, 0));
+      await _afterMove(tester);
+      expect(
+        tester.getCenter(find.text('Kasia')).dx,
+        greaterThan(fitted.dx + 50),
+      );
+
+      // A touch of the person in the middle fits the level again (Dev report, deviation 1).
+      await tester.tap(find.text('Kasia'));
+      await _afterMove(tester);
+      expect(
+        tester.getCenter(find.text('Kasia')),
+        offsetMoreOrLessEquals(fitted, epsilon: 1),
+      );
+
+      await tester.tapAt(_empty(tester));
+      await tester.pump();
+      expect(find.text('Zakończ prezentację'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Zakończ prezentację'), findsNothing);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'AC-8 — "Zakończ prezentację" and back: portrait with the bars, the same person in the middle at level 2, '
+    'the card and the bar',
+    (tester) async {
+      final List<String> chrome = await present(tester);
+      await tester.tap(find.text('Kasia'));
+      await _afterMove(tester);
+
+      chrome.clear();
+      await tester.tapAt(_empty(tester));
+      await tester.pump();
+      await tester.tap(find.text('Zakończ prezentację'));
+      await tester.pump();
+      await _turn(tester, landscape: false);
+      expect(chrome, leaving);
+      expect(find.text('ur. 1985 · Twoja żona'), findsOneWidget);
+      expect(_people(), findsNWidgets(17));
+      expect(find.byTooltip('Tryb prezentacji'), findsOneWidget);
+      expect(find.byTooltip('Oddal — dalsza rodzina'), findsOneWidget);
+      expect(find.byType(GrobingTabBar), findsOneWidget);
+      // Kasia in the middle across the 360 dp screen, at the tree's own scale (level 2).
+      expect(
+        tester.getCenter(find.text('Kasia')).dx,
+        moreOrLessEquals(180, epsilon: 1),
+      );
+
+      // Back ends it the same way, and the tree stays.
+      await tester.tap(find.byTooltip('Tryb prezentacji'));
+      await tester.pump();
+      await _turn(tester, landscape: true);
+      chrome.clear();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await _turn(tester, landscape: false);
+      expect(chrome, leaving);
+      expect(find.byType(TreeScreen), findsOneWidget);
+      expect(find.text('ur. 1985 · Twoja żona'), findsOneWidget);
       await cleanUp(tester);
     },
   );
