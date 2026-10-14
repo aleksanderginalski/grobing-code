@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 
 import '../../data/database.dart';
 import '../../data/family_tree.dart';
@@ -25,6 +26,8 @@ import 'presentation_mode.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
 import 'tree_painter.dart';
+import 'tree_time.dart';
+import 'tree_time_bar.dart';
 
 /// The scale the tree may take (drzewo.md D17, D18): at 0.4 a person's place is still 32 dp, at least the
 /// 24 CSS px of WCAG 2.2 SC 2.5.8; at 2 a name is 26 sp.
@@ -81,8 +84,23 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   int _level = 2;
   TreeLayout? _layout;
 
-  /// The lines of [_layout], their paths built once (SPIKE-002 M3).
+  /// The lines of [_layout] in [_year], their paths built once (SPIKE-002 M3).
   TreeLinesPainter? _lines;
+
+  /// Time on the tree (element 6; US-010, ISSUE-037): the family's windows and the year shown — null is
+  /// "dziś". The year is the view's, as the middle and the scale: kept by a touch, a level, back from a
+  /// person; a new tree — the tab, "Pokaż w drzewie" — and presentation show "dziś" (D37).
+  TreeTime? _time;
+  int? _year;
+
+  /// ▶: a timer to the next year — a decade, with the system's animations off (D36).
+  Timer? _play;
+
+  /// People who appear and leave with the year: one layer for each group, faded together in 150 ms — an
+  /// opacity on every person is a layer each, in every frame (measured on the emulator, ISSUE-037 Dev report).
+  late final AnimationController _fade;
+  Set<int> _fadingIn = const {};
+  Set<int> _fadingOut = const {};
 
   /// Person → what they are to "ja", for the card and the screen reader; for the layout shown.
   Map<int, String?> _kin = const {};
@@ -152,6 +170,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 350),
     )..addListener(_onGlide);
+    _fade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+      value: 1,
+    )..addStatusListener(_onFadeStatus);
     _view.addListener(_onView);
     _listen();
   }
@@ -185,6 +208,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _pillTimer?.cancel();
     _exitTimer?.cancel();
     _settle?.cancel();
+    _play?.cancel();
+    _fade.dispose();
     _castReturn?.dispose();
     // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
     if (_presenting) unawaited(leavePresentation());
@@ -215,6 +240,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _error = null;
       _family = data;
       _graph = TreeGraph(data);
+      final TreeTime time = TreeTime(data, now: DateTime.now().year);
+      _time = time;
+      if (_year case final int y? when y < time.start) _year = time.start;
       final int? wanted = _focus ?? widget.focusPersonId ?? data.meId;
       _focus = wanted != null && data.people.containsKey(wanted)
           ? wanted
@@ -247,7 +275,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         ? next.positions[keep]! - old.positions[keep]!
         : Offset.zero;
     _layout = next;
-    _lines = TreeLinesPainter(next);
+    _lines = TreeLinesPainter(next.linesAt(_time, _year));
     _kin = _kinOf(family, next);
     if (old != null && shift != Offset.zero) {
       // The same picture in the new frame: the world moved by [shift] under the person kept.
@@ -460,13 +488,127 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// The level and its people on the tree in the year shown (D37).
   void _showPill() {
     final TreeLayout? layout = _layout;
     if (layout == null) return;
     _flash(
-      'Poziom $_level · ${peopleLabel(layout.count)}',
+      'Poziom $_level · ${peopleLabel(layout.positions.keys.where(_isOn).length)}',
       const Duration(milliseconds: 1500),
     );
+  }
+
+  // ---- time (element 6; US-010, ISSUE-037) ----
+
+  /// On the tree in the year shown: born, or maybe born (D32).
+  bool _isOn(int person) => _time?.isOn(person, _year) ?? true;
+
+  InYear _inYear(int person) => _time?.person(person, _year) ?? InYear.alive;
+
+  /// Shows [year] — null, "dziś": who is on the tree, the lines and the trace of that year; nobody moves. Who
+  /// appears or leaves fades in 150 ms (element 6) — at once with the system's animations off (SC 2.3.3).
+  void _setYear(int? year) {
+    final int? old = _year;
+    _year = year;
+    final TreeLayout? layout = _layout;
+    final TreeTime? time = _time;
+    if (layout == null) return;
+    // Most years nobody is born and no pair joins: the same lines keep their paths and their layer.
+    final List<TreeLines> lines = layout.linesAt(time, year);
+    if (_lines == null || !TreeLinesPainter.same(_lines!.lines, lines)) {
+      _lines = TreeLinesPainter(lines);
+    }
+    if (time == null || _noMotion || old == year) {
+      _fadingIn = const {};
+      _fadingOut = const {};
+      return;
+    }
+    _fadingIn = {
+      for (final int n in layout.positions.keys)
+        if (n != layout.focus && !time.isOn(n, old) && time.isOn(n, year)) n,
+    };
+    _fadingOut = {
+      for (final int n in layout.positions.keys)
+        if (n != layout.focus && time.isOn(n, old) && !time.isOn(n, year)) n,
+    };
+    if (_fadingIn.isNotEmpty || _fadingOut.isNotEmpty) _fade.forward(from: 0);
+  }
+
+  void _onFadeStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() {
+        _fadingIn = const {};
+        _fadingOut = const {};
+      });
+    }
+  }
+
+  /// A year chosen by hand — dragging, the screen reader: ▶ stops (D37).
+  void _chooseYear(int? year) => setState(() {
+    _stopPlaying();
+    if (year != _year) _setYear(year);
+  });
+
+  bool get _playing => _play != null;
+
+  /// ▶ from the slider's start — or on from the year shown — to "dziś"; ❚❚ stops at the year shown (AC-3).
+  void _togglePlay() {
+    final TreeTime? time = _time;
+    if (time == null) return;
+    if (_playing) {
+      setState(_stopPlaying);
+      _announceYear();
+      return;
+    }
+    setState(() {
+      if (_year == null) _setYear(time.start);
+      _nextLater();
+    });
+  }
+
+  void _stopPlaying() {
+    _play?.cancel();
+    _play = null;
+  }
+
+  /// While ▶ runs the reader hears no year — the row's year is out of its tree; once ▶ stops (❚❚, "dziś", a
+  /// person's view) it hears the year once (element 6 → Czytnik; ui review of ISSUE-037).
+  void _announceYear() {
+    if (!mounted) return;
+    final int? year = _year;
+    unawaited(
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        year == null ? 'dziś' : 'Rok $year',
+        TextDirection.ltr,
+      ),
+    );
+  }
+
+  /// About 21 years a second, the same from any start: 1880 → "dziś" in about 7 s (AC-3, D34). A timer per
+  /// year rather than a ticker: a frame only when the year changes, not in every vsync. With the system's
+  /// animations off, a decade about every second, people at once (R2, D36).
+  void _nextLater() {
+    final TreeTime? time = _time;
+    if (time == null) return;
+    final Duration step = _noMotion
+        ? const Duration(seconds: 1)
+        : Duration(microseconds: 7000000 ~/ (time.now - latestSliderStart));
+    _play = Timer(step, () {
+      final int? year = _year;
+      if (!mounted || year == null) return;
+      final int next = _noMotion ? (year ~/ 10) * 10 + 10 : year + 1;
+      setState(() {
+        if (next >= time.now) {
+          _stopPlaying();
+          _setYear(null);
+        } else {
+          _setYear(next);
+          _nextLater();
+        }
+      });
+      if (!_playing) _announceYear();
+    });
   }
 
   /// The pill at the top of the tree for [time]: the level after a change, the hint on entering presentation.
@@ -517,6 +659,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     setState(() {
       _presenting = true;
       _exitShown = false;
+      // Presentation has no slider and no year: it shows "dziś" (D37).
+      _stopPlaying();
+      _setYear(null);
       if (_level != 2) {
         _level = 2;
         _relayout(keep: _focus);
@@ -596,7 +741,17 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     });
   }
 
-  Future<void> _open(int person) => openPersonView(
+  /// A person's view stops ▶ at the year shown: back returns to it (D37; ui review of ISSUE-037 — the years
+  /// ran on under the view).
+  Future<void> _open(int person) {
+    if (_playing) {
+      setState(_stopPlaying);
+      _announceYear();
+    }
+    return _openView(person);
+  }
+
+  Future<void> _openView(int person) => openPersonView(
     context,
     widget.database,
     person,
@@ -667,12 +822,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final Offset p = _view.toScene(local);
     final double half = _metrics.slot / 2;
     final double pad = _tapPad;
-    return layout.positions.values.any(
-      (n) =>
-          p.dx >= n.dx - half &&
-          p.dx <= n.dx + half &&
-          p.dy >= n.dy - pad &&
-          p.dy <= n.dy + _metrics.labelBottom + pad,
+    // Someone not born in the year shown is no target, the empty ring of the middle neither (D33).
+    return layout.positions.entries.any(
+      (e) =>
+          _isOn(e.key) &&
+          p.dx >= e.value.dx - half &&
+          p.dx <= e.value.dx + half &&
+          p.dy >= e.value.dy - pad &&
+          p.dy <= e.value.dy + _metrics.labelBottom + pad,
     );
   }
 
@@ -781,12 +938,27 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       children: [
         Expanded(child: _treeArea(family, layout)),
         if (!_presenting)
-          _TreeCard(
-            person: family.people[focus]!,
-            isMe: focus == family.meId,
-            kin: family.meId == null ? null : _kin[focus],
-            photos: widget.photos,
-            onShow: () => _open(focus),
+          // Its own layer: dragging the tree would repaint the card with it, the slider's thumb and its shadow,
+          // in every frame (ISSUE-037 Dev report — on the emulator within the noise of its measure).
+          RepaintBoundary(
+            child: _TreeCard(
+              person: family.people[focus]!,
+              isMe: focus == family.meId,
+              kin: family.meId == null ? null : _kin[focus],
+              photos: widget.photos,
+              onShow: () => _open(focus),
+              time: switch (_time) {
+                final TreeTime time? => TreeTimeBar(
+                  start: time.start,
+                  now: time.now,
+                  year: _year,
+                  playing: _playing,
+                  onPlay: _togglePlay,
+                  onYear: _chooseYear,
+                ),
+                null => null,
+              },
+            ),
           ),
       ],
     );
@@ -854,9 +1026,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         }
       }
       final Set<int> named = _visibleNames(family, layout);
+      // In the slider's year only those on the tree, the middle (its empty ring before birth) and those
+      // fading out (element 6, AC-1).
       final Map<int, Widget> nodes = {
         for (final int n in layout.positions.keys)
-          n: _node(family, layout, n, named.contains(n)),
+          if (_isOn(n) || n == layout.focus || _fadingOut.contains(n))
+            n: _node(family, layout, n, named.contains(n)),
       };
       return Stack(
         children: [
@@ -924,7 +1099,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 duration: Duration(milliseconds: _noMotion ? 0 : 200),
                 child: RepaintBoundary(
                   child: CustomPaint(
-                    painter: _lines ?? TreeLinesPainter(layout),
+                    painter: _lines ?? TreeLinesPainter(layout.lines),
                   ),
                 ),
               ),
@@ -933,7 +1108,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           Positioned.fill(
             child: RepaintBoundary(
               child: AnimatedBuilder(
-                animation: _move,
+                animation: Listenable.merge([_move, _fade]),
                 builder: (context, _) {
                   final double t = Curves.easeInOut.transform(_move.value);
                   final double pad = _tapPad;
@@ -944,23 +1119,59 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                         width: _metrics.slot,
                         child: child,
                       );
-                  final List<Widget> steady = [], entering = [];
+                  final List<Widget> steady = [],
+                      entering = [],
+                      bornNow = [],
+                      goneNow = [];
                   for (final MapEntry<int, Offset> e
                       in layout.positions.entries) {
+                    // Not on the tree in the slider's year: no node (AC-1) — the place stays empty.
+                    final Widget? node = nodes[e.key];
+                    if (node == null) continue;
                     final Offset at = Offset.lerp(
                       _from[e.key] ?? e.value,
                       e.value,
                       t,
                     )!;
-                    (_entering.contains(e.key) ? entering : steady).add(
-                      place(e.key, at, nodes[e.key]!),
-                    );
+                    (_fadingOut.contains(e.key)
+                            ? goneNow
+                            : _entering.contains(e.key)
+                            ? entering
+                            : _fadingIn.contains(e.key)
+                            ? bornNow
+                            : steady)
+                        .add(place(e.key, at, node));
                   }
                   // One layer for all who appear and one for all who leave: an Opacity on each person was a
-                  // layer each, and the moves stuttered on the raster thread (measured on the emulator).
+                  // layer each, and the moves stuttered on the raster thread (measured on the emulator). The
+                  // same for the slider's year (ISSUE-037): those born in it fade in, those not born yet out.
                   return Stack(
                     clipBehavior: Clip.none,
                     children: [
+                      if (goneNow.isNotEmpty)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: ExcludeSemantics(
+                              child: Opacity(
+                                opacity: 1 - _fade.value,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: goneNow,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (bornNow.isNotEmpty)
+                        Positioned.fill(
+                          child: Opacity(
+                            opacity: _fade.value,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: bornNow,
+                            ),
+                          ),
+                        ),
                       if (_leaving.isNotEmpty)
                         Positioned.fill(
                           child: IgnorePointer(
@@ -1009,6 +1220,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       person: p,
       isFocus: false,
       isMe: person == _family?.meId,
+      inYear: _inYear(person),
       photos: widget.photos,
       slot: _metrics.slot,
       labelHeight: _scaler.scale(13) * 1.3,
@@ -1045,31 +1257,42 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       birthSurname: p.birthSurname,
     );
     final String? kin = _kin[n];
+    final InYear inYear = _inYear(n);
+    // The middle before their birth: the empty ring, for the reader too, and no target (C1, D33).
+    final bool ring = inYear == InYear.notYet;
     return _TreeNode(
       key: ValueKey<int>(n),
       person: p,
       isFocus: n == layout.focus,
       isMe: n == family.meId,
+      inYear: inYear,
       photos: widget.photos,
       slot: _metrics.slot,
       labelHeight: _scaler.scale(13) * 1.3,
       tapPad: _tapPad,
       labelScale: _labelScale,
       showLabel: showLabel,
-      semanticsLabel: [
-        who,
-        lifeYears(birth: p.birth, death: p.death),
-        // The candle says it on the screen; without a date of death the years do not (ui review).
-        if (p.dead && p.death == null) 'nie żyje',
-        ?kin,
-      ].join(', '),
+      semanticsLabel:
+          [
+            who,
+            lifeYears(birth: p.birth, death: p.death),
+            // The candle says it on the screen; without a date of death the years do not (ui review).
+            if (inYear == InYear.dead && p.death == null) 'nie żyje',
+            // The dashed outline says it on the screen (element 6, D32).
+            if (inYear == InYear.maybeBorn) 'nie wiadomo, czy już żyje',
+            if (inYear == InYear.maybeDead) 'nie wiadomo, czy jeszcze żyje',
+            ?kin,
+          ].join(', ') +
+          (ring ? ' — przed narodzinami' : ''),
       // In presentation the person in the middle opens nothing (D5): no hint, the touch only fits the level anew.
-      hint: n != layout.focus
+      hint: ring
+          ? null
+          : n != layout.focus
           ? 'w środek'
           : _presenting
           ? null
           : 'otwórz',
-      onTap: () => _tap(n),
+      onTap: ring ? null : () => _tap(n),
     );
   }
 
@@ -1079,18 +1302,21 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final double fx = layout.positions[layout.focus]!.dx;
     final double maxWidth = _metrics.slot - 8;
     final double height = _scaler.scale(13) * 1.3;
+    // Only the names of people on the tree in the year shown: one not born yet leaves its room to others.
     return visibleLabels([
       for (final MapEntry<int, Offset> e in layout.positions.entries)
-        LabelBox(
-          id: e.key,
-          centerX: e.value.dx,
-          top: e.value.dy + TreeMetrics.node + 4,
-          // The name and its halo's plate (3 dp on each side).
-          width: math.min(_nameWidth(_label(family, e.key)) + 6, maxWidth) * k,
-          height: height * k,
-          level: e.key == layout.focus ? -1 : layout.levels[e.key] ?? 99,
-          distance: (e.value.dx - fx).abs(),
-        ),
+        if (_isOn(e.key))
+          LabelBox(
+            id: e.key,
+            centerX: e.value.dx,
+            top: e.value.dy + TreeMetrics.node + 4,
+            // The name and its halo's plate (3 dp on each side).
+            width:
+                math.min(_nameWidth(_label(family, e.key)) + 6, maxWidth) * k,
+            height: height * k,
+            level: e.key == layout.focus ? -1 : layout.levels[e.key] ?? 99,
+            distance: (e.value.dx - fx).abs(),
+          ),
     ], gap: 4 * k);
   }
 
@@ -1181,6 +1407,7 @@ class _TreeNode extends StatelessWidget {
     required this.person,
     required this.isFocus,
     required this.isMe,
+    this.inYear = InYear.alive,
     required this.photos,
     required this.slot,
     required this.labelHeight,
@@ -1195,6 +1422,10 @@ class _TreeNode extends StatelessWidget {
   final TreePerson person;
   final bool isFocus;
   final bool isMe;
+
+  /// The slider's year (element 6, D32): maybe alive — the outline dashed; surely dead — the candle; the
+  /// person in the middle before their birth — the empty ring (D33).
+  final InYear inYear;
   final Photos? photos;
   final double slot;
   final double labelHeight;
@@ -1219,11 +1450,42 @@ class _TreeNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isFocus && inYear == InYear.notYet) {
+      return Semantics(
+        container: true,
+        label: semanticsLabel,
+        excludeSemantics: true,
+        child: SizedBox(
+          width: slot,
+          height: TreeMetrics.node + 4 + labelHeight + 2 * tapPad,
+          child: Padding(
+            padding: EdgeInsets.only(top: tapPad),
+            child: const Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox.square(
+                dimension: TreeMetrics.node,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.fromBorderSide(
+                      BorderSide(color: GrobingColors.amber, width: 2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    final bool unsure =
+        inYear == InYear.maybeBorn || inYear == InYear.maybeDead;
     final Widget initials = InitialsCircle(
       text: isMe ? 'Ja' : initialsOf(person.givenNames, person.surname),
       size: TreeMetrics.node,
       accent: isMe,
       accentOutline: false,
+      outline: !unsure,
     );
     Widget circle = switch ((isMe, photos, person.profile)) {
       (false, final Photos photos?, final p?) => ProfileCircle(
@@ -1234,6 +1496,13 @@ class _TreeNode extends StatelessWidget {
       ),
       _ => initials,
     };
+    if (unsure && !isFocus) {
+      // Not known whether alive in this year: the outline dashed — the shape says it, not a fading (D32).
+      circle = CustomPaint(
+        foregroundPainter: const _DashedRing(GrobingColors.outline),
+        child: circle,
+      );
+    }
     if (isFocus) {
       // The ring over the photo: under it, the opaque circle would hide it (osoba.md v2.2). The glow under
       // the circle: over it, it tinted the circle amber — "Ja" fell under 4.5:1 and a photo would be toned
@@ -1248,17 +1517,22 @@ class _TreeNode extends StatelessWidget {
             ),
           ],
         ),
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: GrobingColors.amber, width: 2),
-          ),
-          child: circle,
-        ),
+        child: unsure
+            ? CustomPaint(
+                foregroundPainter: const _DashedRing(GrobingColors.amber),
+                child: circle,
+              )
+            : DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: GrobingColors.amber, width: 2),
+                ),
+                child: circle,
+              ),
       );
     }
-    if (person.dead) {
+    if (inYear == InYear.dead) {
       circle = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -1341,6 +1615,35 @@ class _TreeNode extends StatelessWidget {
   }
 }
 
+/// The dashed outline of a person maybe alive in the slider's year (element 6, D32): 2 dp, dashes 4/3, inside
+/// the circle's edge — the outline's colour, amber on the person in the middle.
+class _DashedRing extends CustomPainter {
+  const _DashedRing(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double width = 2, dash = 4, gap = 3;
+    final double r = size.shortestSide / 2 - width / 2;
+    final Offset c = size.center(Offset.zero);
+    final int count = (2 * math.pi * r / (dash + gap)).floor();
+    final double step = 2 * math.pi / count;
+    final double sweep = step * dash / (dash + gap);
+    final Paint paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..color = color;
+    final Rect rect = Rect.fromCircle(center: c, radius: r);
+    for (int i = 0; i < count; i++) {
+      canvas.drawArc(rect, -math.pi / 2 + i * step, sweep, false, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRing old) => old.color != color;
+}
+
 /// The candle of the dead in the corner of a node (style-b.md rule 8, R3).
 class _CandleBadge extends StatelessWidget {
   const _CandleBadge();
@@ -1390,7 +1693,8 @@ class _ZoomButton extends StatelessWidget {
 
 /// Element 5: the person in the middle — the circle with the ring, the name, and the years with who they
 /// are to "ja" (D12, D13, D28 — in the author's voice: "Moja babcia", "to ja"), wrapped, never cut; "Pokaż ›" opens their view. With large system text
-/// (≥ 150 %) "Pokaż" goes under the text, so the name and the kinship get the card's width (D20).
+/// (≥ 150 %) "Pokaż" goes under the text, so the name and the kinship get the card's width (D20). Under it all,
+/// the time row (element 6, US-010).
 class _TreeCard extends StatelessWidget {
   const _TreeCard({
     required this.person,
@@ -1398,6 +1702,7 @@ class _TreeCard extends StatelessWidget {
     required this.kin,
     required this.photos,
     required this.onShow,
+    this.time,
   });
 
   final TreePerson person;
@@ -1405,6 +1710,7 @@ class _TreeCard extends StatelessWidget {
   final String? kin;
   final Photos? photos;
   final VoidCallback onShow;
+  final Widget? time;
 
   @override
   Widget build(BuildContext context) {
@@ -1471,27 +1777,28 @@ class _TreeCard extends StatelessWidget {
         ],
       ),
     );
+    final Widget? time = this.time;
     return Material(
       color: GrobingColors.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-        child: large
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        padding: EdgeInsets.fromLTRB(16, 12, 8, time == null ? 12 : 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (large) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      avatar,
-                      const SizedBox(width: 12),
-                      Expanded(child: text),
-                    ],
-                  ),
-                  Align(alignment: Alignment.centerRight, child: show),
+                  avatar,
+                  const SizedBox(width: 12),
+                  Expanded(child: text),
                 ],
-              )
-            : Row(
+              ),
+              Align(alignment: Alignment.centerRight, child: show),
+            ] else
+              Row(
                 children: [
                   avatar,
                   const SizedBox(width: 12),
@@ -1499,6 +1806,9 @@ class _TreeCard extends StatelessWidget {
                   show,
                 ],
               ),
+            ?time,
+          ],
+        ),
       ),
     );
   }

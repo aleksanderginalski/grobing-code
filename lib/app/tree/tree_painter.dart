@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart';
 
 import '../theme.dart';
@@ -7,16 +8,29 @@ import 'tree_layout.dart';
 /// parent–child in its colour, stepped down; a married pair level and solid; a pair "razem" dashed 5/4; the
 /// trace dashed 3/3 at 60 % opacity. The kind is carried by the shape too, not by colour alone (SC 1.4.1).
 ///
-/// The paths — the dashes as well — are built once per layout, not in every frame: SPIKE-002 M3 found the
-/// change of level stuttering on the raster thread, with dashed lines measured anew in each frame.
+/// The end of a union — "//" across the pair's line, in the partners' colour (D35).
+///
+/// The paths — the dashes as well — are built once per layout and year, not in every frame: SPIKE-002 M3 found
+/// the change of level stuttering on the raster thread, with dashed lines measured anew in each frame.
 class TreeLinesPainter extends CustomPainter {
-  TreeLinesPainter(this.layout) : _paths = _build(layout);
+  TreeLinesPainter(this.lines) : _paths = _build(lines);
 
-  final TreeLayout layout;
+  final List<TreeLines> lines;
   final List<(Path, Paint)> _paths;
 
-  static List<(Path, Paint)> _build(TreeLayout layout) => [
-    for (final TreeLines lines in layout.lines)
+  /// The same lines, kind by kind and point by point — the slider's year changes them only now and then.
+  static bool same(List<TreeLines> a, List<TreeLines> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].kind != b[i].kind || !listEquals(a[i].points, b[i].points)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static List<(Path, Paint)> _build(List<TreeLines> all) => [
+    for (final TreeLines lines in all)
       if (lines.points.isNotEmpty) (_path(lines), _paint(lines.kind)),
   ];
 
@@ -32,7 +46,8 @@ class TreeLinesPainter extends CustomPainter {
         alpha: 0.6,
       ),
       TreeLineKind.married ||
-      TreeLineKind.together => GrobingColors.relPartners,
+      TreeLineKind.together ||
+      TreeLineKind.ended => GrobingColors.relPartners,
       TreeLineKind.tracePartner => GrobingColors.relPartners.withValues(
         alpha: 0.6,
       ),
@@ -75,5 +90,5 @@ class TreeLinesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(TreeLinesPainter old) => old.layout != layout;
+  bool shouldRepaint(TreeLinesPainter old) => old.lines != lines;
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/tree/tree_layout.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/family_tree.dart';
+import 'package:grobing/data/graves.dart' show QualifiedDate;
 import 'package:grobing/data/people.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
@@ -41,9 +42,27 @@ void main() {
     }
     expect(unionsOf.values.where((n) => n == 2), hasLength(3));
     final List<int> years = [
-      for (final TreePerson p in family.people.values) p.birth!.from.year,
+      for (final TreePerson p in family.people.values)
+        if (p.birth case final QualifiedDate b) b.from.year,
     ]..sort();
     expect((years.first, years.last), (1868, 2019));
+    // ISSUE-037 (drzewo.md D32): dates as the notes will give them — two births without a date, four with a
+    // qualifier, a death without its date, three marriages without theirs; the shape above unchanged.
+    expect(family.people.values.where((p) => p.birth == null), hasLength(2));
+    expect(
+      family.people.values.where(
+        (p) => p.birth != null && p.birth!.qualifier != DateQualifier.exact,
+      ),
+      hasLength(4),
+    );
+    expect(
+      family.people.values.where((p) => p.dead && p.death == null),
+      hasLength(1),
+    );
+    expect(
+      family.unions.where((u) => u.married && u.marriage == null),
+      hasLength(3),
+    );
     // Two pairs began "razem"; one of them married later, the other did not.
     final List<Event> together = await (db.select(
       db.events,

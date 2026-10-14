@@ -12,6 +12,10 @@ import '../data/people.dart';
 // wife's family over 3 generations with her cousins. The same family as SPIKE-002's mockup and prototype,
 // so the tree's numbers can be checked against them. Surnames only from the invented stems (family-data.md,
 // retro 3 R7). Debug and profile only, never release (ISSUE-033 D6).
+//
+// Some dates as the notes will give them, for the time slider (ISSUE-037, drzewo.md D32): "ok.", "między",
+// "przed", "po", none at all, a death without its date, three marriages without theirs. The same people and
+// dates as ISSUE-037's mockup, whose windows the tests check.
 
 /// One person: key, given name, surname, sex, born, died, born as.
 typedef _Person = (String, String, String, Sex, int, int?, String?);
@@ -130,8 +134,33 @@ const List<_Person> _people = [
   ('sz', 'Szymon', 'Wymyślak', Sex.male, 1992, null, null),
 ];
 
+/// The births written otherwise than as an exact year (ISSUE-037): with a qualifier, or null — none written.
+/// The year in [_people] then stands for nothing.
+const Map<String, QualifiedDate?> _birthAs = {
+  'a2': QualifiedDate(DateQualifier.about, PartialDate(1870)),
+  'td': QualifiedDate(
+    DateQualifier.between,
+    PartialDate(1895),
+    PartialDate(1900),
+  ),
+  'kz': QualifiedDate(DateQualifier.before, PartialDate(1900)),
+  'le': QualifiedDate(DateQualifier.after, PartialDate(1905)),
+  'f3': null,
+  'lh': null,
+};
+
+/// The deaths written otherwise: with a qualifier, or null — a death without its date.
+const Map<String, QualifiedDate?> _deathAs = {
+  'L': QualifiedDate(DateQualifier.about, PartialDate(1944)),
+  'kz': QualifiedDate(DateQualifier.after, PartialDate(1960)),
+  'wl': null,
+};
+
+/// Marriages without a date, as most are on the notes (ISSUE-037): the first partner's key.
+const Set<String> _marriedWhenUnknown = {'a1', 'kz', 'wl'};
+
 const List<_Union> _unions = [
-  ('a1', 'a2', null, 1892, ['f1', 'f2', 'f3'], null),
+  ('a1', 'a2', null, null, ['f1', 'f2', 'f3'], null),
   ('w1', 'f2', null, 1922, ['w2'], null),
   ('f1', 'j1', null, 1921, ['J', 'L', 'St'], null),
   ('bt', 'St', null, 1951, ['ry', 'el'], null),
@@ -148,9 +177,9 @@ const List<_Union> _unions = [
   ('bk', 'jo', null, 2014, ['my', 'fp'], null),
   ('wo', 'ha', null, 1980, ['agt', 'dr'], null),
   ('rf', 'agt', null, 2007, ['ig'], null),
-  ('kz', 'br', null, 1925, ['zo', 'ed'], null),
+  ('kz', 'br', null, null, ['zo', 'ed'], null),
   ('ed', 'lc', null, 1956, ['je'], null),
-  ('wl', 'ge', null, 1926, ['cz', 'hk'], null),
+  ('wl', 'ge', null, null, ['cz', 'hk'], null),
   ('ge', 'td', null, 1948, ['zd'], null),
   ('cz', 'te', null, 1953, ['rm'], null),
   ('rm', 'iw', null, 1980, ['prz'], null),
@@ -212,23 +241,19 @@ Future<bool> addFictionalFamily(GrobingDatabase db) async {
             ),
           );
       ids[key] = id;
-      await addEventWithClaim(
-        db,
-        EventsCompanion.insert(
-          type: EventType.birth,
-          personId: Value(id),
-          qualifier: const Value(DateQualifier.exact),
-          year: Value(born),
-        ),
-      );
-      if (died != null) {
+      final QualifiedDate? birth = _birthAs.containsKey(key)
+          ? _birthAs[key]
+          : year(born);
+      if (birth != null) {
+        await addEventWithClaim(db, _event(EventType.birth, id, birth));
+      }
+      if (_deathAs.containsKey(key) || died != null) {
         await addEventWithClaim(
           db,
-          EventsCompanion.insert(
-            type: EventType.death,
-            personId: Value(id),
-            qualifier: const Value(DateQualifier.exact),
-            year: Value(died),
+          _event(
+            EventType.death,
+            id,
+            _deathAs.containsKey(key) ? _deathAs[key] : year(died),
           ),
         );
       }
@@ -248,6 +273,7 @@ Future<bool> addFictionalFamily(GrobingDatabase db) async {
           partners: [ExistingMember(ids[a]!), ExistingMember(ids[b]!)],
           children: [for (final String c in children) ExistingMember(ids[c]!)],
           together: year(together),
+          married: married != null || _marriedWhenUnknown.contains(a),
           marriage: year(married),
           end: year(ended),
         ),
@@ -260,3 +286,13 @@ Future<bool> addFictionalFamily(GrobingDatabase db) async {
   });
   return true;
 }
+
+/// A person's event with [date] — none: the event is known, its date not.
+EventsCompanion _event(EventType type, int person, QualifiedDate? date) =>
+    EventsCompanion.insert(
+      type: type,
+      personId: Value(person),
+      qualifier: Value(date?.qualifier),
+      year: Value(date?.from.year),
+      yearTo: Value(date?.to?.year),
+    );

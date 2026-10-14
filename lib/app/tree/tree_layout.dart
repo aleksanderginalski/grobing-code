@@ -3,6 +3,7 @@ import 'dart:ui' show Offset;
 
 import '../../data/database.dart' show Sex;
 import '../../data/family_tree.dart';
+import 'tree_time.dart';
 
 // The tree from a person (05_DESIGN/drzewo.md v1.6, elements 3 and 4; ISSUE-033): who is shown at each
 // level (D2), and where — the port of the layout SPIKE-002 measured on its mockup (Findings M1: the same
@@ -152,6 +153,9 @@ enum TreeLineKind {
   parentChild,
   traceParentChild,
   tracePartner,
+
+  /// "//" across a pair's line from the end of the union (drzewo.md element 4, D35 — the genogram's sign).
+  ended,
 }
 
 /// One kind of line as straight segments, start and end in pairs.
@@ -164,19 +168,27 @@ class TreeLines {
 
 /// The tree laid out: each person's place (the top centre of their node), the lines, the size.
 class TreeLayout {
-  const TreeLayout({
+  TreeLayout._({
     required this.focus,
     required this.level,
     required this.positions,
     required this.levels,
-    required this.lines,
     required this.width,
     required this.height,
     required this.spanWidth,
     required this.spanHeight,
     required this.crossings,
     required this.generations,
-  });
+    required TreeGraph graph,
+    required List<(int, int)> pairs,
+    required Map<int, int> gen,
+    required Set<int> vis,
+    required TreeMetrics metrics,
+  }) : _graph = graph,
+       _pairs = pairs,
+       _gen = gen,
+       _vis = vis,
+       _metrics = metrics;
 
   final int focus;
   final int level;
@@ -186,7 +198,32 @@ class TreeLayout {
 
   /// Person → their level from [focus] (D2) — the screen's order of the names (D8).
   final Map<int, int> levels;
-  final List<TreeLines> lines;
+
+  /// The lines today — the tree without the slider.
+  late final List<TreeLines> lines = linesAt(null, null);
+
+  final TreeGraph _graph;
+
+  /// Neighbours in a row who are a pair — where a pair's line goes.
+  final List<(int, int)> _pairs;
+  final Map<int, int> _gen;
+  final Set<int> _vis;
+  final TreeMetrics _metrics;
+
+  /// The lines in [year] on the slider (drzewo.md element 6, ISSUE-037): only people on the tree then, each
+  /// pair as it was then, the trace only to family that already is (D37). The places stay — a year never
+  /// lays the tree out anew (AC-1: "drzewo nie skacze").
+  List<TreeLines> linesAt(TreeTime? time, int? year) {
+    bool on(int n) => time == null || time.isOn(n, year);
+    PairInYear? pairOf(TreeUnion u) => time == null
+        ? PairInYear(married: u.married, ended: u.ended)
+        : time.pair(u, year);
+    return [
+      ..._lines(_graph, _pairs, positions, _gen, _vis, _metrics, on, pairOf),
+      ..._traces(_graph, positions, _vis, _metrics, focus, on, pairOf),
+    ];
+  }
+
   final double width;
   final double height;
 
@@ -546,15 +583,21 @@ TreeLayout layoutTree(
     }),
   );
 
-  return TreeLayout(
+  return TreeLayout._(
     focus: focus,
     level: level,
     positions: ordered,
     levels: {for (final int n in px.keys) n: lvOf(n)},
-    lines: [
-      ..._lines(graph, rows, gs, px, gen, vis, metrics),
-      ..._traces(graph, px, vis, metrics, focus),
+    graph: graph,
+    pairs: [
+      for (final int g in gs)
+        for (final _Unit u in rows[g]!)
+          for (int i = 0; i + 1 < u.members.length; i++)
+            (u.members[i], u.members[i + 1]),
     ],
+    gen: gen,
+    vis: vis,
+    metrics: metrics,
     width: (maxX - minX) * slot + 2 * TreeMetrics.padX,
     height:
         (gmax - gmin) * metrics.rowHeight +
@@ -586,29 +629,39 @@ const double _half = TreeMetrics.node / 2;
 
 /// The relation lines (drzewo.md element 4): a pair — level, between neighbours in a row; parent–child —
 /// from the middle of the pair's line (or from under a lone parent) down to a rail and to each child. Rails
-/// that would overlap get their own heights, so two families never share one line.
+/// that would overlap get their own heights, so two families never share one line. Only between people [on]
+/// the tree, a pair as [pairOf] says (the slider's year, ISSUE-037).
 List<TreeLines> _lines(
   TreeGraph graph,
-  Map<int, List<_Unit>> rows,
-  List<int> gs,
+  List<(int, int)> pairs,
   Map<int, Offset> px,
   Map<int, int> gen,
   Set<int> vis,
   TreeMetrics metrics,
+  bool Function(int) on,
+  PairInYear? Function(TreeUnion) pairOf,
 ) {
-  final List<Offset> married = [], together = [], parentChild = [];
-  for (final int g in gs) {
-    for (final _Unit u in rows[g]!) {
-      for (int i = 0; i + 1 < u.members.length; i++) {
-        final int a = u.members[i], b = u.members[i + 1];
-        final TreeUnion? union = graph.unionBetween(a, b);
-        if (union == null) continue;
-        final Offset pa = px[a]!, pb = px[b]!;
-        (union.married ? married : together).addAll([
-          Offset(pa.dx + _half, pa.dy + _half),
-          Offset(pb.dx - _half, pa.dy + _half),
-        ]);
-      }
+  final List<Offset> married = [], together = [], parentChild = [], ended = [];
+  for (final (int a, int b) in pairs) {
+    final TreeUnion? union = graph.unionBetween(a, b);
+    if (union == null || !on(a) || !on(b)) continue;
+    final PairInYear? pair = pairOf(union);
+    if (pair == null) continue;
+    final Offset pa = px[a]!, pb = px[b]!;
+    final double y = pa.dy + _half;
+    (pair.married ? married : together).addAll([
+      Offset(pa.dx + _half, y),
+      Offset(pb.dx - _half, y),
+    ]);
+    if (pair.ended) {
+      // Two strokes, 12 × 12 dp, across the middle of the line (D35).
+      final double x = (pa.dx + pb.dx) / 2;
+      ended.addAll([
+        Offset(x - 6, y + 6),
+        Offset(x - 1, y - 6),
+        Offset(x + 1, y + 6),
+        Offset(x + 6, y - 6),
+      ]);
     }
   }
 
@@ -620,12 +673,12 @@ List<TreeLines> _lines(
   for (final TreeUnion u in unions) {
     final List<int> ks = [
       for (final int c in u.children)
-        if (vis.contains(c) && px.containsKey(c)) c,
+        if (vis.contains(c) && px.containsKey(c) && on(c)) c,
     ];
     if (ks.isEmpty) continue;
     final List<int> ps = [
       for (final int p in u.partners)
-        if (px.containsKey(p) && gen[p] == gen[ks.first]! - 1) p,
+        if (px.containsKey(p) && gen[p] == gen[ks.first]! - 1 && on(p)) p,
     ];
     if (ps.isEmpty) continue;
     final double sx, sy;
@@ -676,6 +729,7 @@ List<TreeLines> _lines(
     TreeLines(TreeLineKind.married, married),
     TreeLines(TreeLineKind.together, together),
     TreeLines(TreeLineKind.parentChild, parentChild),
+    TreeLines(TreeLineKind.ended, ended),
   ];
 }
 
@@ -692,27 +746,36 @@ class _Rail {
 /// The trace of the family beyond the view (D9): up — parents, down — children, sideways — a partner, 14 dp,
 /// away from the middle: left of it to the left, right of it and the middle itself to the right (ui review of
 /// ISSUE-033 — always to the right, the trace on the left pointed at the middle and read as a line "razem").
+/// From people [on] the tree, to family that is on it too: a child not born yet is no family beyond the
+/// view, nor a partner before the union began — as the pair's line (D37; ui review of ISSUE-037).
 List<TreeLines> _traces(
   TreeGraph graph,
   Map<int, Offset> px,
   Set<int> vis,
   TreeMetrics metrics,
   int focus,
+  bool Function(int) on,
+  PairInYear? Function(TreeUnion) pairOf,
 ) {
   final List<Offset> pc = [], pt = [];
   final double middle = px[focus]!.dx;
+  bool away(int x) => !vis.contains(x) && on(x);
   for (final MapEntry<int, Offset> e in px.entries) {
+    if (!on(e.key)) continue;
     final Offset p = e.value;
-    if (graph.parentsOf(e.key).any((x) => !vis.contains(x))) {
+    if (graph.parentsOf(e.key).any(away)) {
       pc.addAll([Offset(p.dx, p.dy - 2), Offset(p.dx, p.dy - 16)]);
     }
-    if (graph.childrenOf(e.key).any((x) => !vis.contains(x))) {
+    if (graph.childrenOf(e.key).any(away)) {
       pc.addAll([
         Offset(p.dx, p.dy + metrics.labelBottom),
         Offset(p.dx, p.dy + metrics.labelBottom + 14),
       ]);
     }
-    if (graph.partnersOf(e.key).any((x) => !vis.contains(x))) {
+    if (graph.partnersOf(e.key).any((x) {
+      final TreeUnion? union = graph.unionBetween(e.key, x);
+      return away(x) && union != null && pairOf(union) != null;
+    })) {
       final double side = p.dx < middle ? -1 : 1;
       pt.addAll([
         Offset(p.dx + side * _half, p.dy + _half),

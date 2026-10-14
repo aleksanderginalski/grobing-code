@@ -280,7 +280,8 @@ String initialsOf(String? givenNames, String? surname) {
 
 /// Letters in a circle on the surface with an outline; "Ja" in amber ([accent]) — the mark of the
 /// author (osoby.md, element 3). On the tree the "Ja" mark keeps the outline's colour ([accentOutline]
-/// false): an amber ring there means the person in the middle (drzewo.md D14).
+/// false): an amber ring there means the person in the middle (drzewo.md D14). Without [outline] the tree
+/// draws its own — dashed, for a year the person may not be alive in (drzewo.md D32).
 class InitialsCircle extends StatelessWidget {
   const InitialsCircle({
     super.key,
@@ -288,12 +289,14 @@ class InitialsCircle extends StatelessWidget {
     this.size = 40,
     this.accent = false,
     this.accentOutline = true,
+    this.outline = true,
   });
 
   final String text;
   final double size;
   final bool accent;
   final bool accentOutline;
+  final bool outline;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -303,11 +306,13 @@ class InitialsCircle extends StatelessWidget {
     decoration: BoxDecoration(
       color: GrobingColors.surface,
       shape: BoxShape.circle,
-      border: Border.all(
-        color: accent && accentOutline
-            ? GrobingColors.amber
-            : GrobingColors.outline,
-      ),
+      border: outline
+          ? Border.all(
+              color: accent && accentOutline
+                  ? GrobingColors.amber
+                  : GrobingColors.outline,
+            )
+          : null,
     ),
     child: Text(
       text,

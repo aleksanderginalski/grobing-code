@@ -19,6 +19,7 @@ class TreePerson {
     this.sex,
     this.birth,
     this.death,
+    this.burial,
     this.dead = false,
     this.profile,
   });
@@ -35,6 +36,9 @@ class TreePerson {
   final QualifiedDate? birth;
   final QualifiedDate? death;
 
+  /// The first burial's date — the latest a death without its own date can be (time slider, drzewo.md D32).
+  final QualifiedDate? burial;
+
   /// A death or a burial is written, with or without a date — the candle on the node (style-b.md rule 8).
   final bool dead;
   final ProfilePhoto? profile;
@@ -42,7 +46,9 @@ class TreePerson {
 
 /// One union: its one or two partners in the order written, its children by birth (those without a date
 /// last), whether there was a wedding, and when the union began — "together since", else the wedding — to
-/// order a person's unions (families.dart does the same).
+/// order a person's unions (families.dart does the same). A union with neither date begins, for that
+/// order, with its oldest child (drzewo.md D31 — TimeNets: "marriage ← oldest child's birth"): last, a
+/// widow's first marriage would come after her second and move the tree (ISSUE-037 D3).
 class TreeUnion {
   const TreeUnion({
     required this.familyId,
@@ -50,6 +56,10 @@ class TreeUnion {
     required this.children,
     this.married = false,
     this.startKey,
+    this.together,
+    this.marriage,
+    this.ended = false,
+    this.end,
   });
 
   final int familyId;
@@ -57,6 +67,15 @@ class TreeUnion {
   final List<int> children;
   final bool married;
   final int? startKey;
+
+  /// The dates the time slider reads (drzewo.md element 6): "razem od", the wedding, the end — each may be
+  /// written without its date.
+  final QualifiedDate? together;
+  final QualifiedDate? marriage;
+
+  /// The union ended — a divorce or a parting, with [end] or without a date (rodzina.md A6).
+  final bool ended;
+  final QualifiedDate? end;
 }
 
 /// The family as the tree reads it.
@@ -103,14 +122,17 @@ Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
   final Set<int> withDeath = {};
   final Map<(int, EventType), QualifiedDate?> familyDates = {};
   final Set<int> married = {};
+  final Set<int> ended = {};
   for (final Event e
       in await (db.select(db.events)
             ..where(
               (e) => e.type.isInValues(const [
                 EventType.birth,
                 EventType.death,
+                EventType.burial,
                 EventType.marriage,
                 EventType.together,
+                EventType.end,
               ]),
             )
             ..orderBy([(e) => OrderingTerm.asc(e.id)]))
@@ -121,6 +143,7 @@ Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
     } else if (e.familyId case final int family?) {
       familyDates.putIfAbsent((family, e.type), () => QualifiedDate.ofEvent(e));
       if (e.type == EventType.marriage) married.add(family);
+      if (e.type == EventType.end) ended.add(family);
     }
   }
   final Set<int> buried = {
@@ -139,6 +162,7 @@ Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
         sex: p.sex,
         birth: personDates[(p.id, EventType.birth)],
         death: personDates[(p.id, EventType.death)],
+        burial: personDates[(p.id, EventType.burial)],
         dead: withDeath.contains(p.id) || buried.contains(p.id),
         profile: profiles[p.id],
       ),
@@ -161,32 +185,42 @@ Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
     return b == null ? null : _dateKey(b);
   }
 
-  final List<TreeUnion> unions = [
-    for (final Family f in await (db.select(
-      db.families,
-    )..orderBy([(f) => OrderingTerm.asc(f.id)])).get())
-      if ((partners[f.id] ?? const []).isNotEmpty ||
-          (children[f.id] ?? const []).isNotEmpty)
-        TreeUnion(
-          familyId: f.id,
-          partners: [
-            for (final int p in partners[f.id] ?? const <int>[])
-              if (people.containsKey(p)) p,
-          ],
-          // By birth (GEDCOM 7: "chronological by birth"), those without a date last, then in the order
-          // written — a stable sort over the order of the rows.
-          children: _byKey([
-            for (final int c in children[f.id] ?? const <int>[])
-              if (people.containsKey(c)) c,
-          ], birthKey),
-          married: married.contains(f.id),
-          startKey: switch (familyDates[(f.id, EventType.together)] ??
-              familyDates[(f.id, EventType.marriage)]) {
-            final QualifiedDate d? => _dateKey(d),
-            null => null,
-          },
-        ),
-  ];
+  final List<TreeUnion> unions = [];
+  for (final Family f in await (db.select(
+    db.families,
+  )..orderBy([(f) => OrderingTerm.asc(f.id)])).get()) {
+    if ((partners[f.id] ?? const []).isEmpty &&
+        (children[f.id] ?? const []).isEmpty) {
+      continue;
+    }
+    // By birth (GEDCOM 7: "chronological by birth"), those without a date last, then in the order written
+    // — a stable sort over the order of the rows.
+    final List<int> kids = _byKey([
+      for (final int c in children[f.id] ?? const <int>[])
+        if (people.containsKey(c)) c,
+    ], birthKey);
+    final QualifiedDate? together = familyDates[(f.id, EventType.together)];
+    final QualifiedDate? marriage = familyDates[(f.id, EventType.marriage)];
+    unions.add(
+      TreeUnion(
+        familyId: f.id,
+        partners: [
+          for (final int p in partners[f.id] ?? const <int>[])
+            if (people.containsKey(p)) p,
+        ],
+        children: kids,
+        married: married.contains(f.id),
+        startKey: switch (together ?? marriage) {
+          final QualifiedDate d? => _dateKey(d),
+          null => kids.isEmpty ? null : birthKey(kids.first),
+        },
+        together: together,
+        marriage: marriage,
+        ended: ended.contains(f.id),
+        end: familyDates[(f.id, EventType.end)],
+      ),
+    );
+  }
 
   final Setting? settings = await (db.select(
     db.settings,
