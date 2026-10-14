@@ -2,7 +2,8 @@ import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart' show FlutterExceptionHandler;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemChannels;
+import 'package:flutter/services.dart'
+    show MethodChannel, PlatformException, SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/people/me_picker_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
@@ -28,6 +29,14 @@ import '../../support/style_checks.dart';
 // middle opens nothing, the edges of the bars take no drag, the empty space shows "Zakończ prezentację" for
 // 3 s; it and back return portrait with the same person, the card and the bar. The phone's turn is the test
 // view's new size; what the tree asks of the system — the platform channel (presentation_mode_test.dart).
+//
+// ISSUE-036 — "Przesyłaj na telewizor" in place of the TV icon (drzewo.md element 1, D29, D30): AC-1 the
+// system's cast screen opens (the `grobing/external` channel), the tree waits until the app is back on top —
+// inactive, then resumed, as measured on the emulator — and presents without the hint; a second tap meanwhile
+// opens nothing (D3); the reader hears "w ustawieniach telefonu" · AC-2 a phone without that screen, or a
+// native error: presentation at once, with the hint for 4 s.
+
+const MethodChannel _external = MethodChannel('grobing/external');
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (int i = 0; i < 400; i++) {
@@ -382,8 +391,8 @@ void main() {
         ),
       );
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
-      // No tree, no presentation (element 1, ISSUE-034).
-      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
+      // No tree, no casting (element 1, ISSUE-034, ISSUE-036).
+      expect(find.byTooltip('Przesyłaj na telewizor'), findsNothing);
 
       await tester.runAsync(
         () => db
@@ -395,7 +404,7 @@ void main() {
         () =>
             _shown(find.text('Aplikacja nie wie jeszcze, która osoba to Ty.')),
       );
-      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
+      expect(find.byTooltip('Przesyłaj na telewizor'), findsNothing);
       await tester.tap(find.text('Wybierz, która osoba to Ty'));
       await _pumpUntil(tester, () => _shown(find.byType(MePickerScreen)));
       await cleanUp(tester);
@@ -454,16 +463,60 @@ void main() {
     'setPreferredOrientations []',
   ];
 
-  /// The tree from "Ja", the TV icon, the phone turned.
+  const List<String> entering = [
+    'setPreferredOrientations '
+        '[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]',
+    'setEnabledSystemUIMode SystemUiMode.immersiveSticky',
+  ];
+
+  /// The system's cast screen (`ExternalLinks.kt`): the calls the tree makes, answered with [opens] — false
+  /// stands for a phone without that screen (ISSUE-036 AC-2).
+  List<String> mockCastScreen({bool opens = true}) {
+    final List<String> calls = [];
+    final TestDefaultBinaryMessenger messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(_external, (call) async {
+      calls.add(call.method);
+      return opens;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(_external, null));
+    return calls;
+  }
+
+  /// The app under the system's screen and back on top, as measured on the emulator (ISSUE-036, Dev report →
+  /// Krok 0): inactive when it opens, resumed when it closes. A quick back never hides the app; [stayed] — the
+  /// screen was there long enough for Android to stop the app under it.
+  void backFromSystemScreen(WidgetTester tester, {bool stayed = false}) {
+    final TestWidgetsFlutterBinding binding = tester.binding;
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    if (stayed) {
+      binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    }
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+
+  /// "Przesyłaj na telewizor", the system's screen and back, the phone turned.
+  Future<void> castAndBack(WidgetTester tester, {bool stayed = false}) async {
+    await tester.tap(find.byTooltip('Przesyłaj na telewizor'));
+    await tester.pump();
+    backFromSystemScreen(tester, stayed: stayed);
+    await tester.pump();
+    await _turn(tester, landscape: true);
+  }
+
+  /// The tree from "Ja", the system's cast screen and back, the phone turned.
   Future<List<String>> present(WidgetTester tester) async {
     final List<String> chrome = recordChrome();
+    mockCastScreen();
     await tester.runAsync(() => addFictionalFamily(db));
     await pumpTree(tester);
     await _pumpUntil(tester, () => _shown(_people()));
     await _afterMove(tester);
-    await tester.tap(find.byTooltip('Tryb prezentacji'));
-    await tester.pump();
-    await _turn(tester, landscape: true);
+    await castAndBack(tester);
     return chrome;
   }
 
@@ -490,31 +543,59 @@ void main() {
   }
 
   testWidgets(
-    'AC-8 — the TV icon: landscape, no bars, level 2 fitted to the screen, no buttons; the hint for 4 s; tap targets (R2)',
+    'ISSUE-036 AC-1 + AC-8 — "Przesyłaj na telewizor" opens the system\'s cast screen; the tree waits until the app is '
+    'back on top, a second tap meanwhile opens nothing (D3); then landscape, no bars, level 2 fitted, no buttons and '
+    'no hint; the reader hears where the tap leads; tap targets (R2)',
     (tester) async {
-      final List<String> chrome = await present(tester);
-      expect(chrome, [
-        'setPreferredOrientations '
-            '[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]',
-        'setEnabledSystemUIMode SystemUiMode.immersiveSticky',
-      ]);
+      final List<String> chrome = recordChrome();
+      final List<String> calls = mockCastScreen();
+      await tester.runAsync(() => addFictionalFamily(db));
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+
+      // Element 1 (D30): the cast icon in place of the TV icon, read with "w ustawieniach telefonu" and pressable.
+      expect(find.byIcon(Icons.cast_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.tv_outlined), findsNothing);
+      SemanticsHandle semantics = tester.ensureSemantics();
+      final Finder cast = find.bySemanticsLabel(
+        'Przesyłaj na telewizor — w ustawieniach telefonu',
+      );
+      expect(cast, findsOneWidget);
+      expect(
+        tester.getSemantics(cast),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      semantics.dispose();
+
+      await tester.tap(find.byTooltip('Przesyłaj na telewizor'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Przesyłaj na telewizor'));
+      await tester.pump();
+      expect(calls, ['openCastSettings']);
+      // The system's screen is open: nothing turns under it.
+      expect(chrome, isEmpty);
+      expect(find.byType(GrobingTabBar), findsOneWidget);
+
+      backFromSystemScreen(tester);
+      await tester.pump();
+      await _turn(tester, landscape: true);
+      expect(calls, ['openCastSettings']);
+      expect(chrome, entering);
       // No bar, no tab bar, no card, no + / −.
       expect(find.text('Drzewo'), findsNothing);
       expect(find.byType(GrobingTabBar), findsNothing);
       expect(find.text('ur. 1983 · to ja'), findsNothing);
       expect(find.text('Pokaż'), findsNothing);
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
-      expect(find.byTooltip('Tryb prezentacji'), findsNothing);
+      expect(find.byTooltip('Przesyłaj na telewizor'), findsNothing);
       // Level 2 from "Ja" — 20 people, all of them on the 800 × 360 dp screen.
       expect(_nodes(), findsNWidgets(20));
       expectAllOnScreen(tester, const Size(800, 360));
+      // Casting was just chosen: the hint about the quick settings would only reach the TV (D26, D30).
+      expect(find.text(_hint), findsNothing);
 
-      expect(_opacityOf(tester, _hint), 1);
-      await tester.pump(const Duration(seconds: 4));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(_opacityOf(tester, _hint), 0);
-
-      final SemanticsHandle semantics = tester.ensureSemantics();
+      semantics = tester.ensureSemantics();
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       expectEveryButtonTappable(tester);
@@ -592,7 +673,7 @@ void main() {
       expect(chrome, leaving);
       expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
       expect(_people(), findsNWidgets(17));
-      expect(find.byTooltip('Tryb prezentacji'), findsOneWidget);
+      expect(find.byTooltip('Przesyłaj na telewizor'), findsOneWidget);
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsOneWidget);
       expect(find.byType(GrobingTabBar), findsOneWidget);
       // Kasia in the middle across the 360 dp screen, at the tree's own scale (level 2).
@@ -601,10 +682,10 @@ void main() {
         moreOrLessEquals(180, epsilon: 1),
       );
 
-      // Back ends it the same way, and the tree stays.
-      await tester.tap(find.byTooltip('Tryb prezentacji'));
-      await tester.pump();
-      await _turn(tester, landscape: true);
+      // Again — the cast screen long enough for Android to stop the app under it — and back ends it the same
+      // way, and the tree stays.
+      await castAndBack(tester, stayed: true);
+      expect(find.text('Drzewo'), findsNothing);
       chrome.clear();
       await tester.binding.handlePopRoute();
       await tester.pump();
@@ -612,6 +693,54 @@ void main() {
       expect(chrome, leaving);
       expect(find.byType(TreeScreen), findsOneWidget);
       expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-036 AC-2 — a phone without the cast screen: presentation at once, with the hint for 4 s; a failure on '
+    'the native side is the same, and nothing is thrown',
+    (tester) async {
+      final List<String> chrome = recordChrome();
+      final List<String> calls = mockCastScreen(opens: false);
+      await tester.runAsync(() => addFictionalFamily(db));
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+
+      // No back from anywhere: the answer "no such screen" is enough.
+      await tester.tap(find.byTooltip('Przesyłaj na telewizor'));
+      await tester.pump();
+      await tester.pump();
+      await _turn(tester, landscape: true);
+      expect(calls, ['openCastSettings']);
+      expect(chrome, entering);
+      expect(find.text('Drzewo'), findsNothing);
+      expect(_nodes(), findsNWidgets(20));
+      expect(_opacityOf(tester, _hint), 1);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_opacityOf(tester, _hint), 0);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await _turn(tester, landscape: false);
+      expect(find.byType(GrobingTabBar), findsOneWidget);
+
+      // The native side failing otherwise (e.g. a SecurityException on some phone comes as a PlatformException):
+      // the same, and nothing thrown.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            _external,
+            (call) async => throw PlatformException(code: 'error'),
+          );
+      await tester.tap(find.byTooltip('Przesyłaj na telewizor'));
+      await tester.pump();
+      await tester.pump();
+      await _turn(tester, landscape: true);
+      expect(find.text('Drzewo'), findsNothing);
+      expect(_opacityOf(tester, _hint), 1);
+      expect(tester.takeException(), isNull);
       await cleanUp(tester);
     },
   );

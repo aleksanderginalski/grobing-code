@@ -17,6 +17,19 @@ Future<bool> openExternalUrl(String url) async {
   }
 }
 
+/// The system's screen for casting the phone's screen to a TV (`ExternalLinks.kt`; drzewo.md D29): the
+/// system sends the picture, the app only opens the door — no Google Cast, nothing over the network from
+/// here (NFR-005). False on a phone without that screen (ISSUE-036 AC-2).
+Future<bool> openCastSettings() async {
+  try {
+    return await _channel.invokeMethod<bool>('openCastSettings') ?? false;
+  } on PlatformException {
+    return false;
+  } on MissingPluginException {
+    return false;
+  }
+}
+
 /// The satellite photo of [point] in Google Maps. `geo:` cannot choose the layer — the Android canon
 /// documents only `z` and `q` for it — while Maps URLs have `basemap=satellite` (ISSUE-015 D1).
 String satelliteUrl(GeoPoint point) =>

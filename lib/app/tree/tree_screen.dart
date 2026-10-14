@@ -7,6 +7,7 @@ import '../../data/database.dart';
 import '../../data/family_tree.dart';
 import '../../data/kinship.dart';
 import '../dates.dart';
+import '../external_link.dart' show openCastSettings;
 import '../family/union_wizard.dart' show shortPersonName;
 import '../people/me_picker_screen.dart';
 import '../people/people_list.dart'
@@ -128,6 +129,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _exitShown = false;
   Timer? _exitTimer;
 
+  /// "Przesyłaj na telewizor" (element 1, D30): the system's cast screen is open, or about to be — presentation
+  /// comes when the app is back on top (ISSUE-036 D1); a second tap meanwhile opens nothing (D3).
+  bool _casting = false;
+  AppLifecycleListener? _castReturn;
+
   // A double tap on the tree's empty space zooms in (AC-3, SC 2.5.1). Read from raw pointer events, so a
   // tap on a person is not held back waiting for a second one.
   int _pointers = 0;
@@ -179,6 +185,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _pillTimer?.cancel();
     _exitTimer?.cancel();
     _settle?.cancel();
+    _castReturn?.dispose();
     // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
     if (_presenting) unawaited(leavePresentation());
     _move.dispose();
@@ -474,9 +481,39 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   // ---- presentation mode (element 11, D11, D16) ----
 
-  /// The TV icon: landscape, full screen, level 2 fitted once the screen has turned; the hint about
-  /// "Przesyłaj ekran" on every entry, since the mode itself sends nothing anywhere.
-  void _present() {
+  /// "Przesyłaj na telewizor" (element 1, D30): the system's cast screen, then presentation once the app is
+  /// back on top. The screen gives no result to wait for — `startActivityForResult` may answer "cancelled" at
+  /// once for a protocol without one (Activity.java) — so the app's own life cycle tells: inactive when the
+  /// screen opens, resumed when it closes (ISSUE-036 D1). Not "hidden": Android stops the app under the
+  /// screen only seconds later, so a quick back never hides it (measured on the emulator). A phone without
+  /// that screen goes straight to presentation with the hint (AC-2).
+  Future<void> _cast() async {
+    if (_casting) return;
+    _casting = true;
+    bool away = false;
+    _castReturn = AppLifecycleListener(
+      onInactive: () => away = true,
+      onResume: () {
+        if (!away) return;
+        _stopWaiting();
+        if (mounted && _treeShown && !_presenting) _present(hint: false);
+      },
+    );
+    if (await openCastSettings() || !mounted) return;
+    _stopWaiting();
+    _present(hint: true);
+  }
+
+  void _stopWaiting() {
+    _castReturn?.dispose();
+    _castReturn = null;
+    _casting = false;
+  }
+
+  /// Landscape, full screen, level 2 fitted once the screen has turned. The [hint] about casting from the
+  /// quick settings only when the phone had no cast screen to open (D26, AC-2): after that screen the hint
+  /// would only reach the TV.
+  void _present({required bool hint}) {
     setState(() {
       _presenting = true;
       _exitShown = false;
@@ -487,12 +524,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       // Fitted when the landscape size comes (_treeArea), as a new size before any touch.
       _centred = false;
       _touched = false;
-      _flash(
-        // The function, not a tile's name: "Przesyłanie" on a Pixel, "Smart View" on a Samsung (drzewo.md D26);
-        // a hard space after the one-letter word (style-b.md rule 6).
-        'Obraz na telewizor: przesyłanie ekranu w szybkich ustawieniach telefonu',
-        const Duration(seconds: 4),
-      );
+      _pillShown = false;
+      if (hint) {
+        _flash(
+          // The function, not a tile's name: "Przesyłanie" on a Pixel, "Smart View" on a Samsung (drzewo.md D26);
+          // a hard space after the one-letter word (style-b.md rule 6).
+          'Obraz na telewizor: przesyłanie ekranu w szybkich ustawieniach telefonu',
+          const Duration(seconds: 4),
+        );
+      }
     });
     unawaited(enterPresentation());
   }
@@ -674,8 +714,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _focus != null &&
       _layout != null;
 
-  /// Element 1: "Drzewo" and, with a tree, the TV icon — presentation mode (AC-8). "Połącz dwie osoby" comes
-  /// with US-011.
+  /// Element 1: "Drzewo" and, with a tree, "Przesyłaj na telewizor" — the system's cast screen, then
+  /// presentation mode (AC-8, D30). "Połącz dwie osoby" comes with US-011.
   Widget _bar() => ConstrainedBox(
     constraints: const BoxConstraints(minHeight: 64),
     child: Padding(
@@ -696,11 +736,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
             ),
           ),
           if (_treeShown)
-            IconButton(
-              icon: const Icon(Icons.tv_outlined),
-              color: GrobingColors.amber,
-              tooltip: 'Tryb prezentacji',
-              onPressed: _present,
+            // The reader hears where the tap leads, as with an external link (style-b.md rule 1); the
+            // node keeps its own tap, or Switch Access and Voice Access could not press it (ISSUE-021).
+            Semantics(
+              button: true,
+              label: 'Przesyłaj na telewizor — w ustawieniach telefonu',
+              onTap: _cast,
+              excludeSemantics: true,
+              child: IconButton(
+                icon: const Icon(Icons.cast_outlined),
+                color: GrobingColors.amber,
+                tooltip: 'Przesyłaj na telewizor',
+                onPressed: _cast,
+              ),
             ),
         ],
       ),
@@ -1094,7 +1142,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   );
 
   /// "Poziom 3 · 66 osób" for a moment after a change of level; a screen reader hears the same (element 3).
-  /// In presentation, the hint about "Przesyłaj ekran" (element 11).
+  /// In presentation, the hint about casting from the quick settings — only on a phone without the system's
+  /// cast screen (element 11, D26, D30).
   Widget _levelPill() => IgnorePointer(
     child: Center(
       child: AnimatedOpacity(

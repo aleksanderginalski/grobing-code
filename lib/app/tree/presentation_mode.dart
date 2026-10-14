@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 /// landscape and the system bars hidden. A swipe from the edge shows them for a moment and they hide again
 /// — immersive sticky, Android's mode for "presentation slides" (developer.android.com → Hide system bars for
 /// immersive mode); a tap stays the app's, it puts a person in the middle. Nothing is sent anywhere: the
-/// picture reaches a TV through the system's own "Przesyłaj ekran" (NFR-005).
+/// picture reaches a TV through the system's own screen cast (NFR-005; drzewo.md D29).
 Future<void> enterPresentation() async {
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.landscapeLeft,
