@@ -296,8 +296,14 @@ String _childWord(Sex? s) => switch (s) {
 
 /// What the last person of [steps] — a path from "ja" (`KinGraph.path`) — is to "ja", for the tree's card:
 /// "Moja babcia", "Mój stryj (brat taty)", "Siostra cioteczna babci mojej żony". Null for "ja" themselves
-/// (no steps). [sexOf] gives each person's sex; null where it is not written.
-String? kinshipName(List<KinStep> steps, Sex? Function(int personId) sexOf) {
+/// (no steps). [sexOf] gives each person's sex; null where it is not written. Not [mine] — a path from
+/// someone else, for the banner of "Połącz dwie osoby" (drzewo.md D47, O2): the same segments without "mój",
+/// "Babcia", "Siostrzenica bratowej", "Ciotka (siostra taty)".
+String? kinshipName(
+  List<KinStep> steps,
+  Sex? Function(int personId) sexOf, {
+  bool mine = true,
+}) {
   if (steps.isEmpty) return null;
   final List<_Word> segments = [];
   int end = steps.length;
@@ -320,7 +326,8 @@ String? kinshipName(List<KinStep> steps, Sex? Function(int personId) sexOf) {
       _Gender.masculine => 'mój',
       _Gender.neuter => 'moje',
     };
-    text = '$my ${w.nominative}${w.bracket == null ? '' : ' (${w.bracket})'}';
+    text =
+        '${mine ? '$my ' : ''}${w.nominative}${w.bracket == null ? '' : ' (${w.bracket})'}';
   } else {
     final String my = segments.first.gender == _Gender.feminine
         ? 'mojej'
@@ -328,7 +335,7 @@ String? kinshipName(List<KinStep> steps, Sex? Function(int personId) sexOf) {
     text = [
       segments.last.nominative,
       for (int i = segments.length - 2; i >= 1; i--) segments[i].genitive,
-      '$my ${segments.first.genitive}',
+      mine ? '$my ${segments.first.genitive}' : segments.first.genitive,
     ].join(' ');
   }
   return '${text[0].toUpperCase()}${text.substring(1)}';

@@ -27,7 +27,9 @@ class ExternalLinks(
             when (call.method) {
                 "openUrl" -> result.success(open(call.argument<String>("url")))
                 "openCastSettings" -> result.success(openCastSettings())
-                "recommendedTimeout" -> result.success(recommendedTimeout(call.argument<Int>("ms") ?: 0))
+                "recommendedTimeout" -> result.success(
+                    recommendedTimeout(call.argument<Int>("ms") ?: 0, call.argument<Boolean>("controls") ?: true),
+                )
                 else -> result.notImplemented()
             }
         }
@@ -35,16 +37,19 @@ class ExternalLinks(
 
     /**
      * "Time to take action" in the accessibility settings (drzewo.md D40): controls should stay on the screen at
-     * least this long (`AccessibilityManager.getRecommendedTimeoutMillis`, Android 10+). Below Android 10 — the
+     * least this long (`AccessibilityManager.getRecommendedTimeoutMillis`, Android 10+). Without [controls] —
+     * text to read, the flags Material's Snackbar passes without an action (drzewo.md D43). Below Android 10 — the
      * app's own [ms].
      */
-    private fun recommendedTimeout(ms: Int): Int {
+    private fun recommendedTimeout(ms: Int, controls: Boolean): Int {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ms
         val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return ms
-        return manager.getRecommendedTimeoutMillis(
-            ms,
-            AccessibilityManager.FLAG_CONTENT_CONTROLS or AccessibilityManager.FLAG_CONTENT_TEXT,
-        )
+        val content = if (controls) {
+            AccessibilityManager.FLAG_CONTENT_CONTROLS or AccessibilityManager.FLAG_CONTENT_TEXT
+        } else {
+            AccessibilityManager.FLAG_CONTENT_ICONS or AccessibilityManager.FLAG_CONTENT_TEXT
+        }
+        return manager.getRecommendedTimeoutMillis(ms, content)
     }
 
     private fun open(url: String?): Boolean {

@@ -186,5 +186,19 @@ void main() {
     test('"ja" themselves has no name', () {
       expect(kinshipName(const [], (id) => sex[id]), isNull);
     });
+
+    // ISSUE-039 (drzewo.md D47, O2) — the banner of "Połącz dwie osoby" when "Od" is not "ja": the same
+    // segments, without "mój / moja / mojej / mojego"; the bracket stays.
+    test('not mine — the same segments without "mój", from anyone', () {
+      String? bare(int from, int to) =>
+          kinshipName(kin.path(from, to)!, (id) => sex[id], mine: false);
+      expect(bare(ja, babciaZony), 'Babcia żony');
+      expect(bare(ja, kuzynkaBabci), 'Siostra cioteczna babci żony');
+      expect(bare(ja, ciotka), 'Ciotka (siostra taty)');
+      // From the grandfather to "ja": a grandson — the name of the last person, to the first.
+      expect(bare(dziadek, ja), 'Wnuk');
+      // Mine stays as it was.
+      expect(name(babciaZony), 'Babcia mojej żony');
+    });
   });
 }

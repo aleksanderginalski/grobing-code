@@ -22,10 +22,12 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import 'connect_dialog.dart';
 import 'presentation_mode.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
 import 'tree_painter.dart';
+import 'tree_path.dart';
 import 'tree_presentation.dart';
 import 'tree_time.dart';
 import 'tree_time_bar.dart';
@@ -57,7 +59,8 @@ const double _middleHeight = 0.42;
 /// level (AC-3); a short dashed trace says where the family goes on (AC-4); the card says who the person
 /// is to "ja" (AC-5). "Pokaż w drzewie" opens it with a given person in the middle ([focusPersonId], AC-6).
 /// The TV icon turns it into presentation mode (element 11, AC-8; ISSUE-034): landscape, full screen, level 2
-/// fitted to the screen, no buttons.
+/// fitted to the screen, no buttons. "Połącz dwie osoby" lights the path between two people on the same tree
+/// (elements 7–10; US-011, ISSUE-039).
 class TreeScreen extends StatefulWidget {
   const TreeScreen({
     super.key,
@@ -170,6 +173,22 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _casting = false;
   AppLifecycleListener? _castReturn;
 
+  /// "Połącz dwie osoby" (elements 7–10; US-011, ISSUE-039): the path lit on the tree, or null; its line on the
+  /// layout shown, run step by step ([_pathRun] 0 → 1, 0.7 s a step) once "Do" stands in the middle; how many
+  /// of its people the line has reached ("Od" from the start); the banner (element 9, or 10 alone).
+  TreePath? _path;
+  List<List<Offset>> _pathRuns = const [];
+  late final AnimationController _pathRun;
+  int _reached = 0;
+  bool _pathWaits = false;
+  ({String? top, String text})? _banner;
+  bool _bannerShown = false;
+  Timer? _bannerTimer;
+  Duration _bannerTime = pathBannerTime;
+
+  /// A path or a banner on the tree: a touch, back and the rest of D49 end it first.
+  bool get _lit => _path != null || _bannerShown;
+
   // A double tap on the tree's empty space zooms in (AC-3, SC 2.5.1). Read from raw pointer events, so a
   // tap on a person is not held back waiting for a second one.
   int _pointers = 0;
@@ -193,6 +212,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 150),
       value: 1,
     )..addStatusListener(_onFadeStatus);
+    _pathRun = AnimationController(vsync: this)
+      ..addListener(_onPathRun)
+      ..addStatusListener(_onPathRunStatus);
     _view.addListener(_onView);
     _listen();
   }
@@ -240,6 +262,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _todayTimer?.cancel();
     _settle?.cancel();
     _play?.cancel();
+    _bannerTimer?.cancel();
+    _pathRun.dispose();
     _fade.dispose();
     _castReturn?.dispose();
     // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
@@ -267,6 +291,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   void _onData(FamilyTreeData data) {
     if (!mounted) return;
+    final bool wasLit = _path != null;
     setState(() {
       _error = null;
       _family = data;
@@ -274,12 +299,21 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       final TreeTime time = TreeTime(data, now: DateTime.now().year);
       _time = time;
       if (_year case final int y? when y < time.start) _year = time.start;
+      // The family changed under a lit path: its people may be gone, so the light goes (element 8), as at its end
+      // — the level from the scale, at least 0.4 (D46; ui review of ISSUE-039).
+      if (_lit) _clearPath();
+      if (wasLit) _level = treeLevelAtScale(math.max(_scale, treeMinScale));
       final int? wanted = _focus ?? widget.focusPersonId ?? data.meId;
       _focus = wanted != null && data.people.containsKey(wanted)
           ? wanted
           : data.meId;
       _relayout(keep: _focus);
     });
+    final int? focus = _focus;
+    if (wasLit && _scale < treeMinScale && focus != null) {
+      final Matrix4? home = _centreOn(focus, treeMinScale);
+      if (home != null) _view.value = home;
+    }
   }
 
   /// Lays the tree out again for the middle and level now. [keep] stays where it is on the screen: the
@@ -297,7 +331,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     }
     final TreeLayout? old = _layout;
     final Map<int, Offset> shownNow = old == null ? const {} : _positionsNow();
-    final TreeLayout next = layoutTree(graph, focus, _level, metrics: _metrics);
+    final TreePath? path = _path;
+    final TreeLayout next = layoutTree(
+      graph,
+      focus,
+      _level,
+      metrics: _metrics,
+      also: path?.also ?? const {},
+    );
     final Offset shift =
         keep != null &&
             old != null &&
@@ -307,6 +348,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         : Offset.zero;
     _layout = next;
     _lines = TreeLinesPainter(next.linesAt(_time, _year));
+    _pathRuns = path == null ? const [] : next.pathRoute(path.from, path.steps);
     _kin = _kinOf(family, next);
     if (old != null && shift != Offset.zero) {
       // The same picture in the new frame: the world moved by [shift] under the person kept.
@@ -389,6 +431,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         _leaving = const {};
         _linesShown = true;
       });
+      // "Do" stands in the middle: the path's line may run (element 8).
+      if (_pathWaits) _runPath();
     }
   }
 
@@ -400,22 +444,163 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     // All three axes, as InteractiveViewer scales: with z left at 1 its own reading of the scale breaks.
     ..scaleByDouble(scale, scale, scale, 1);
 
-  /// The view with [person] in the middle, at the scale now.
-  Matrix4? _centreOn(int person) {
+  /// The view with [person] in the middle, at the scale now — or at [scale].
+  Matrix4? _centreOn(int person, [double? scale]) {
     final Size? v = _viewport;
     final Offset? p = _layout?.positions[person];
     if (v == null || p == null) return null;
+    final double s = scale ?? _scale;
     return _matrix(
-      _scale,
+      s,
       Offset(
-        v.width / 2 - p.dx * _scale,
-        v.height * _middleHeight - (p.dy + 30) * _scale,
+        v.width / 2 - p.dx * s,
+        v.height * _middleHeight - (p.dy + 30) * s,
       ),
     );
   }
 
-  /// Where the view rests: [person] in the middle — or, in presentation, the whole level fitted.
-  Matrix4? _home(int person) => _presenting ? _fitted() : _centreOn(person);
+  /// Where the view rests: [person] in the middle — in presentation, the whole level fitted; with a path lit,
+  /// the whole path.
+  Matrix4? _home(int person) => _presenting
+      ? _fitted()
+      : _path != null
+      ? _pathFramed()
+      : _centreOn(person);
+
+  /// F2 (drzewo.md D46): the whole path in the view — under the banner, 24 dp from the other edges, at the scale
+  /// of its level (element 3), or smaller until it fits, never under [pathMinScale]. Measured on the mockup: at
+  /// 100 % text 10 of 105 paths from "Ja" need less than 0.4, down to 0.34. Under 1 the names keep their size on
+  /// the screen (I2), so the frame counts them, not only the people's places — at 200 % the name of "Do" went
+  /// off the screen (ui review of ISSUE-039, MAJOR). A path that would reach under + / − is framed clear of them.
+  Matrix4? _pathFramed() {
+    final Size? v = _viewport;
+    final TreeLayout? layout = _layout;
+    final TreePath? path = _path;
+    final FamilyTreeData? family = _family;
+    if (v == null || layout == null || path == null || family == null) {
+      return null;
+    }
+    final List<int> people = [
+      for (final int n in path.people)
+        if (layout.positions.containsKey(n)) n,
+    ];
+    if (people.isEmpty) return null;
+    const double margin = 24;
+    final ({String? top, String text})? banner = _banner;
+    final double under = banner == null
+        ? margin
+        : 12 + PathBanner.heightFor(banner, v.width - 32, _scaler) + 12;
+    final double top = math.min(under, v.height / 2);
+    final Matrix4 framed = _pathFrame(
+      layout,
+      family,
+      people,
+      Rect.fromLTRB(margin, top, v.width - margin, v.height - margin),
+    );
+    if (!_underZoomButtons(framed, layout, family, people, v)) return framed;
+    return _pathFrame(
+      layout,
+      family,
+      people,
+      Rect.fromLTRB(margin, top, v.width - _zoomColumn, v.height - margin),
+    );
+  }
+
+  /// The column of + / − at the right of the tree: 12 dp from the edge, 48 dp wide, 12 dp more of room.
+  static const double _zoomColumn = 12 + 48 + 12;
+
+  /// [people] fitted into [area] at the scale of the level, or under it until they fit (F2).
+  Matrix4 _pathFrame(
+    TreeLayout layout,
+    FamilyTreeData family,
+    List<int> people,
+    Rect area,
+  ) {
+    final Iterable<Offset> places = people.map((n) => layout.positions[n]!);
+    final double x0 = places.map((p) => p.dx).reduce(math.min);
+    final double x1 = places.map((p) => p.dx).reduce(math.max);
+    final double y0 = places.map((p) => p.dy).reduce(math.min);
+    final double y1 = places.map((p) => p.dy).reduce(math.max);
+    final double half = _metrics.slot / 2;
+    // A name on the screen under 1: as wide as written, at most its place (then "…"), as tall as its line.
+    final double nameHalf = people
+        .map((n) => _labelWidth(family, n) / 2)
+        .reduce(math.max);
+    final double nameHeight = _scaler.scale(13) * 1.3;
+    const double toName = TreeMetrics.node + 4;
+    double fit = math.min(
+      area.width / (x1 - x0 + 2 * half),
+      area.height / (y1 - y0 + _metrics.labelBottom),
+    );
+    if (fit < 1) {
+      fit = math.min(
+        fit,
+        math.min(
+          x1 > x0 ? (area.width - 2 * nameHalf) / (x1 - x0) : double.infinity,
+          (area.height - nameHeight) / (y1 - y0 + toName),
+        ),
+      );
+    }
+    final ({double low, double high}) range = levelScales(_level);
+    final double s = fit >= range.low
+        ? math.min(fit, range.high)
+        : math.max(pathMinScale, fit);
+    // Centre what is drawn: across, the same on both sides; down, the places and, under 1, the names.
+    final double bottom = math.max(
+      _metrics.labelBottom * s,
+      s < 1 ? toName * s + nameHeight : 0,
+    );
+    return _matrix(
+      s,
+      Offset(
+        area.center.dx - (x0 + x1) / 2 * s,
+        area.center.dy - (y0 * s + y1 * s + bottom) / 2,
+      ),
+    );
+  }
+
+  /// A name's width on the tree before the label's scale: as written with its halo, at most the place less 8.
+  double _labelWidth(FamilyTreeData family, int n) =>
+      math.min(_nameWidth(_label(family, n)) + 6, _metrics.slot - 8);
+
+  /// Whether a person of the path, with their name, would stand under + / − in [view].
+  bool _underZoomButtons(
+    Matrix4 view,
+    TreeLayout layout,
+    FamilyTreeData family,
+    List<int> people,
+    Size v,
+  ) {
+    final Rect buttons = Rect.fromLTRB(
+      v.width - 12 - 48,
+      v.height - 12 - 104,
+      v.width - 12,
+      v.height - 12,
+    );
+    final double s = view.entry(0, 0);
+    final Offset shift = Offset(view.entry(0, 3), view.entry(1, 3));
+    final double nameHeight = _scaler.scale(13) * 1.3;
+    for (final int n in people) {
+      final Offset p = shift + layout.positions[n]! * s;
+      final double width = math.max(
+        _metrics.slot * s,
+        s < 1 ? _labelWidth(family, n) : 0,
+      );
+      final double height = math.max(
+        _metrics.labelBottom * s,
+        s < 1 ? (TreeMetrics.node + 4) * s + nameHeight : 0,
+      );
+      if (Rect.fromLTWH(
+        p.dx - width / 2,
+        p.dy,
+        width,
+        height,
+      ).overlaps(buttons)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// Presentation (D4): the whole level in the view, 24 dp from its edges, at a scale within the tree's
   /// (D17, D18). An axis that does not fit even at the smallest scale — large text, a wide family — keeps
@@ -473,7 +658,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final int level = treeLevelAtScale(s);
     setState(() {
       _scale = s;
-      if (!_presenting && level != _level && _layout != null) {
+      // A lit path keeps its level at the scale that frames it, under 0.4 too (D46); zooming ends it first.
+      if (!_presenting && _path == null && level != _level && _layout != null) {
         _level = level;
         _relayout(keep: _focus, animate: true);
         _showPill();
@@ -577,11 +763,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// A year chosen by hand — dragging, the screen reader: ▶ stops (D37).
-  void _chooseYear(int? year) => setState(() {
-    _stopPlaying();
-    if (year != _year) _setYear(year);
-  });
+  /// A year chosen by hand — dragging, the screen reader: ▶ stops (D37), a lit path ends (D49).
+  void _chooseYear(int? year) {
+    _endPath();
+    setState(() {
+      _stopPlaying();
+      if (year != _year) _setYear(year);
+    });
+  }
 
   bool get _playing => _play != null;
 
@@ -589,6 +778,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void _togglePlay() {
     final TreeTime? time = _time;
     if (time == null) return;
+    _endPath();
     if (_playing) {
       setState(_stopPlaying);
       _announceYear();
@@ -675,6 +865,158 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     });
   }
 
+  // ---- "Połącz dwie osoby" (elements 7–10; US-011, ISSUE-039) ----
+
+  /// Element 1 → 7: the window, then the path from "Od" to "Do".
+  Future<void> _connect() async {
+    final FamilyTreeData? family = _family;
+    if (family == null || family.meId == null) return;
+    _endPath();
+    // "Czas na działanie" for the banner — text to read, as a Snackbar without an action (D43); asked as the
+    // window opens, the answer is in before anyone picks a person.
+    unawaited(
+      recommendedTimeout(pathBannerTime, controls: false).then((time) {
+        if (mounted) _bannerTime = time;
+      }),
+    );
+    final ({int from, int to})? pair = await showConnectDialog(
+      context,
+      database: widget.database,
+      family: family,
+      photos: widget.photos,
+    );
+    if (pair == null || !mounted) return;
+    _showPath(pair.from, pair.to);
+  }
+
+  /// Elements 8–10: "Do" moves to the middle (W2 — D45) at the lowest level that shows the whole path, the view
+  /// frames the path (F2 — D46), the slider goes to "dziś" and ▶ stops (Y1 — D48), the rest fades; the line
+  /// runs once "Do" stands in the middle. No path — the banner of element 10, and nothing else changes.
+  void _showPath(int from, int to) {
+    final FamilyTreeData? family = _family;
+    final TreeGraph? graph = _graph;
+    if (family == null || graph == null) return;
+    final List<KinStep>? steps = family.kin.path(from, to);
+    final ({String? top, String text}) banner = pathBannerText(
+      family,
+      from,
+      to,
+      steps,
+    );
+    if (steps == null) {
+      _banner = banner;
+      _showBanner();
+      return;
+    }
+    final ({int level, Set<int> also}) at = pathLevel(graph, to, [
+      from,
+      for (final KinStep s in steps) s.personId,
+    ]);
+    final int? before = _focus;
+    setState(() {
+      _stopPlaying();
+      if (_year != null) _setYear(null);
+      _path = TreePath(from: from, to: to, steps: steps, also: at.also);
+      _banner = banner;
+      _reached = 1;
+      _pathRun.value = 0;
+      _focus = to;
+      _level = at.level;
+      // The banner stands where the level's pill would (D49).
+      _pillTimer?.cancel();
+      _pillShown = false;
+      _relayout(keep: before, animate: true, centre: true);
+      _pathWaits = true;
+      // The path's frame is the tree's new rest: a new size before the next touch frames it again.
+      _touched = false;
+    });
+    if (!_move.isAnimating) _runPath();
+  }
+
+  /// The line from "Od", a step every 0.7 s (D5) — with the system's animations off, all of it at once (SC
+  /// 2.3.3).
+  void _runPath() {
+    _pathWaits = false;
+    final TreePath? path = _path;
+    if (path == null || !mounted) return;
+    if (_noMotion || path.steps.isEmpty) {
+      // At the end at once: the status "completed" brings the banner (_onPathRunStatus).
+      _pathRun.value = 1;
+      return;
+    }
+    _pathRun.duration = pathStepTime * path.steps.length;
+    _pathRun.forward(from: 0);
+  }
+
+  /// Each person the line reaches gets the ring.
+  void _onPathRun() {
+    final TreePath? path = _path;
+    if (path == null) return;
+    final int reached = math.min(
+      path.people.length,
+      1 + (_pathRun.value * path.steps.length + 1e-6).floor(),
+    );
+    if (reached != _reached) setState(() => _reached = reached);
+  }
+
+  void _onPathRunStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted && _path != null) {
+      _pathDone();
+    }
+  }
+
+  /// The line has come to "Do": the banner with the name (element 9, D49).
+  void _pathDone() {
+    final TreePath? path = _path;
+    if (path == null) return;
+    setState(() => _reached = path.people.length);
+    _showBanner();
+  }
+
+  /// The banner for 4 s — longer when "Czas na działanie" asks for it (D43).
+  void _showBanner() {
+    _bannerTimer?.cancel();
+    setState(() => _bannerShown = true);
+    _bannerTimer = Timer(_bannerTime, () {
+      if (mounted) setState(() => _bannerShown = false);
+    });
+  }
+
+  /// The end of the light (D49): a touch of the tree, back, zooming, ▶, the slider, a person's view, casting.
+  /// "Do" stays in the middle at the level and scale it has; under the tree's smallest scale the view goes back
+  /// to it (F2 — D46), and the people beyond the level go.
+  void _endPath() {
+    final TreePath? path = _path;
+    if (!_lit) return;
+    setState(() {
+      _clearPath();
+      if (path == null) return;
+      final int level = treeLevelAtScale(math.max(_scale, treeMinScale));
+      if (level != _level || path.also.isNotEmpty) {
+        _level = level;
+        _relayout(keep: _focus);
+      }
+    });
+    if (path != null && _scale < treeMinScale) {
+      final int? focus = _focus;
+      final Matrix4? home = focus == null
+          ? null
+          : _centreOn(focus, treeMinScale);
+      if (home != null) _view.value = home;
+    }
+  }
+
+  /// The path's state gone, without a build — the caller builds.
+  void _clearPath() {
+    _bannerTimer?.cancel();
+    _pathRun.stop();
+    _pathWaits = false;
+    _bannerShown = false;
+    _path = null;
+    _pathRuns = const [];
+    _reached = 0;
+  }
+
   // ---- presentation mode (element 11, D11, D16) ----
 
   /// "Przesyłaj na telewizor" (element 1, D30): the system's cast screen, then presentation once the app is
@@ -685,6 +1027,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// that screen goes straight to presentation with the hint (AC-2).
   Future<void> _cast() async {
     if (_casting) return;
+    // Presentation has no "Połącz dwie osoby" (D49): the light ends here.
+    _endPath();
     _casting = true;
     bool away = false;
     _castReturn = AppLifecycleListener(
@@ -801,6 +1145,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   /// + / − and the double tap: the point [at] of the tree's area stays where it is.
   void _zoom(double factor, Offset at) {
+    _endPath();
     final double next = (_scale * factor).clamp(treeMinScale, treeMaxScale);
     if ((next - _scale).abs() < 1e-6) return;
     final Offset world = (at - _offset) / _scale;
@@ -814,6 +1159,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   }
 
   void _tap(int person) {
+    // The first touch only ends the light, so a stray one does not move the middle (D49).
+    if (_lit) {
+      _endPath();
+      return;
+    }
     if (person == _focus) {
       // In presentation the person in the middle does not open their view — in portrait, it would end the
       // show (D5); the level is fitted anew, as after any touch of a person (element 11).
@@ -829,6 +1179,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// A person's view stops ▶ at the year shown: back returns to it (D37; ui review of ISSUE-037 — the years
   /// ran on under the view).
   Future<void> _open(int person) {
+    _endPath();
     if (_playing) {
       setState(_stopPlaying);
       _announceYear();
@@ -880,6 +1231,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _lastTap = null;
       return;
     }
+    // A touch of the tree ends a lit path or a banner (D49), and does nothing more.
+    if (_lit) {
+      _lastTap = null;
+      _endPath();
+      return;
+    }
     // In presentation the level stays (D16): a tap on the empty space shows the controls or hides them (D40).
     if (_presenting) {
       _toggleControls();
@@ -924,9 +1281,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   // place in the tree of widgets, so the view and the moves go on through the change.
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_presenting,
+    canPop: !_presenting && !_lit,
     onPopInvokedWithResult: (didPop, _) {
-      if (!didPop && _presenting) _leave();
+      if (didPop) return;
+      if (_presenting) {
+        _leave();
+      } else if (_lit) {
+        _endPath();
+      }
     },
     child: Scaffold(
       bottomNavigationBar: _presenting
@@ -956,8 +1318,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _focus != null &&
       _layout != null;
 
-  /// Element 1: "Drzewo" and, with a tree, "Przesyłaj na telewizor" — the system's cast screen, then
-  /// presentation mode (AC-8, D30). "Połącz dwie osoby" comes with US-011.
+  /// Element 1: "Drzewo" and, with a tree, "Połącz dwie osoby" (US-011; A1 — D44) and "Przesyłaj na telewizor"
+  /// — the system's cast screen, then presentation mode (AC-8, D30). "Połącz dwie osoby" only once "ja" is
+  /// chosen: the window starts from "Ja" and the banner speaks from "ja" (ISSUE-039 D3).
   Widget _bar() => ConstrainedBox(
     constraints: const BoxConstraints(minHeight: 64),
     child: Padding(
@@ -977,6 +1340,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
+          if (_treeShown && _family?.meId != null)
+            IconButton(
+              icon: const Icon(Icons.link_outlined),
+              color: GrobingColors.amber,
+              tooltip: 'Połącz dwie osoby',
+              onPressed: _connect,
+            ),
           if (_treeShown)
             // The reader hears where the tap leads, as with an external link (style-b.md rule 1); the
             // node keeps its own tap, or Switch Access and Voice Access could not press it (ISSUE-021).
@@ -1108,17 +1478,28 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           _centred = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final Matrix4? m = _focus == null ? null : _home(_focus!);
-            if (mounted && m != null) _view.value = m;
+            if (!mounted || m == null) return;
+            // In the middle of a move the view glides on to the new place, not the one measured for the old
+            // size: a keyboard still closing after the list of people shrank the area when "Do" was chosen,
+            // and the path was framed too high (found on the emulator, ISSUE-039).
+            final Matrix4Tween? move = _viewMove;
+            if (move != null && _move.isAnimating) {
+              move.end = m;
+            } else {
+              _view.value = m;
+            }
           });
         }
       }
       final Set<int> named = _visibleNames(family, layout);
+      // The people of a lit path the line has reached: the ring, as the middle's (element 8).
+      final Set<int> lit = {...?_path?.people.take(_reached)};
       // In the slider's year only those on the tree, the middle (its empty ring before birth) and those
       // fading out (element 6, AC-1).
       final Map<int, Widget> nodes = {
         for (final int n in layout.positions.keys)
           if (_isOn(n) || n == layout.focus || _fadingOut.contains(n))
-            n: _node(family, layout, n, named.contains(n)),
+            n: _node(family, layout, n, named.contains(n), lit.contains(n)),
       };
       return Stack(
         children: [
@@ -1135,6 +1516,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 maxScale: treeMaxScale,
                 // In presentation dragging moves, but the level stays: no pinch (D16).
                 scaleEnabled: !_presenting,
+                // Two fingers end a lit path (D49); one drags it into view and keeps it.
+                onInteractionUpdate: (details) {
+                  if (details.pointerCount > 1 && _path != null) _endPath();
+                },
                 child: _world(layout, nodes),
               ),
             ),
@@ -1174,6 +1559,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               ),
             ),
           Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
+          // Elements 9 and 10: where the pill stands, which does not show with them (D49).
+          Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
           // B2 (D40): the bar at the bottom — the card's time row in one row — and the way out.
           if (_presenting && _controlsShown) ...[
             if (_time case final TreeTime time?)
@@ -1228,7 +1615,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedOpacity(
-                opacity: _linesShown ? 1 : 0,
+                // With a path lit, the lines off it at 30 %, as the people (element 8).
+                opacity: _linesShown ? (_path != null ? pathDim : 1) : 0,
                 duration: Duration(milliseconds: _noMotion ? 0 : 200),
                 child: RepaintBoundary(
                   child: CustomPaint(
@@ -1238,6 +1626,21 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
+          // The path's line over the family's lines, under the people; its own layer, as it grows every frame.
+          if (_path != null && _pathRuns.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: PathLinePainter(
+                      runs: _pathRuns,
+                      progress: _pathRun,
+                      scale: _scale,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned.fill(
             child: RepaintBoundary(
               child: AnimatedBuilder(
@@ -1256,6 +1659,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                       entering = [],
                       bornNow = [],
                       goneNow = [];
+                  // With a path lit, the people off it in their own groups at 30 %, out of the reader's tree:
+                  // a touch anywhere only ends the light (element 8; ISSUE-039 D6).
+                  final List<Widget> steadyDim = [],
+                      enteringDim = [],
+                      bornNowDim = [];
+                  final TreePath? path = _path;
                   for (final MapEntry<int, Offset> e
                       in layout.positions.entries) {
                     // Not on the tree in the slider's year: no node (AC-1) — the place stays empty.
@@ -1266,15 +1675,29 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                       e.value,
                       t,
                     )!;
+                    final bool dim =
+                        path != null && !path.members.contains(e.key);
                     (_fadingOut.contains(e.key)
                             ? goneNow
                             : _entering.contains(e.key)
-                            ? entering
+                            ? (dim ? enteringDim : entering)
                             : _fadingIn.contains(e.key)
-                            ? bornNow
-                            : steady)
+                            ? (dim ? bornNowDim : bornNow)
+                            : (dim ? steadyDim : steady))
                         .add(place(e.key, at, node));
                   }
+                  Widget dimmed(List<Widget> group, double opacity) =>
+                      Positioned.fill(
+                        child: ExcludeSemantics(
+                          child: Opacity(
+                            opacity: opacity * pathDim,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: group,
+                            ),
+                          ),
+                        ),
+                      );
                   // One layer for all who appear and one for all who leave: an Opacity on each person was a
                   // layer each, and the moves stuttered on the raster thread (measured on the emulator). The
                   // same for the slider's year (ISSUE-037): those born in it fade in, those not born yet out.
@@ -1295,6 +1718,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
+                      if (bornNowDim.isNotEmpty)
+                        dimmed(bornNowDim, _fade.value),
                       if (bornNow.isNotEmpty)
                         Positioned.fill(
                           child: Opacity(
@@ -1323,7 +1748,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
+                      if (steadyDim.isNotEmpty) dimmed(steadyDim, 1),
                       ...steady,
+                      if (enteringDim.isNotEmpty) dimmed(enteringDim, t),
                       if (entering.isNotEmpty)
                         Positioned.fill(
                           child: Opacity(
@@ -1382,6 +1809,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     TreeLayout layout,
     int n,
     bool showLabel,
+    bool lit,
   ) {
     final TreePerson p = family.people[n]!;
     final String who = personName(
@@ -1397,6 +1825,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       key: ValueKey<int>(n),
       person: p,
       isFocus: n == layout.focus,
+      lit: lit,
       isMe: n == family.meId,
       inYear: inYear,
       photos: widget.photos,
@@ -1418,8 +1847,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           ].join(', ') +
           (ring ? ' — przed narodzinami' : ''),
       // In presentation the person in the middle opens nothing (D5): no hint, the touch only fits the level anew.
+      // With a path lit a touch only ends it (D49) — the reader hears that (ui review of ISSUE-039).
       hint: ring
           ? null
+          : _path != null
+          ? 'zakończ ścieżkę'
           : n != layout.focus
           ? 'w środek'
           : _presenting
@@ -1447,7 +1879,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
             width:
                 math.min(_nameWidth(_label(family, e.key)) + 6, maxWidth) * k,
             height: height * k,
-            level: e.key == layout.focus ? -1 : layout.levels[e.key] ?? 99,
+            // The path's names first (element 8), then the middle's.
+            level: (_path?.members.contains(e.key) ?? false)
+                ? -2
+                : e.key == layout.focus
+                ? -1
+                : layout.levels[e.key] ?? 99,
             distance: (e.value.dx - fx).abs(),
           ),
     ], gap: 4 * k);
@@ -1488,6 +1925,27 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     ],
   );
 
+  /// Elements 9 and 10 for a while at the top of the tree. A live region, as the pill: the reader says it once it
+  /// comes, the focus staying where it is (SC 4.1.3; D43). No touch — the tree under it stays the tree's, and a
+  /// touch there ends the light.
+  Widget _bannerView() {
+    final ({String? top, String text})? banner = _banner;
+    if (banner == null) return const SizedBox.shrink();
+    final Widget box = PathBanner(top: banner.top, text: banner.text);
+    return IgnorePointer(
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: _bannerShown ? 1 : 0,
+          duration: Duration(milliseconds: _noMotion ? 0 : 250),
+          // Its own node: without one the flag went to a node above, not to the banner's text (qa's test).
+          child: _bannerShown
+              ? Semantics(container: true, liveRegion: true, child: box)
+              : ExcludeSemantics(child: box),
+        ),
+      ),
+    );
+  }
+
   /// "Poziom 3 · 66 osób" for a moment after a change of level; a screen reader hears the same (element 3).
   /// In presentation, the hint about casting from the quick settings — only on a phone without the system's
   /// cast screen (element 11, D26, D30).
@@ -1527,6 +1985,7 @@ class _TreeNode extends StatelessWidget {
     super.key,
     required this.person,
     required this.isFocus,
+    this.lit = false,
     required this.isMe,
     this.inYear = InYear.alive,
     required this.photos,
@@ -1542,6 +2001,9 @@ class _TreeNode extends StatelessWidget {
 
   final TreePerson person;
   final bool isFocus;
+
+  /// Reached by the line of a lit path (element 8): the ring and the glow of the middle (style-b.md rule 2).
+  final bool lit;
   final bool isMe;
 
   /// The slider's year (element 6, D32): maybe alive — the outline dashed; surely dead — the candle; the
@@ -1617,14 +2079,15 @@ class _TreeNode extends StatelessWidget {
       ),
       _ => initials,
     };
-    if (unsure && !isFocus) {
+    final bool ring = isFocus || lit;
+    if (unsure && !ring) {
       // Not known whether alive in this year: the outline dashed — the shape says it, not a fading (D32).
       circle = CustomPaint(
         foregroundPainter: const _DashedRing(GrobingColors.outline),
         child: circle,
       );
     }
-    if (isFocus) {
+    if (ring) {
       // The ring over the photo: under it, the opaque circle would hide it (osoba.md v2.2). The glow under
       // the circle: over it, it tinted the circle amber — "Ja" fell under 4.5:1 and a photo would be toned
       // (ui review of ISSUE-033, MAJOR; style-b.md rules 2 and 14).

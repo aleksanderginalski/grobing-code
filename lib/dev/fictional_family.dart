@@ -10,7 +10,8 @@ import '../data/people.dart';
 // 106 people, 38 unions, 6 generations (born 1868–2019), 31 dead and 75 living, 39 without parents in the
 // data, 3 people in two unions (a widower, a widow, a divorce), 2 pairs "razem" (one later married), the
 // wife's family over 3 generations with her cousins. The same family as SPIKE-002's mockup and prototype,
-// so the tree's numbers can be checked against them. Surnames only from the invented stems (family-data.md,
+// so the tree's numbers can be checked against them. One more person outside it, with no family at all
+// (ISSUE-039 D4): 107 people, 32 dead, 40 without parents. Surnames only from the invented stems (family-data.md,
 // retro 3 R7). Debug and profile only, never release (ISSUE-033 D6).
 //
 // Some dates as the notes will give them, for the time slider (ISSUE-037, drzewo.md D32): "ok.", "między",
@@ -132,6 +133,9 @@ const List<_Person> _people = [
   ('rk', 'Radosław', 'Wymyślak', Sex.male, 1963, null, null),
   ('mg2', 'Małgorzata', 'Wymyślak', Sex.female, 1965, null, null),
   ('sz', 'Szymon', 'Wymyślak', Sex.male, 1992, null, null),
+  // No parents and no unions: two people who do not join, for "Połącz dwie osoby" (ISSUE-039 D4, drzewo.md
+  // element 10) — as in the mockups of ISSUE-038 and ISSUE-039.
+  ('sam', 'Teofil', 'Przykładowski', Sex.male, 1910, 1975, null),
 ];
 
 /// The births written otherwise than as an exact year (ISSUE-037): with a qualifier, or null — none written.

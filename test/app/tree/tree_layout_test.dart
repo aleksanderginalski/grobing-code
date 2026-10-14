@@ -1,8 +1,10 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/tree/tree_layout.dart';
+import 'package:grobing/app/tree/tree_path.dart' show pathLevel;
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/family_tree.dart';
+import 'package:grobing/data/kinship.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
 // ISSUE-033 — the tree's layout (05_DESIGN/drzewo.md elements 3 and 4): US-009 AC-1 "Ja" in the middle with
@@ -134,6 +136,114 @@ void main() {
       final TreeLayout all = layoutTree(graph, ja, 5);
       expect(trace(all, TreeLineKind.traceParentChild), isEmpty);
       expect(trace(all, TreeLineKind.tracePartner), isEmpty);
+    },
+  );
+
+  // ---- ISSUE-039 — "Połącz dwie osoby" (drzewo.md element 8, D49) ----
+
+  test(
+    'the lowest level that shows the whole path from "Do": Ja → Wanda at level 3',
+    () {
+      final int wanda = id['Wanda Przykładowa']!;
+      final List<KinStep> steps = family.kin.path(ja, wanda)!;
+      final List<int> people = [ja, for (final KinStep s in steps) s.personId];
+      expect(
+        [for (final int n in people) family.people[n]!.givenNames],
+        ['Mateusz', 'Kasia', 'Piotr', 'Wanda'],
+      );
+      final ({int level, Set<int> also}) at = pathLevel(graph, wanda, people);
+      expect(at.level, 3);
+      expect(at.also, isEmpty);
+      expect(people.every(graph.levelsFrom(wanda, 3).containsKey), isTrue);
+      expect(people.every(graph.levelsFrom(wanda, 2).containsKey), isFalse);
+    },
+  );
+
+  test(
+    'a path beyond level 4: level 4 and the people it lacks, laid out besides (also)',
+    () {
+      // From "Ja" to everyone: the paths whose people level 4 from "Do" does not hold all.
+      int found = 0;
+      for (final int to in family.people.keys) {
+        if (to == ja) continue;
+        final List<KinStep>? steps = family.kin.path(ja, to);
+        if (steps == null) continue;
+        final List<int> people = [
+          ja,
+          for (final KinStep s in steps) s.personId,
+        ];
+        final ({int level, Set<int> also}) at = pathLevel(graph, to, people);
+        if (at.also.isEmpty) continue;
+        found++;
+        expect(at.level, 4);
+        final TreeLayout l = layoutTree(graph, to, 4, also: at.also);
+        expect(
+          people.every(l.positions.containsKey),
+          isTrue,
+          reason: 'path to $to',
+        );
+        expect(l.count, graph.levelsFrom(to, 4).length + at.also.length);
+      }
+      // The mockup measured 9 of the 105 (drzewo.md → Candidates — ISSUE-039 → Pomiar, W2).
+      expect(found, 9);
+    },
+  );
+
+  test(
+    'the path\'s line goes along the family\'s lines: level for a pair, through the rail for a parent',
+    () {
+      final int wanda = id['Wanda Przykładowa']!;
+      final List<KinStep> steps = family.kin.path(ja, wanda)!;
+      final TreeLayout l = layoutTree(graph, wanda, 3);
+      final List<List<Offset>> runs = l.pathRoute(ja, steps);
+      expect(runs, hasLength(steps.length));
+      Offset middle(int n) => l.positions[n]! + const Offset(0, 22);
+      int from = ja;
+      // The rails the tree draws: the level segments of its lines from a parent to the children.
+      final List<Offset> pc = l.lines
+          .firstWhere((t) => t.kind == TreeLineKind.parentChild)
+          .points;
+      final Set<double> rails = {
+        for (int i = 0; i + 1 < pc.length; i += 2)
+          if (pc[i].dy == pc[i + 1].dy) pc[i].dy,
+      };
+      for (int i = 0; i < steps.length; i++) {
+        final List<Offset> run = runs[i];
+        expect(run.first, middle(from), reason: 'step $i starts at its person');
+        expect(
+          run.last,
+          middle(steps[i].personId),
+          reason: 'step $i ends at the next',
+        );
+        // Never at a slant: every segment level or upright.
+        for (int j = 0; j + 1 < run.length; j++) {
+          expect(
+            run[j].dx == run[j + 1].dx || run[j].dy == run[j + 1].dy,
+            isTrue,
+            reason: 'step $i, segment $j',
+          );
+        }
+        switch (steps[i].edge) {
+          case KinEdge.partner:
+            expect(run, hasLength(2));
+            expect(run.first.dy, run.last.dy);
+          case KinEdge.child || KinEdge.parent:
+            // Along a rail the tree draws.
+            expect(
+              run.any((p) => rails.contains(p.dy)),
+              isTrue,
+              reason: 'step $i through a rail',
+            );
+          case KinEdge.sibling:
+            break;
+        }
+        from = steps[i].personId;
+      }
+      // Ja → Kasia a pair, then up twice.
+      expect(
+        [for (final KinStep s in steps) s.edge],
+        [KinEdge.partner, KinEdge.parent, KinEdge.parent],
+      );
     },
   );
 

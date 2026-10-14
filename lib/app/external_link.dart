@@ -30,14 +30,19 @@ Future<bool> openCastSettings() async {
   }
 }
 
-/// How long controls stay on the screen: [time], or longer when "Czas na działanie" in the accessibility
-/// settings asks for more (`ExternalLinks.kt` — Android 10+; drzewo.md D40). [time] when the phone cannot say.
-Future<Duration> recommendedTimeout(Duration time) async {
+/// How long something stays on the screen: [time], or longer when "Czas na działanie" in the accessibility
+/// settings asks for more (`ExternalLinks.kt` — Android 10+). [controls] — buttons to press, as presentation's
+/// (drzewo.md D40); without them — text to read, as a banner, the way Android's Snackbar asks without an
+/// action (D43). [time] when the phone cannot say.
+Future<Duration> recommendedTimeout(
+  Duration time, {
+  bool controls = true,
+}) async {
   try {
     // Read as any value: a channel that answers something else must not throw a cast error.
     final Object? ms = await _channel.invokeMethod<Object?>(
       'recommendedTimeout',
-      {'ms': time.inMilliseconds},
+      {'ms': time.inMilliseconds, 'controls': controls},
     );
     return ms is int && ms > time.inMilliseconds
         ? Duration(milliseconds: ms)

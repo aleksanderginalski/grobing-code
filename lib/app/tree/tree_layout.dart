@@ -3,6 +3,7 @@ import 'dart:ui' show Offset;
 
 import '../../data/database.dart' show Sex;
 import '../../data/family_tree.dart';
+import '../../data/kinship.dart' show KinEdge, KinStep;
 import 'tree_time.dart';
 
 // The tree from a person (05_DESIGN/drzewo.md v1.6, elements 3 and 4; ISSUE-033): who is shown at each
@@ -224,6 +225,80 @@ class TreeLayout {
     ];
   }
 
+  /// Each union's line to its children on the tree today: where it leaves the parents ([sx]) and the rail it
+  /// runs along ([ry]) — the path's line goes the same way (ISSUE-039).
+  late final Map<TreeUnion, ({double sx, double ry})> _rails = () {
+    final Map<TreeUnion, ({double sx, double ry})> rails = {};
+    _lines(
+      _graph,
+      _pairs,
+      positions,
+      _gen,
+      _vis,
+      _metrics,
+      (_) => true,
+      (u) => PairInYear(married: u.married, ended: u.ended),
+      rails: rails,
+    );
+    return rails;
+  }();
+
+  /// The path of "Połącz dwie osoby" as lines on this tree (drzewo.md element 8, D49): one run of points for
+  /// each step from [from], along the family's lines — a pair level between the two; a parent and a child
+  /// through the line to the children and its rail; siblings through their parents' rail, or a bracket just
+  /// above them when their parents are not on the tree. Straight where the tree draws no line between them.
+  List<List<Offset>> pathRoute(int from, List<KinStep> steps) {
+    final List<List<Offset>> runs = [];
+    int a = from;
+    for (final KinStep s in steps) {
+      runs.add(_stepRoute(a, s.personId, s.edge));
+      a = s.personId;
+    }
+    return runs;
+  }
+
+  static Offset _middleOf(Offset place) => Offset(place.dx, place.dy + _half);
+
+  List<Offset> _stepRoute(int a, int b, KinEdge edge) {
+    final Offset pa = positions[a]!, pb = positions[b]!;
+    switch (edge) {
+      case KinEdge.partner:
+        return [_middleOf(pa), _middleOf(pb)];
+      case KinEdge.child:
+        return _down(a, b);
+      case KinEdge.parent:
+        return _down(b, a).reversed.toList();
+      case KinEdge.sibling:
+        final double y = _railOf(a)?.ry ?? math.min(pa.dy, pb.dy) - 9;
+        return [
+          _middleOf(pa),
+          Offset(pa.dx, y),
+          Offset(pb.dx, y),
+          _middleOf(pb),
+        ];
+    }
+  }
+
+  /// From a parent down to a child: along the pair's line to where the line to the children leaves it, down to
+  /// the rail, along it, down to the child.
+  List<Offset> _down(int parent, int child) {
+    final Offset pp = positions[parent]!, pc = positions[child]!;
+    final ({double sx, double ry})? rail = _railOf(child);
+    if (rail == null) return [_middleOf(pp), _middleOf(pc)];
+    return [
+      _middleOf(pp),
+      if ((rail.sx - pp.dx).abs() > 1) Offset(rail.sx, pp.dy + _half),
+      Offset(rail.sx, rail.ry),
+      Offset(pc.dx, rail.ry),
+      _middleOf(pc),
+    ];
+  }
+
+  ({double sx, double ry})? _railOf(int child) {
+    final _Union? u = _graph._parentUnion[child];
+    return u == null ? null : _rails[u.u];
+  }
+
   final double width;
   final double height;
 
@@ -238,14 +313,17 @@ class TreeLayout {
 
 const double _gap = 0.3;
 
-/// Lays out [focus]'s family to [level] (D2).
+/// Lays out [focus]'s family to [level] (D2) and [also] people beyond it — the rest of a path that goes further
+/// than level 4 (ISSUE-039, drzewo.md element 8). They must join [focus] through the people shown, as a path's
+/// people do.
 TreeLayout layoutTree(
   TreeGraph graph,
   int focus,
   int level, {
   TreeMetrics metrics = const TreeMetrics(),
+  Set<int> also = const {},
 }) {
-  final Set<int> vis = graph.levelsFrom(focus, level).keys.toSet();
+  final Set<int> vis = {...graph.levelsFrom(focus, level).keys, ...also};
   final Map<int, int> lv = graph.levelsFrom(focus, 99);
   int lvOf(int n) => lv[n] ?? 99;
 
@@ -630,7 +708,8 @@ const double _half = TreeMetrics.node / 2;
 /// The relation lines (drzewo.md element 4): a pair — level, between neighbours in a row; parent–child —
 /// from the middle of the pair's line (or from under a lone parent) down to a rail and to each child. Rails
 /// that would overlap get their own heights, so two families never share one line. Only between people [on]
-/// the tree, a pair as [pairOf] says (the slider's year, ISSUE-037).
+/// the tree, a pair as [pairOf] says (the slider's year, ISSUE-037). [rails] gets each union's line to the
+/// children, for the path's route (ISSUE-039).
 List<TreeLines> _lines(
   TreeGraph graph,
   List<(int, int)> pairs,
@@ -639,8 +718,9 @@ List<TreeLines> _lines(
   Set<int> vis,
   TreeMetrics metrics,
   bool Function(int) on,
-  PairInYear? Function(TreeUnion) pairOf,
-) {
+  PairInYear? Function(TreeUnion) pairOf, {
+  Map<TreeUnion, ({double sx, double ry})>? rails,
+}) {
   final List<Offset> married = [], together = [], parentChild = [], ended = [];
   for (final (int a, int b) in pairs) {
     final TreeUnion? union = graph.unionBetween(a, b);
@@ -696,7 +776,7 @@ List<TreeLines> _lines(
       sx = px[p]!.dx;
       sy = px[p]!.dy + metrics.labelBottom;
     }
-    (byGap[gen[ks.first]!] ??= []).add(_Rail(sx, sy, ks));
+    (byGap[gen[ks.first]!] ??= []).add(_Rail(u, sx, sy, ks));
   }
   for (final List<_Rail> list in byGap.values) {
     for (final _Rail e in list) {
@@ -716,6 +796,7 @@ List<TreeLines> _lines(
       }
       final double ty = px[e.children.first]!.dy;
       final double ry = ty - 9 - math.min(k, 3) * 7;
+      rails?[e.union] = (sx: e.sx, ry: ry);
       parentChild
         ..addAll([Offset(e.sx, e.sy), Offset(e.sx, ry)])
         ..addAll([Offset(e.lo, ry), Offset(e.hi, ry)]);
@@ -734,8 +815,9 @@ List<TreeLines> _lines(
 }
 
 class _Rail {
-  _Rail(this.sx, this.sy, this.children);
+  _Rail(this.union, this.sx, this.sy, this.children);
 
+  final TreeUnion union;
   final double sx;
   final double sy;
   final List<int> children;
