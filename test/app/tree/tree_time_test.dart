@@ -235,4 +235,46 @@ void main() {
       expect(of(fromAndrzej.lines, TreeLineKind.ended), hasLength(4));
     },
   );
+
+  test(
+    'ISSUE-038 AC-2, AC-3 (D41) — the tempi: "Wolno" 5, "Średnio" 10, "Szybko" 20 years a second; the button goes '
+    '"Średnio" → "Szybko" → "Wolno" → "Średnio"; a year every 200 · 100 · 50 ms, a decade every 2 · 1 · 0.5 s',
+    () {
+      expect(
+        [
+          for (final TreeTempo t in TreeTempo.values)
+            (t.label, t.yearsPerSecond),
+        ],
+        [('Wolno', 5), ('Średnio', 10), ('Szybko', 20)],
+      );
+      expect(TreeTempo.medium.next, TreeTempo.fast);
+      expect(TreeTempo.fast.next, TreeTempo.slow);
+      expect(TreeTempo.slow.next, TreeTempo.medium);
+      expect(
+        [for (final TreeTempo t in TreeTempo.values) t.yearStep],
+        const [
+          Duration(milliseconds: 200),
+          Duration(milliseconds: 100),
+          Duration(milliseconds: 50),
+        ],
+      );
+      expect(
+        [for (final TreeTempo t in TreeTempo.values) t.decadeStep],
+        const [
+          Duration(seconds: 2),
+          Duration(seconds: 1),
+          Duration(milliseconds: 500),
+        ],
+      );
+      // From 1880 to 2026: about 29 · 15 · 7 s (drzewo.md element 6).
+      expect(
+        [
+          for (final TreeTempo t in TreeTempo.values)
+            ((2026 - 1880) / t.yearsPerSecond).round(),
+        ],
+        [29, 15, 7],
+      );
+      expect(TreeTempo.medium.spoken, 'średnio');
+    },
+  );
 }

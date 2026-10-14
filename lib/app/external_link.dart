@@ -30,6 +30,25 @@ Future<bool> openCastSettings() async {
   }
 }
 
+/// How long controls stay on the screen: [time], or longer when "Czas na działanie" in the accessibility
+/// settings asks for more (`ExternalLinks.kt` — Android 10+; drzewo.md D40). [time] when the phone cannot say.
+Future<Duration> recommendedTimeout(Duration time) async {
+  try {
+    // Read as any value: a channel that answers something else must not throw a cast error.
+    final Object? ms = await _channel.invokeMethod<Object?>(
+      'recommendedTimeout',
+      {'ms': time.inMilliseconds},
+    );
+    return ms is int && ms > time.inMilliseconds
+        ? Duration(milliseconds: ms)
+        : time;
+  } on PlatformException {
+    return time;
+  } on MissingPluginException {
+    return time;
+  }
+}
+
 /// The satellite photo of [point] in Google Maps. `geo:` cannot choose the layer — the Android canon
 /// documents only `z` and `q` for it — while Maps URLs have `basemap=satellite` (ISSUE-015 D1).
 String satelliteUrl(GeoPoint point) =>

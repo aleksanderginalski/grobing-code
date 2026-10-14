@@ -8,7 +8,7 @@ import '../../data/database.dart';
 import '../../data/family_tree.dart';
 import '../../data/kinship.dart';
 import '../dates.dart';
-import '../external_link.dart' show openCastSettings;
+import '../external_link.dart' show openCastSettings, recommendedTimeout;
 import '../family/union_wizard.dart' show shortPersonName;
 import '../people/me_picker_screen.dart';
 import '../people/people_list.dart'
@@ -26,6 +26,7 @@ import 'presentation_mode.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
 import 'tree_painter.dart';
+import 'tree_presentation.dart';
 import 'tree_time.dart';
 import 'tree_time_bar.dart';
 
@@ -89,11 +90,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   /// Time on the tree (element 6; US-010, ISSUE-037): the family's windows and the year shown — null is
   /// "dziś". The year is the view's, as the middle and the scale: kept by a touch, a level, back from a
-  /// person; a new tree — the tab, "Pokaż w drzewie" — and presentation show "dziś" (D37).
+  /// person, and into presentation and out of it (Z2 — D42); a new tree — the tab, "Pokaż w drzewie" — shows
+  /// "dziś" (D37).
   TreeTime? _time;
   int? _year;
 
-  /// ▶: a timer to the next year — a decade, with the system's animations off (D36).
+  /// ▶: a timer to the next year at the tempo chosen ([treeTempo]) — a decade, with the system's animations off
+  /// (D36, D41).
   Timer? _play;
 
   /// People who appear and leave with the year: one layer for each group, faded together in 150 ms — an
@@ -141,11 +144,26 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _pillShown = false;
   Timer? _pillTimer;
 
-  /// Presentation mode (element 11, D16): level 2 fitted to the screen, no bar, card or + / −; a tap on the
-  /// empty space shows "Zakończ prezentację" for 3 s.
+  /// Presentation mode (element 11, D16): level 2 fitted to the screen, no bar, card or + / −. A tap on the
+  /// empty space shows the controls — the bar at the bottom and "Zakończ prezentację" (B2 — D40) — for 5 s
+  /// from the last touch of them, or as long as "Czas na działanie" asks; a second tap hides them. With a
+  /// screen reader they stay: it cannot tap the empty space, which has no node (Dev report, deviation).
   bool _presenting = false;
-  bool _exitShown = false;
-  Timer? _exitTimer;
+  bool _controlsShown = false;
+  Timer? _controlsTimer;
+  Duration _controlsTime = _controlsDefault;
+  static const Duration _controlsDefault = Duration(seconds: 5);
+
+  /// A finger on the bar's slider: the controls stay while it drags.
+  bool _sliding = false;
+
+  /// An accessibility service reads the screen (TalkBack, Switch Access, Voice Access — Flutter sets it once
+  /// one asks for the semantics tree).
+  bool _readerOn = false;
+
+  /// ▶ came to "dziś" in presentation: the year's corner says "dziś" for 3 s (L1 — D39).
+  bool _todayShown = false;
+  Timer? _todayTimer;
 
   /// "Przesyłaj na telewizor" (element 1, D30): the system's cast screen is open, or about to be — presentation
   /// comes when the app is back on top (ISSUE-036 D1); a second tap meanwhile opens nothing (D3).
@@ -193,6 +211,18 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _noMotion = MediaQuery.disableAnimationsOf(context);
+    final bool reader = MediaQuery.accessibleNavigationOf(context);
+    if (reader != _readerOn) {
+      _readerOn = reader;
+      // A reader switched on in the middle of a presentation gets the controls, and keeps them (D40). No
+      // setState here: the build comes anyway.
+      if (_presenting && reader) {
+        _controlsShown = true;
+        _controlsTimer?.cancel();
+      } else if (_presenting) {
+        _armControls();
+      }
+    }
     final TextScaler scaler = MediaQuery.textScalerOf(context);
     if (scaler != _scaler) {
       _scaler = scaler;
@@ -206,7 +236,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void dispose() {
     _subscription?.cancel();
     _pillTimer?.cancel();
-    _exitTimer?.cancel();
+    _controlsTimer?.cancel();
+    _todayTimer?.cancel();
     _settle?.cancel();
     _play?.cancel();
     _fade.dispose();
@@ -409,8 +440,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         )
         .clamp(treeMinScale, treeMaxScale);
     final Offset focus = layout.positions[layout.focus]!;
+    // Half a dp of slack: on the axis the scale came from, size × scale is the room itself, and in floating point
+    // it fell a hair over it — the level was then not fitted but put round the middle, cut at one side (seen at
+    // 200 % with Michał in the middle; ui review of ISSUE-038, MAJOR).
     double along(double room, double size, double start, double focusAt) =>
-        size * scale <= room - 2 * margin
+        size * scale <= room - 2 * margin + 0.5
         ? (room - size * scale) / 2 - start * scale
         : room / 2 - focusAt * scale;
     return _matrix(
@@ -585,16 +619,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// About 21 years a second, the same from any start: 1880 → "dziś" in about 7 s (AC-3, D34). A timer per
-  /// year rather than a ticker: a frame only when the year changes, not in every vsync. With the system's
-  /// animations off, a decade about every second, people at once (R2, D36).
+  /// At the tempo chosen, the same from any start: "Średnio" 10 years a second, 1880 → "dziś" in about 15 s
+  /// (AC-3, D34, D41). A timer per year rather than a ticker: a frame only when the year changes, not in every
+  /// vsync. With the system's animations off, a decade at once, every 2 · 1 · 0.5 s by the tempo, people at once
+  /// (R2, D36). At "dziś" in presentation the corner says "dziś" for 3 s more (D39).
   void _nextLater() {
     final TreeTime? time = _time;
     if (time == null) return;
-    final Duration step = _noMotion
-        ? const Duration(seconds: 1)
-        : Duration(microseconds: 7000000 ~/ (time.now - latestSliderStart));
-    _play = Timer(step, () {
+    final TreeTempo tempo = treeTempo;
+    _play = Timer(_noMotion ? tempo.decadeStep : tempo.yearStep, () {
       final int? year = _year;
       if (!mounted || year == null) return;
       final int next = _noMotion ? (year ~/ 10) * 10 + 10 : year + 1;
@@ -602,12 +635,33 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         if (next >= time.now) {
           _stopPlaying();
           _setYear(null);
+          if (_presenting) _showToday();
         } else {
           _setYear(next);
           _nextLater();
         }
       });
       if (!_playing) _announceYear();
+    });
+  }
+
+  /// The tempo button (D41): the next tempo for the card and presentation alike; ▶ goes on from the year shown.
+  void _nextTempo() {
+    setState(() {
+      treeTempo = treeTempo.next;
+      if (_playing) {
+        _play?.cancel();
+        _nextLater();
+      }
+    });
+    _armControls();
+  }
+
+  void _showToday() {
+    _todayShown = true;
+    _todayTimer?.cancel();
+    _todayTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _todayShown = false);
     });
   }
 
@@ -658,10 +712,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void _present({required bool hint}) {
     setState(() {
       _presenting = true;
-      _exitShown = false;
-      // Presentation has no slider and no year: it shows "dziś" (D37).
+      // With a reader the controls are there from the start: it cannot tap the empty space (D40).
+      _controlsShown = _readerOn;
+      _todayShown = false;
+      // The year of the card goes along, as the person in the middle (Z2 — D42). ▶ stops: the system's
+      // cast screen came in between, as a person's view stops it (D37).
       _stopPlaying();
-      _setYear(null);
       if (_level != 2) {
         _level = 2;
         _relayout(keep: _focus);
@@ -680,15 +736,24 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       }
     });
     unawaited(enterPresentation());
+    // "Czas na działanie" may ask for more than 5 s (D40); asked once a presentation, the answer is quick.
+    unawaited(
+      recommendedTimeout(_controlsDefault).then((time) {
+        if (mounted) _controlsTime = time;
+      }),
+    );
   }
 
   /// "Zakończ prezentację" or back: portrait again, with the bars, the same person in the middle, level 2 at
   /// the tree's own scale.
   void _leave() {
-    _exitTimer?.cancel();
+    _controlsTimer?.cancel();
+    _todayTimer?.cancel();
     setState(() {
       _presenting = false;
-      _exitShown = false;
+      _controlsShown = false;
+      _sliding = false;
+      _todayShown = false;
       _pillShown = false;
       _scale = 1;
       final int? focus = _focus;
@@ -701,17 +766,37 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     unawaited(leavePresentation());
   }
 
-  /// A tap on the empty space in presentation: "Zakończ prezentację" for 3 s. The hint makes room for it.
-  void _showExit() {
-    _exitTimer?.cancel();
+  /// A tap on the empty space in presentation: the controls, or away with them — as a video player's
+  /// (Media3: hide on touch; D40). With a reader they only come.
+  void _toggleControls() =>
+      _controlsShown && !_readerOn ? _hideControls() : _showControls();
+
+  /// The bar and "Zakończ prezentację"; the hint makes room for them (D25).
+  void _showControls() {
     _pillTimer?.cancel();
     setState(() {
-      _exitShown = true;
+      _controlsShown = true;
       _pillShown = false;
     });
-    _exitTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _exitShown = false);
-    });
+    _armControls();
+  }
+
+  void _hideControls() {
+    _controlsTimer?.cancel();
+    if (mounted) setState(() => _controlsShown = false);
+  }
+
+  /// The controls go [_controlsTime] after the last touch of them — none while a finger drags the slider,
+  /// none with a reader (D40). Each touch of the bar calls it again.
+  void _armControls() {
+    _controlsTimer?.cancel();
+    if (!_presenting || !_controlsShown || _readerOn || _sliding) return;
+    _controlsTimer = Timer(_controlsTime, _hideControls);
+  }
+
+  void _slide(bool on) {
+    _sliding = on;
+    _armControls();
   }
 
   /// + / − and the double tap: the point [at] of the tree's area stays where it is.
@@ -795,9 +880,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _lastTap = null;
       return;
     }
-    // In presentation the level stays (D16): a tap on the empty space only offers the way out.
+    // In presentation the level stays (D16): a tap on the empty space shows the controls or hides them (D40).
     if (_presenting) {
-      _showExit();
+      _toggleControls();
       return;
     }
     final ({Offset at, Duration time})? last = _lastTap;
@@ -955,6 +1040,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                   playing: _playing,
                   onPlay: _togglePlay,
                   onYear: _chooseYear,
+                  tempo: treeTempo,
+                  onTempo: _nextTempo,
                 ),
                 null => null,
               },
@@ -1074,9 +1161,55 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+          // L1 (D39): the year of the history in the corner, for the TV — when it is not "dziś", with the
+          // controls, and for 3 s once ▶ has come to "dziś". Its own layer: it changes with every year of ▶.
+          if (_presenting && (_year != null || _controlsShown || _todayShown))
+            // It takes no touch, as the pill: a person under it and the empty space stay the tree's (qa's test, ui
+            // review of ISSUE-038). The reader still hears it — IgnorePointer drops actions, not the label.
+            Positioned(
+              left: PresentationYear.left,
+              top: PresentationYear.top,
+              child: IgnorePointer(
+                child: RepaintBoundary(child: PresentationYear(year: _year)),
+              ),
+            ),
           Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
-          if (_presenting && _exitShown)
-            Positioned(top: 12, right: 12, child: _exitButton()),
+          // B2 (D40): the bar at the bottom — the card's time row in one row — and the way out.
+          if (_presenting && _controlsShown) ...[
+            if (_time case final TreeTime time?)
+              Positioned(
+                left: PresentationBar.margin,
+                right: PresentationBar.margin,
+                bottom: PresentationBar.margin,
+                child: RepaintBoundary(
+                  child: PresentationBar(
+                    child: TreeTimeBar(
+                      start: time.start,
+                      now: time.now,
+                      year: _year,
+                      playing: _playing,
+                      onPlay: () {
+                        _togglePlay();
+                        _armControls();
+                      },
+                      onYear: (year) {
+                        _chooseYear(year);
+                        _armControls();
+                      },
+                      tempo: treeTempo,
+                      onTempo: _nextTempo,
+                      oneRow: true,
+                      onSlide: _slide,
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: PresentationExit(onPressed: _leave),
+            ),
+          ],
         ],
       );
     },
@@ -1353,18 +1486,6 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         onPressed: () => _zoomButton(1 / treeZoomStep),
       ),
     ],
-  );
-
-  /// Element 11: "Zakończ prezentację" in the top right corner — close in amber, the words in the text colour,
-  /// the surface with an outline, 48 dp.
-  Widget _exitButton() => OutlinedButton.icon(
-    style: secondaryButtonStyle.copyWith(
-      backgroundColor: const WidgetStatePropertyAll(GrobingColors.surface),
-      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-    ),
-    onPressed: _leave,
-    icon: const Icon(Icons.close),
-    label: const Text('Zakończ prezentację'),
   );
 
   /// "Poziom 3 · 66 osób" for a moment after a change of level; a screen reader hears the same (element 3).

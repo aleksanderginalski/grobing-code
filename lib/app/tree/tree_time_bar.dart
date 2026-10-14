@@ -3,10 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'tree_time.dart';
 
-/// Element 6 (05_DESIGN/drzewo.md v1.12; US-010, ISSUE-037): the time row in the tree's card — ▶ / ❚❚, the
-/// slider's first year, the slider, the year ("dziś" at the end). With system text from 150 % the two years
-/// stand in a row above ▶ and the slider (D20), so nothing is cut at 200 % on 360 dp.
+/// Element 6 (05_DESIGN/drzewo.md v1.14; US-010, ISSUE-037, ISSUE-038): the time row in the tree's card — ▶ / ❚❚,
+/// the slider's first year, the slider, the year ("dziś" at the end), the tempo. With system text from 150 % the two
+/// years and the tempo stand in a row above ▶ and the slider (D20), so nothing is cut at 200 % on 360 dp.
+/// [oneRow]: the bar of presentation mode (element 11, B2 — D40) — one row at any text size, and without the year,
+/// which stands in the corner of the screen there (L1 — D39).
 class TreeTimeBar extends StatelessWidget {
   const TreeTimeBar({
     super.key,
@@ -16,6 +19,10 @@ class TreeTimeBar extends StatelessWidget {
     required this.playing,
     required this.onPlay,
     required this.onYear,
+    required this.tempo,
+    required this.onTempo,
+    this.oneRow = false,
+    this.onSlide,
   });
 
   /// The slider's first year (D34) and this year — its end, "dziś".
@@ -32,6 +39,15 @@ class TreeTimeBar extends StatelessWidget {
   /// A year chosen by hand — dragging, or the screen reader's increase and decrease; null for "dziś". Stops ▶.
   final ValueChanged<int?> onYear;
 
+  /// The tempo of ▶ and the button that goes to the next one (D41).
+  final TreeTempo tempo;
+  final VoidCallback onTempo;
+
+  final bool oneRow;
+
+  /// A finger on the slider (true) and off it (false): presentation keeps its controls while it drags (D40).
+  final ValueChanged<bool>? onSlide;
+
   /// The screen reader moves the slider by a decade: a year at a time is up to 166 gestures (element 6, D5).
   static const int readerStep = 10;
 
@@ -44,9 +60,14 @@ class TreeTimeBar extends StatelessWidget {
     return v >= now ? null : v;
   }
 
+  /// The words of the button and the tooltip (element 6): "Tempo historii: średnio — zmień".
+  static String tempoLine(TreeTempo tempo) =>
+      'Tempo historii: ${tempo.spoken} — zmień';
+
   @override
   Widget build(BuildContext context) {
-    final bool large = MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.5;
+    final bool large =
+        !oneRow && MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.5;
     final Widget play = IconButton(
       onPressed: onPlay,
       tooltip: playing ? 'Zatrzymaj' : 'Odtwórz historię',
@@ -93,6 +114,40 @@ class TreeTimeBar extends StatelessWidget {
         ],
       ),
     );
+    // In the colour of the text, next to the filled ▶ (style-b.md rule 1). As wide as its widest word, for the
+    // same reason as the year: the track must not change its length when the tempo changes.
+    const TextStyle tempoStyle = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+    );
+    final Widget tempoButton = Semantics(
+      button: true,
+      label: tempoLine(tempo),
+      onTap: onTempo,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: tempoLine(tempo),
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: GrobingColors.text,
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          onPressed: onTempo,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              for (final TreeTempo room in TreeTempo.values)
+                Visibility.maintain(
+                  visible: false,
+                  child: Text(room.label, style: tempoStyle),
+                ),
+              Text(tempo.label, style: tempoStyle),
+            ],
+          ),
+        ),
+      ),
+    );
     // The slider's own steps for a screen reader are a hundredth of its range, or one division; a decade is
     // its own action here (D5). The finger drags year by year.
     final Widget slider = Semantics(
@@ -115,17 +170,36 @@ class TreeTimeBar extends StatelessWidget {
           value: _shown.toDouble().clamp(start.toDouble(), now.toDouble()),
           min: start.toDouble(),
           max: now.toDouble(),
+          onChangeStart: (_) => onSlide?.call(true),
+          onChangeEnd: (_) => onSlide?.call(false),
           onChanged: (v) => onYear(_clamp(v.round())),
         ),
       ),
     );
+    if (oneRow) {
+      return Row(
+        children: [
+          play,
+          const SizedBox(width: 4),
+          first,
+          Expanded(child: slider),
+          tempoButton,
+        ],
+      );
+    }
     if (large) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // In one line, spread as with spacers; on a phone too narrow for the three, the last goes to a line
+          // of its own instead of being cut.
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Row(children: [first, const Spacer(), shown]),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [first, tempoButton, shown],
+            ),
           ),
           Row(
             children: [
@@ -136,17 +210,15 @@ class TreeTimeBar extends StatelessWidget {
         ],
       );
     }
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Row(
-        children: [
-          play,
-          const SizedBox(width: 4),
-          first,
-          Expanded(child: slider),
-          shown,
-        ],
-      ),
+    return Row(
+      children: [
+        play,
+        const SizedBox(width: 4),
+        first,
+        Expanded(child: slider),
+        shown,
+        tempoButton,
+      ],
     );
   }
 }

@@ -17,7 +17,7 @@ class MainActivity : FlutterActivity() {
         }
         background = BackgroundChannel(applicationContext, messenger)
         // From the activity, so "back" in Maps returns to Grobing.
-        ExternalLinks(messenger) { intent -> startActivity(intent) }
+        ExternalLinks(messenger, applicationContext) { intent -> startActivity(intent) }
         // The 2048 px JPEG the app keeps of a picked photo (ISSUE-016, D2').
         PhotoPreparation(messenger)
         // "Gdzie jestem" on the cemetery's map — the satellites alone, only while listened to (ISSUE-029).

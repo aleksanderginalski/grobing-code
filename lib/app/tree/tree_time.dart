@@ -26,6 +26,38 @@ const int _about = 5;
 /// The slider never starts later than this (US-010 AC-3, D34).
 const int latestSliderStart = 1880;
 
+/// The tempo of ▶ (drzewo.md element 6, D41 — V2; ISSUE-038): years a second, in the order the button goes
+/// through them. "Szybko" is ISSUE-037's tempo, which was too fast for the author; "Średnio" is the default.
+enum TreeTempo {
+  slow('Wolno', 'wolno', 5),
+  medium('Średnio', 'średnio', 10),
+  fast('Szybko', 'szybko', 20);
+
+  const TreeTempo(this.label, this.spoken, this.yearsPerSecond);
+
+  /// On the button.
+  final String label;
+
+  /// For the reader: "Tempo historii: średnio".
+  final String spoken;
+  final int yearsPerSecond;
+
+  /// The time to the next year while ▶ runs.
+  Duration get yearStep => Duration(microseconds: 1000000 ~/ yearsPerSecond);
+
+  /// With the system's animations off ▶ jumps a decade at once (R2, D36), as often as the tempo gives:
+  /// every 2 · 1 · 0.5 s.
+  Duration get decadeStep =>
+      Duration(microseconds: 10 * 1000000 ~/ yearsPerSecond);
+
+  /// The button's next tempo: "Wolno" → "Średnio" → "Szybko" → "Wolno".
+  TreeTempo get next => values[(index + 1) % values.length];
+}
+
+/// The tempo chosen — the same in the card and in presentation, kept while the app runs (D41): after it is
+/// closed, "Średnio" again. Not in the database: one button is not worth a change of the schema.
+TreeTempo treeTempo = TreeTempo.medium;
+
 /// What the tree shows of a person in one year (D32 — N3, D33).
 enum InYear {
   /// Not born yet: off the tree, the place kept (AC-1).

@@ -26,8 +26,8 @@ import '../../support/style_checks.dart';
 //
 // ISSUE-034 — presentation mode (drzewo.md element 11, D16; US-009 AC-8): the TV icon only with a tree;
 // landscape, no bars, level 2 fitted, no buttons, the hint for 4 s; a touch puts a person in the middle, the
-// middle opens nothing, the edges of the bars take no drag, the empty space shows "Zakończ prezentację" for
-// 3 s; it and back return portrait with the same person, the card and the bar. The phone's turn is the test
+// middle opens nothing, the edges of the bars take no drag, the empty space shows "Zakończ prezentację" — from
+// ISSUE-038 with the bar, for 5 s (D3); it and back return portrait with the same person, the card and the bar. The phone's turn is the test
 // view's new size; what the tree asks of the system — the platform channel (presentation_mode_test.dart).
 //
 // ISSUE-036 — "Przesyłaj na telewizor" in place of the TV icon (drzewo.md element 1, D29, D30): AC-1 the
@@ -580,7 +580,8 @@ void main() {
       backFromSystemScreen(tester);
       await tester.pump();
       await _turn(tester, landscape: true);
-      expect(calls, ['openCastSettings']);
+      // ISSUE-038 D4: entering asks once how long controls stay ("Czas na działanie").
+      expect(calls, ['openCastSettings', 'recommendedTimeout']);
       expect(chrome, entering);
       // No bar, no tab bar, no card, no + / −.
       expect(find.text('Drzewo'), findsNothing);
@@ -606,7 +607,7 @@ void main() {
 
   testWidgets(
     'AC-8 — in presentation a touch puts Kasia in the middle, fitted anew; the middle opens nothing; a drag from '
-    'the bars\' edge leaves the tree; the empty space shows "Zakończ prezentację" for 3 s',
+    'the bars\' edge leaves the tree; the empty space shows "Zakończ prezentację" and the bar for 5 s (ISSUE-038 D3)',
     (tester) async {
       await present(tester);
       await tester.tap(find.text('Kasia'));
@@ -650,8 +651,12 @@ void main() {
       await tester.tapAt(_empty(tester));
       await tester.pump();
       expect(find.text('Zakończ prezentację'), findsOneWidget);
+      expect(find.byTooltip('Odtwórz historię'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Zakończ prezentację'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
       expect(find.text('Zakończ prezentację'), findsNothing);
+      expect(find.byTooltip('Odtwórz historię'), findsNothing);
       await cleanUp(tester);
     },
   );
@@ -713,7 +718,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       await _turn(tester, landscape: true);
-      expect(calls, ['openCastSettings']);
+      expect(calls, ['openCastSettings', 'recommendedTimeout']);
       expect(chrome, entering);
       expect(find.text('Drzewo'), findsNothing);
       expect(_nodes(), findsNWidgets(20));

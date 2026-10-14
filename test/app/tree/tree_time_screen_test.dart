@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/tree/tree_time.dart';
 import 'package:grobing/app/tree/tree_time_bar.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_family.dart';
@@ -22,6 +23,12 @@ import '../../support/a11y.dart';
 // D36) · N3 the reader hears "nie wiadomo, czy już żyje" · D37 a new tree shows "dziś" · text at 200 % on
 // 360 dp: the two years above ▶ and the slider. The windows, the pairs and the lines of a year —
 // tree_time_test.dart. Made-up people only (family-data.md).
+//
+// ISSUE-038 — the tempo (drzewo.md v1.14, element 6, D41 — V2): ▶ goes "Średnio", 10 years a second, by default
+// (AC-3 of US-010 above now at that tempo) · AC-2 the button goes "Średnio" → "Szybko" → "Wolno" → "Średnio", ▶
+// from 1860 after 3.5 s is about 1895 · 1930 · 1877 (the mockup's #playtest), a change while ▶ runs goes on from
+// the year shown, the tempo stays for a new tree · AC-3 with the system's animations off a decade every 2 · 1 · 0.5
+// s by the tempo · AC-5 at 200 % the tempo in the row of the years. Presentation — tree_presentation_test.dart.
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (int i = 0; i < 400; i++) {
@@ -68,7 +75,11 @@ Future<void> _year(WidgetTester tester, int? year) async {
 void main() {
   late GrobingDatabase db;
 
-  setUp(() => db = GrobingDatabase(NativeDatabase.memory()));
+  setUp(() {
+    db = GrobingDatabase(NativeDatabase.memory());
+    // The tempo is the app's while it runs (D41): each test starts from the default.
+    treeTempo = TreeTempo.medium;
+  });
 
   Future<void> cleanUp(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
@@ -191,31 +202,31 @@ void main() {
   );
 
   testWidgets(
-    'US-010 AC-3, D37 — ▶ from 1860 about 21 years a second; ❚❚ stops; on to "dziś" and ▶ again; '
-    'a touch of a person goes on playing, a drag stops',
+    'US-010 AC-3, D37 — ▶ from 1860 at "Średnio", 10 years a second (D41); ❚❚ stops; on to "dziś" and ▶ '
+    'again; a touch of a person goes on playing, a drag stops',
     (tester) async {
       await pumpTree(tester);
 
       await tester.tap(find.byTooltip('Odtwórz historię'));
       await tester.pump(const Duration(seconds: 2));
-      // 1860 + 2 s × 146 / 7 s a year.
-      expect(find.text('1901'), findsOneWidget);
+      // 1860 + 2 s × 10 years.
+      expect(find.text('1880'), findsOneWidget);
       expect(find.byTooltip('Zatrzymaj'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Zatrzymaj'));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('1901'), findsOneWidget);
+      expect(find.text('1880'), findsOneWidget);
       expect(find.byTooltip('Odtwórz historię'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Odtwórz historię'));
       await tester.pump(const Duration(milliseconds: 500));
-      // Grandfather Henryk, born 1930, is on the tree by 1990: a touch puts him in the middle, ▶ goes on.
-      await tester.pump(const Duration(seconds: 4));
+      // Grandfather Henryk, born 1930, is on the tree by 1945: a touch puts him in the middle, ▶ goes on.
+      await tester.pump(const Duration(seconds: 6));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.tap(find.text('Henryk'));
       await _afterMove(tester);
       expect(find.byTooltip('Zatrzymaj'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 9));
       await tester.pump();
       expect(_slider(tester).value, 'dziś');
       expect(find.byTooltip('Odtwórz historię'), findsOneWidget);
@@ -262,7 +273,7 @@ void main() {
       expect(heard(), isEmpty);
       await tester.tap(find.byTooltip('Zatrzymaj'));
       await tester.pump();
-      expect(heard(), ['Rok 1901']);
+      expect(heard(), ['Rok 1880']);
 
       await tester.tap(find.byTooltip('Odtwórz historię'));
       await tester.pump(const Duration(seconds: 1));
@@ -351,7 +362,7 @@ void main() {
   );
 
   testWidgets(
-    'text at 200 % on 360 dp — the two years in a row above ▶ and the slider, nothing cut',
+    'text at 200 % on 360 dp — the two years and the tempo above ▶ and the slider, nothing cut (ISSUE-038 AC-5)',
     (tester) async {
       // The test font draws every letter as a square: the bottom bar (lib/app/tabs.dart, not this item's)
       // overflows in it at 200 % and not on a phone — as in tree_screen_test.dart, AC-7. Only that overflow
@@ -371,11 +382,22 @@ void main() {
 
       final Rect first = tester.getRect(find.text('1860'));
       final Rect now = tester.getRect(find.text('dziś').last);
+      final Rect tempo = tester.getRect(find.text('Średnio').last);
       final Rect play = tester.getRect(find.byTooltip('Odtwórz historię'));
       final Rect slider = tester.getRect(find.byType(Slider));
-      expect(now.left, greaterThan(first.right));
-      expect((first.center.dy - now.center.dy).abs(), lessThan(2));
-      expect(play.top, greaterThanOrEqualTo(first.bottom - 1));
+      final Rect card = tester.getRect(find.byType(TreeTimeBar));
+      // The tempo in the row of the years, after the first one (D41). The test font's squares make the three
+      // wider than the card, so "dziś" takes the next line of that row (Dev report, deviation 2); in Roboto on
+      // the emulator all three are in one line (Dev report → Emulator pass, 16).
+      expect(tempo.left, greaterThan(first.right));
+      expect((first.center.dy - tempo.center.dy).abs(), lessThan(2));
+      for (final Rect r in [first, tempo, now]) {
+        expect(play.top, greaterThanOrEqualTo(r.bottom - 1));
+        expect(
+          card.contains(r.topLeft) && card.contains(r.bottomRight),
+          isTrue,
+        );
+      }
       expect(slider.left, greaterThanOrEqualTo(play.right - 1));
       // The circle's button is 40 dp; its target, padded, 48 dp (the guideline below).
       expect(
@@ -384,6 +406,123 @@ void main() {
       );
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       semantics.dispose();
+      await cleanUp(tester);
+    },
+  );
+
+  // ---- ISSUE-038 — the tempo ----
+
+  /// The tempo button of the card, found by its tooltip, which names the tempo shown: the button holds all three
+  /// words, the two others invisible, for its width (Dev report, deviation 3).
+  Finder tempoButton(TreeTempo tempo) =>
+      find.byTooltip(TreeTimeBar.tempoLine(tempo));
+
+  testWidgets(
+    'ISSUE-038 AC-2 — the tempo button goes "Średnio" → "Szybko" → "Wolno" → "Średnio"; the reader hears '
+    '"Tempo historii: średnio — zmień"; ▶ from 1860 after 3.5 s is 1895 · 1930 · 1877; tap targets (R2)',
+    (tester) async {
+      await pumpTree(tester);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final Finder reader = find.bySemanticsLabel(
+        'Tempo historii: średnio — zmień',
+      );
+      expect(reader, findsOneWidget);
+      expect(
+        tester.getSemantics(reader),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      expect(find.byTooltip('Tempo historii: średnio — zmień'), findsOneWidget);
+      // As wide as its widest word: the track keeps its length when the tempo changes (Dev report, deviation 3).
+      final double track = tester.getSize(find.byType(Slider)).width;
+
+      for (final (TreeTempo tempo, TreeTempo next, String year) in const [
+        (TreeTempo.medium, TreeTempo.fast, '1895'),
+        (TreeTempo.fast, TreeTempo.slow, '1930'),
+        (TreeTempo.slow, TreeTempo.medium, '1877'),
+      ]) {
+        final String label = tempo.label;
+        expect(tempoButton(tempo), findsOneWidget);
+        await tester.tap(find.byTooltip('Odtwórz historię'));
+        await tester.pump(const Duration(milliseconds: 3500));
+        expect(find.text(year), findsOneWidget, reason: label);
+        await tester.tap(find.byTooltip('Zatrzymaj'));
+        await _year(tester, null);
+        await tester.tap(tempoButton(tempo));
+        await tester.pump();
+        expect(tempoButton(next), findsOneWidget);
+        expect(tester.getSize(find.byType(Slider)).width, track);
+      }
+      expect(treeTempo, TreeTempo.medium);
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-038 AC-2 — a change of tempo while ▶ runs goes on from the year shown; the tempo stays for a new '
+    'tree from the tab',
+    (tester) async {
+      await pumpTree(tester);
+      await tester.tap(tempoButton(TreeTempo.medium));
+      await tester.pump();
+      // "Szybko", 20 years a second: 1860 → 1880 in 1 s; then "Wolno", 5 a second: 1880 → 1890 in 2 s.
+      await tester.tap(find.byTooltip('Odtwórz historię'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('1880'), findsOneWidget);
+      await tester.tap(tempoButton(TreeTempo.fast));
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('1890'), findsOneWidget);
+      expect(find.byTooltip('Zatrzymaj'), findsOneWidget);
+      await tester.tap(find.byTooltip('Zatrzymaj'));
+      await cleanUp(tester);
+
+      // A new tree — the app still running — keeps "Wolno" (D41).
+      db = GrobingDatabase(NativeDatabase.memory());
+      await pumpTree(tester);
+      expect(tempoButton(TreeTempo.slow), findsOneWidget);
+      expect(_slider(tester).value, 'dziś');
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-038 AC-3 — with the system\'s animations off a decade at once, every 2 · 1 · 0.5 s by the tempo',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpTree(tester);
+
+      for (final (TreeTempo tempo, Duration step) in const [
+        (TreeTempo.slow, Duration(seconds: 2)),
+        (TreeTempo.medium, Duration(seconds: 1)),
+        (TreeTempo.fast, Duration(milliseconds: 500)),
+      ]) {
+        while (treeTempo != tempo) {
+          await tester.tap(tempoButton(treeTempo));
+          await tester.pump();
+        }
+        await tester.tap(find.byTooltip('Odtwórz historię'));
+        await tester.pump(step - const Duration(milliseconds: 50));
+        expect(
+          find.text('1860'),
+          findsNWidgets(2),
+          reason: '${tempo.name}: not yet',
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('1870'), findsOneWidget, reason: tempo.name);
+        await tester.pump(step);
+        expect(find.text('1880'), findsOneWidget, reason: tempo.name);
+        await tester.tap(find.byTooltip('Zatrzymaj'));
+        await _year(tester, null);
+      }
       await cleanUp(tester);
     },
   );
