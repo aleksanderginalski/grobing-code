@@ -158,7 +158,7 @@ void main() {
           .then((id) => id!);
 
   testWidgets(
-    'AC-1 — "Ja" in the middle at level 2: 20 people, the card "to Ty"; tap targets (R2)',
+    'AC-1 — "Ja" in the middle at level 2: 20 people, the card "to ja"; tap targets (R2)',
     (tester) async {
       await tester.runAsync(() => addFictionalFamily(db));
       await pumpTree(tester);
@@ -167,18 +167,21 @@ void main() {
 
       expect(_people(), findsNWidgets(20));
       expect(find.text('Mateusz Wymyślony'), findsOneWidget);
-      expect(find.text('ur. 1983 · to Ty'), findsOneWidget);
+      expect(find.text('ur. 1983 · to ja'), findsOneWidget);
       final SemanticsHandle semantics = tester.ensureSemantics();
       expect(
-        find.bySemanticsLabel(RegExp(r'^Mateusz Wymyślony, ur\. 1983, to Ty$')),
+        find.bySemanticsLabel(RegExp(r'^Mateusz Wymyślony, ur\. 1983, to ja$')),
         findsOneWidget,
       );
       expect(
         find.bySemanticsLabel(
-          RegExp(r'^Kasia Wymyślona z d\. Przykładowa, ur\. 1985, Twoja żona$'),
+          RegExp(r'^Kasia Wymyślona z d\. Przykładowa, ur\. 1985, Moja żona$'),
         ),
         findsOneWidget,
       );
+      // A relation's name is in the author's voice (ISSUE-035, G2 — drzewo.md D28): nowhere "Twoja" / "Twój".
+      expect(find.bySemanticsLabel(RegExp('Twoj|Twój')), findsNothing);
+      expect(find.textContaining(RegExp('Twoj|Twój')), findsNothing);
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       expectEveryButtonTappable(tester);
@@ -200,7 +203,7 @@ void main() {
       await tester.tap(find.text('Kasia'));
       await _afterMove(tester);
       expect(find.text('Kasia Wymyślona z d. Przykładowa'), findsOneWidget);
-      expect(find.text('ur. 1985 · Twoja żona'), findsOneWidget);
+      expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
 
       await tester.tap(find.text('Pokaż'));
       await _pumpUntil(tester, () => _shown(find.byType(PersonScreen)));
@@ -260,7 +263,7 @@ void main() {
     await _afterMove(tester);
     await tester.tap(find.text('Jolanta'));
     await _afterMove(tester);
-    expect(find.text('ur. 1961 · Ciotka Twojej żony'), findsOneWidget);
+    expect(find.text('ur. 1961 · Ciotka mojej żony'), findsOneWidget);
     await cleanUp(tester);
   });
 
@@ -317,7 +320,7 @@ void main() {
       await _pumpUntil(tester, () => _shown(find.byType(TreeScreen)));
       await _pumpUntil(
         tester,
-        () => _shown(find.text('1925–2004 · Twój dziadek')),
+        () => _shown(find.text('1925–2004 · Mój dziadek')),
       );
       expect(find.text('Józef Wymyślony'), findsOneWidget);
       expect(find.byType(PersonScreen), findsNothing);
@@ -362,7 +365,7 @@ void main() {
     // "Pokaż" stands under the card's text (D20).
     expect(
       tester.getTopLeft(find.text('Pokaż')).dy,
-      greaterThan(tester.getBottomLeft(find.text('ur. 1983 · to Ty')).dy),
+      greaterThan(tester.getBottomLeft(find.text('ur. 1983 · to ja')).dy),
     );
     await cleanUp(tester);
     FlutterError.onError = previous;
@@ -400,7 +403,7 @@ void main() {
   );
 
   testWidgets(
-    'States — a person without a family: only them, "nie wiadomo jeszcze, kim jest dla Ciebie"',
+    'States — a person without a family: only them, "nie wiadomo jeszcze, kim jest dla mnie"',
     (tester) async {
       await tester.runAsync(() => addFictionalFamily(db));
       final int alone = (await tester.runAsync(
@@ -418,7 +421,7 @@ void main() {
       await _afterMove(tester);
       expect(_people(), findsOneWidget);
       expect(
-        find.text('bez dat · nie wiadomo jeszcze, kim jest dla Ciebie'),
+        find.text('bez dat · nie wiadomo jeszcze, kim jest dla mnie'),
         findsOneWidget,
       );
       await cleanUp(tester);
@@ -498,7 +501,7 @@ void main() {
       // No bar, no tab bar, no card, no + / −.
       expect(find.text('Drzewo'), findsNothing);
       expect(find.byType(GrobingTabBar), findsNothing);
-      expect(find.text('ur. 1983 · to Ty'), findsNothing);
+      expect(find.text('ur. 1983 · to ja'), findsNothing);
       expect(find.text('Pokaż'), findsNothing);
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
       expect(find.byTooltip('Tryb prezentacji'), findsNothing);
@@ -529,7 +532,7 @@ void main() {
       await _afterMove(tester);
       // Level 2 from Kasia — 17 people, still no card; in the middle she has no hint (D5).
       expect(_nodes(), findsNWidgets(17));
-      expect(find.text('ur. 1985 · Twoja żona'), findsNothing);
+      expect(find.text('ur. 1985 · Moja żona'), findsNothing);
       expect(node(tester, 'Kasia Wymyślona').properties.hint, isNull);
       expect(node(tester, 'Mateusz Wymyślony').properties.hint, 'w środek');
       expectAllOnScreen(tester, const Size(800, 360));
@@ -587,7 +590,7 @@ void main() {
       await tester.pump();
       await _turn(tester, landscape: false);
       expect(chrome, leaving);
-      expect(find.text('ur. 1985 · Twoja żona'), findsOneWidget);
+      expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
       expect(_people(), findsNWidgets(17));
       expect(find.byTooltip('Tryb prezentacji'), findsOneWidget);
       expect(find.byTooltip('Oddal — dalsza rodzina'), findsOneWidget);
@@ -608,7 +611,7 @@ void main() {
       await _turn(tester, landscape: false);
       expect(chrome, leaving);
       expect(find.byType(TreeScreen), findsOneWidget);
-      expect(find.text('ur. 1985 · Twoja żona'), findsOneWidget);
+      expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
       await cleanUp(tester);
     },
   );

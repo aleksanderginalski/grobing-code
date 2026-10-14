@@ -61,18 +61,18 @@ List<String> chainLabels(List<ChainPerson> people) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// The tree's card: what the person at the end of a path is to "ja" (05_DESIGN/drzewo.md v1.6 element 5, D12,
-// D13, G1; ISSUE-033). The words are the dictionary of ISSUE-025 D2 (SJPD, via Frąckiewicz 2013); a farther
-// relation is told in segments, each a word of the dictionary, the nearer ones in the genitive: "Siostra
-// cioteczna babci Twojej żony". The segments are counted from the other person (D12): the longest known
+// The tree's card: what the person at the end of a path is to "ja" (05_DESIGN/drzewo.md v1.9 element 5, D12,
+// D13, D28; ISSUE-033, ISSUE-035). The words are the dictionary of ISSUE-025 D2 (SJPD, via Frąckiewicz 2013); a
+// farther relation is told in segments, each a word of the dictionary, the nearer ones in the genitive:
+// "Siostra cioteczna babci mojej żony". The segments are counted from the other person (D12): the longest known
 // segment that ends at them, then the next one towards "ja" — counted from "ja", "teściowa" would take the
-// first two steps and give "Siostrzenica babci Twojej teściowej". The app speaks to the author (G1):
-// "Twoja babcia".
+// first two steps and give "Siostrzenica babci mojej teściowej". A relation's name is in the author's own
+// voice (G2, D28; style-b.md rule 7): "Moja babcia" — the app's own sentences still speak to them.
 
 enum _Gender { feminine, masculine, neuter }
 
-/// One segment's word: the nominative, the genitive, the word's grammatical gender (for "Twoja" / "Twój" /
-/// "Twoje" — the word's, not the person's), and the bracket of the dictionary (D13: "ciotka (siostra taty)").
+/// One segment's word: the nominative, the genitive, the word's grammatical gender (for "moja" / "mój" /
+/// "moje" — the word's, not the person's), and the bracket of the dictionary (D13: "ciotka (siostra taty)").
 class _Word {
   const _Word(this.nominative, this.genitive, this.gender, [this.bracket]);
 
@@ -295,7 +295,7 @@ String _childWord(Sex? s) => switch (s) {
 };
 
 /// What the last person of [steps] — a path from "ja" (`KinGraph.path`) — is to "ja", for the tree's card:
-/// "Twoja babcia", "Twój stryj (brat taty)", "Siostra cioteczna babci Twojej żony". Null for "ja" themselves
+/// "Moja babcia", "Mój stryj (brat taty)", "Siostra cioteczna babci mojej żony". Null for "ja" themselves
 /// (no steps). [sexOf] gives each person's sex; null where it is not written.
 String? kinshipName(List<KinStep> steps, Sex? Function(int personId) sexOf) {
   if (steps.isEmpty) return null;
@@ -315,20 +315,20 @@ String? kinshipName(List<KinStep> steps, Sex? Function(int personId) sexOf) {
   final String text;
   if (segments.length == 1) {
     final _Word w = segments.single;
-    final String your = switch (w.gender) {
-      _Gender.feminine => 'Twoja',
-      _Gender.masculine => 'Twój',
-      _Gender.neuter => 'Twoje',
+    final String my = switch (w.gender) {
+      _Gender.feminine => 'moja',
+      _Gender.masculine => 'mój',
+      _Gender.neuter => 'moje',
     };
-    text = '$your ${w.nominative}${w.bracket == null ? '' : ' (${w.bracket})'}';
+    text = '$my ${w.nominative}${w.bracket == null ? '' : ' (${w.bracket})'}';
   } else {
-    final String your = segments.first.gender == _Gender.feminine
-        ? 'Twojej'
-        : 'Twojego';
+    final String my = segments.first.gender == _Gender.feminine
+        ? 'mojej'
+        : 'mojego';
     text = [
       segments.last.nominative,
       for (int i = segments.length - 2; i >= 1; i--) segments[i].genitive,
-      '$your ${segments.first.genitive}',
+      '$my ${segments.first.genitive}',
     ].join(' ');
   }
   return '${text[0].toUpperCase()}${text.substring(1)}';

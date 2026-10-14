@@ -295,6 +295,10 @@ void main() {
       // No compound names here — they belong to the tree (D13').
       expect(find.textContaining('babcia'), findsNothing);
       expect(find.textContaining('Twoja'), findsNothing);
+      expect(
+        find.textContaining('Moja'),
+        findsNothing,
+      ); // G2 (ISSUE-035): the tree's words, not here
 
       await tester.tap(find.text('Mama Anna'));
       await _pumpUntil(tester, () => _shown(find.text('Anna Wymyślona')));

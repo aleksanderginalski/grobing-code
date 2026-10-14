@@ -77,9 +77,10 @@ void main() {
 
   test('no steps — no rows', () => expect(chainLabels(const []), isEmpty));
 
-  // ISSUE-033, US-009 AC-5 (05_DESIGN/drzewo.md v1.6 element 5, D12, D13, G1) — the tree's card: who the person
+  // ISSUE-033, US-009 AC-5 (05_DESIGN/drzewo.md v1.9 element 5, D12, D13, D28) — the tree's card: who the person
   // is to "ja", from the dictionary of ISSUE-025 D2 with its bracket, farther ones told in segments counted
-  // from the other person, in the genitive, "Twój / Twoja" by the word. A made-up family (family-data.md).
+  // from the other person, in the genitive. In the author's voice (ISSUE-035, G2): "Mój / Moja / Moje" by the
+  // word at the start, "mojego / mojej" in lower case inside. A made-up family (family-data.md).
   group('kinshipName — the tree\'s card', () {
     // Ids of the made-up family; sexes below.
     const int ja = 1, tata = 2, mama = 3, dziadek = 4, babcia = 5;
@@ -152,37 +153,34 @@ void main() {
     String? name(int to) => kinshipName(kin.path(ja, to)!, (id) => sex[id]);
 
     test('the dictionary with its brackets (AC-5)', () {
-      expect(name(ciotka), 'Twoja ciotka (siostra taty)');
-      expect(name(stryj), 'Twój stryj (brat taty)');
-      expect(name(wujek), 'Twój wuj (brat mamy)');
-      expect(name(kuzynka), 'Twoja siostra cioteczna (córka siostry taty)');
-      expect(name(mazCiotki), 'Twój wuj (mąż siostry taty)');
-      expect(name(tesc), 'Twój teść (tata żony)');
-      expect(name(szwagier), 'Twój szwagier (brat żony)');
-      expect(name(babcia), 'Twoja babcia');
-      expect(name(zona), 'Twoja żona');
+      expect(name(ciotka), 'Moja ciotka (siostra taty)');
+      expect(name(stryj), 'Mój stryj (brat taty)');
+      expect(name(wujek), 'Mój wuj (brat mamy)');
+      expect(name(kuzynka), 'Moja siostra cioteczna (córka siostry taty)');
+      expect(name(mazCiotki), 'Mój wuj (mąż siostry taty)');
+      expect(name(tesc), 'Mój teść (tata żony)');
+      expect(name(szwagier), 'Mój szwagier (brat żony)');
+      expect(name(babcia), 'Moja babcia');
+      expect(name(zona), 'Moja żona');
     });
 
     test(
-      'farther — segments from the other person: "Siostra cioteczna babci Twojej żony" (AC-5, D12)',
+      'farther — segments from the other person: "Siostra cioteczna babci mojej żony" (AC-5, D12)',
       () {
-        expect(name(kuzynkaBabci), 'Siostra cioteczna babci Twojej żony');
+        expect(name(kuzynkaBabci), 'Siostra cioteczna babci mojej żony');
         // Counted from "ja", "teściowa" would take the first two steps (ISSUE-025 D2 before D12).
-        expect(
-          name(kuzynkaBabci),
-          isNot('Siostrzenica babci Twojej teściowej'),
-        );
-        expect(name(babciaZony), 'Babcia Twojej żony');
-        expect(name(siostraPrababki), 'Ciotka babci Twojej żony');
+        expect(name(kuzynkaBabci), isNot('Siostrzenica babci mojej teściowej'));
+        expect(name(babciaZony), 'Babcia mojej żony');
+        expect(name(siostraPrababki), 'Ciotka babci mojej żony');
       },
     );
 
     test('"razem" and no sex: partnerka; the neutral words', () {
-      expect(name(partnerkaBrata), 'Partnerka Twojego brata');
-      expect(name(dziecko), 'Twoje dziecko');
+      expect(name(partnerkaBrata), 'Partnerka mojego brata');
+      expect(name(dziecko), 'Moje dziecko');
       // The mother's parent without a sex: no "dziadek" or "babcia" — one step at a time (ISSUE-025 D2).
-      expect(name(rodzicMamy), 'Rodzic Twojej mamy');
-      expect(name(dziadekMamy), 'Twój dziadek');
+      expect(name(rodzicMamy), 'Rodzic mojej mamy');
+      expect(name(dziadekMamy), 'Mój dziadek');
     });
 
     test('"ja" themselves has no name', () {

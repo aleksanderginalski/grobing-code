@@ -300,10 +300,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     return {
       for (final int n in layout.positions.keys)
         n: n == me
-            ? 'to Ty'
+            ? 'to ja'
             : switch (family.kin.path(me, n)) {
                 final List<KinStep> steps? => kinshipName(steps, sexOf),
-                null => 'nie wiadomo jeszcze, kim jest dla Ciebie',
+                null => 'nie wiadomo jeszcze, kim jest dla mnie',
               },
     };
   }
@@ -1340,7 +1340,7 @@ class _ZoomButton extends StatelessWidget {
 }
 
 /// Element 5: the person in the middle — the circle with the ring, the name, and the years with who they
-/// are to "ja" (D12, D13, G1), wrapped, never cut; "Pokaż ›" opens their view. With large system text
+/// are to "ja" (D12, D13, D28 — in the author's voice: "Moja babcia", "to ja"), wrapped, never cut; "Pokaż ›" opens their view. With large system text
 /// (≥ 150 %) "Pokaż" goes under the text, so the name and the kinship get the card's width (D20).
 class _TreeCard extends StatelessWidget {
   const _TreeCard({
