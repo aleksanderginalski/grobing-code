@@ -249,15 +249,10 @@ Od ISSUE-029 (ADR-017 w vaulcie) aplikacja zna pozycję telefonu, **tylko z sate
 dokładności**, więc słaby sygnał sprawdzają testy, a nie emulator. Punkt bierz z bazy aplikacji (cmentarz testowy), nie z
 pamięci.
 
-**Telefon przed wizytą na cmentarzu** (wyjątek DoD: GPS na miejscu): build release podpisany kluczem wydania, ten sam co
-przyszłe MVP, więc MVP wejdzie później jako aktualizacja:
-
-```sh
-flutter build apk --release --split-per-abi --target-platform android-arm64
-adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-```
-
-Na telefonie tylko wymyślone dane. **Przed prawdziwymi danymi** (po instalacji MVP) wyczyść dane aplikacji: Ustawienia
+**Telefon** (wyjątek DoD: GPS na miejscu): Grobing trafia na telefon **wyłącznie z Google Play** (testy wewnętrzne —
+*Wydanie* niżej, ISSUE-041). APK zbudowany tutaj ma inny podpis (klucz przesyłania, nie klucz Google) i inny numer wersji
+(`--split-per-abi` daje 2001 na arm64), więc nie zaktualizuje wersji ze sklepu, a wersja ze sklepu nie zaktualizuje jego — przejście
+między nimi to odinstalowanie, czyli skasowana baza. **Przed prawdziwymi danymi** wyczyść dane po próbach na wymyślonych: Ustawienia
 telefonu → Aplikacje → Grobing → Pamięć → Wyczyść dane.
 
 ## Baza cmentarzy
@@ -441,8 +436,10 @@ Aktualizacja wchodzi na telefon tylko wtedy, gdy jest podpisana **tym samym kluc
 wersja ([Sign your app](https://developer.android.com/studio/publish/app-signing)). Inny klucz = trzeba
 odinstalować aplikację, a **odinstalowanie kasuje bazę**.
 
-> ⚠️ **Na telefonie z prawdziwymi danymi instaluj wyłącznie build release** (`flutter run --release`
-> albo `flutter build apk --release`). Przejście z buildu debug na release też wymaga odinstalowania.
+> ⚠️ **Na telefon tylko z Google Play** (ISSUE-041). Aplikację ze sklepu podpisuje **klucz wygenerowany przez Google**
+> (Play App Signing); klucz niżej podpisuje paczkę wysyłaną do sklepu, czyli jest **kluczem przesyłania**. Zgubiony klucz
+> przesyłania da się zresetować w Play Console (*Integralność aplikacji*), bez zmiany podpisu aplikacji na telefonie. Buildy
+> debug, profile i APK release z tego klucza idą tylko na emulatory.
 
 1. **Klucz tworzy autor sam** — `keytool` pyta o hasła, więc nie przechodzą przez żadną sesję ani
    historię. Katalog: `release_keystore_dir` z `../grobing-agents/.claude/rules/project-config.md`
@@ -468,6 +465,38 @@ odinstalować aplikację, a **odinstalowanie kasuje bazę**.
 
 Bez `android/key.properties` build release **kończy się błędem** — nigdy nie podpisuje się po cichu
 kluczem debug (`android/app/build.gradle.kts`).
+
+## Wydanie
+
+Aktualizacja na telefonie zachowuje dane, gdy zgadzają się trzy rzeczy: nazwa pakietu (*Tożsamość aplikacji*), podpis (*Podpis
+wydania*) i **wyższy numer wersji**. Kanał jest jeden: Google Play, ścieżka testów wewnętrznych, autor jedynym testerem (ADR-019,
+ISSUE-041). Czynności w Play Console wykonuje autor; agent przygotowuje paczkę i podaje kroki.
+
+1. **Numer wersji** — `pubspec.yaml` → `version: <nazwa>+<numer>`: **numer rośnie przy każdej wysyłce** (sklep odrzuca numer, który
+   już był). Nazwa: `0.9.x` do instalacji z prawdziwymi danymi, `1.0.0` na instalację. Nazwa ma drugi dom —
+   `appVersion` w `lib/app/settings/settings_screen.dart` (test pilnuje, że są równe).
+2. **Paczka:**
+
+   ```sh
+   flutter build appbundle --release      # build/app/outputs/bundle/release/app-release.aab
+   ```
+
+3. **Przed wysyłką na telefonie:** „Stan danych” → ostatnia udana kopia jest świeża.
+4. **Wysyłka (autor):** Play Console → *Testy wewnętrzne* → *Utwórz wersję* → paczka → *Zapisz* → *Sprawdź wersję* → *Rozpocznij
+   wdrażanie*. Pierwsza wersja: klucz podpisu **wygenerowany przez Google**.
+5. **Aktualizacja (autor):** Sklep Play → Grobing → *Aktualizuj*. Pierwsze uruchomienie przenosi bazę do nowej wersji (jedna
+   transakcja), a zaraz potem robi kopię.
+6. **W trakcie wyjazdu na cmentarze — bez aktualizacji.**
+
+**Migawka sprzed aktualizacji** (ISSUE-041, K3, `lib/data/pre_update_snapshot.dart`): zanim nowa wersja przeniesie bazę na nowszy
+schemat, start zapisuje jej spójną kopię w starej wersji — `pre-update/grobing-v<stara>.db` obok bazy (prywatny katalog aplikacji,
+poza kopią i poza Pobranymi); zostają 3 najnowsze. Kopia na Dysku tego nie zastąpi: start zamawia ją zaraz po migracji, a ona
+nadpisuje jedyny plik kopii.
+
+**Droga powrotu przy złej migracji:** nowa wersja z poprawką — zanim otworzy bazę — zastępuje ją migawką z wersji sprzed złej
+migracji (przy zamkniętej bazie, z jej `-journal`, jak przy odtworzeniu w `restore_swap.dart`) i przenosi ją poprawionym krokiem.
+Zmiany wpisane po złej aktualizacji, a przed poprawką, giną — dlatego po aktualizacji ze zmianą schematu najpierw sprawdzić dane,
+potem wpisywać nowe. Zdjęć to nie dotyczy: migracje ich nie zmieniają.
 
 ## Tożsamość aplikacji
 

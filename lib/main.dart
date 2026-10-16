@@ -14,6 +14,7 @@ import 'backup/documents.dart';
 import 'backup/restore_service.dart';
 import 'backup/restore_swap.dart';
 import 'data/database.dart';
+import 'data/pre_update_snapshot.dart';
 import 'dev/frame_log.dart';
 
 Future<void> main() async {
@@ -41,6 +42,16 @@ Future<AppData> _open(Directory support, Directory cache) async {
   // one that never committed leaves only leftovers, deleted here (ISSUE-009, AC-4).
   await completePendingRestore(support);
   final DataLocation location = DataLocation.inDirectory(support);
+  // ISSUE-041 (K3): the database at its old version, kept before the open below migrates it.
+  try {
+    takePreUpdateSnapshot(
+      database: location.databaseFile,
+      dir: preUpdateSnapshotDir(support),
+    );
+  } on Object {
+    // A missing snapshot is no reason to keep the data closed: the migration runs in one transaction,
+    // and the backup holds the data from before it until the start's next backup replaces it.
+  }
   final GrobingDatabase database = GrobingDatabase.atFile(
     location.databaseFile,
   );
