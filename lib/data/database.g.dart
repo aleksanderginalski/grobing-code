@@ -2733,6 +2733,39 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _paidUntilYearMeta = const VerificationMeta(
+    'paidUntilYear',
+  );
+  @override
+  late final GeneratedColumn<int> paidUntilYear = GeneratedColumn<int>(
+    'paid_until_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paidUntilMonthMeta = const VerificationMeta(
+    'paidUntilMonth',
+  );
+  @override
+  late final GeneratedColumn<int> paidUntilMonth = GeneratedColumn<int>(
+    'paid_until_month',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paidUntilDayMeta = const VerificationMeta(
+    'paidUntilDay',
+  );
+  @override
+  late final GeneratedColumn<int> paidUntilDay = GeneratedColumn<int>(
+    'paid_until_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2746,6 +2779,9 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
     positionSource,
     positionAccuracyM,
     positionRecordedAt,
+    paidUntilYear,
+    paidUntilMonth,
+    paidUntilDay,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2824,6 +2860,33 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         ),
       );
     }
+    if (data.containsKey('paid_until_year')) {
+      context.handle(
+        _paidUntilYearMeta,
+        paidUntilYear.isAcceptableOrUnknown(
+          data['paid_until_year']!,
+          _paidUntilYearMeta,
+        ),
+      );
+    }
+    if (data.containsKey('paid_until_month')) {
+      context.handle(
+        _paidUntilMonthMeta,
+        paidUntilMonth.isAcceptableOrUnknown(
+          data['paid_until_month']!,
+          _paidUntilMonthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('paid_until_day')) {
+      context.handle(
+        _paidUntilDayMeta,
+        paidUntilDay.isAcceptableOrUnknown(
+          data['paid_until_day']!,
+          _paidUntilDayMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2879,6 +2942,18 @@ class $GravesTable extends Graves with TableInfo<$GravesTable, Grave> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}position_recorded_at'],
       ),
+      paidUntilYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}paid_until_year'],
+      ),
+      paidUntilMonth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}paid_until_month'],
+      ),
+      paidUntilDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}paid_until_day'],
+      ),
     );
   }
 
@@ -2921,6 +2996,14 @@ class Grave extends DataClass implements Insertable<Grave> {
   /// When the pin was saved (ISSUE-029, v12). Pins written before v12 — only the made-up debug data — have
   /// none.
   final DateTime? positionRecordedAt;
+
+  /// The fee "paid until" (ISSUE-043, v14; brief S4): a year, a month or a day as the sticker or the
+  /// receipt says, without a qualifier (05_DESIGN/grob.md D18) — the shape of a residence's dates. A
+  /// month needs the year and a day the month; none is "nie wiadomo". Kept as numbers, not text, so the
+  /// reminder can later find the earliest date.
+  final int? paidUntilYear;
+  final int? paidUntilMonth;
+  final int? paidUntilDay;
   const Grave({
     required this.id,
     required this.cemeteryId,
@@ -2933,6 +3016,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     this.positionSource,
     this.positionAccuracyM,
     this.positionRecordedAt,
+    this.paidUntilYear,
+    this.paidUntilMonth,
+    this.paidUntilDay,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2968,6 +3054,15 @@ class Grave extends DataClass implements Insertable<Grave> {
     if (!nullToAbsent || positionRecordedAt != null) {
       map['position_recorded_at'] = Variable<DateTime>(positionRecordedAt);
     }
+    if (!nullToAbsent || paidUntilYear != null) {
+      map['paid_until_year'] = Variable<int>(paidUntilYear);
+    }
+    if (!nullToAbsent || paidUntilMonth != null) {
+      map['paid_until_month'] = Variable<int>(paidUntilMonth);
+    }
+    if (!nullToAbsent || paidUntilDay != null) {
+      map['paid_until_day'] = Variable<int>(paidUntilDay);
+    }
     return map;
   }
 
@@ -2992,6 +3087,15 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionRecordedAt: positionRecordedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(positionRecordedAt),
+      paidUntilYear: paidUntilYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paidUntilYear),
+      paidUntilMonth: paidUntilMonth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paidUntilMonth),
+      paidUntilDay: paidUntilDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paidUntilDay),
     );
   }
 
@@ -3018,6 +3122,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionRecordedAt: serializer.fromJson<DateTime?>(
         json['positionRecordedAt'],
       ),
+      paidUntilYear: serializer.fromJson<int?>(json['paidUntilYear']),
+      paidUntilMonth: serializer.fromJson<int?>(json['paidUntilMonth']),
+      paidUntilDay: serializer.fromJson<int?>(json['paidUntilDay']),
     );
   }
   @override
@@ -3037,6 +3144,9 @@ class Grave extends DataClass implements Insertable<Grave> {
       ),
       'positionAccuracyM': serializer.toJson<double?>(positionAccuracyM),
       'positionRecordedAt': serializer.toJson<DateTime?>(positionRecordedAt),
+      'paidUntilYear': serializer.toJson<int?>(paidUntilYear),
+      'paidUntilMonth': serializer.toJson<int?>(paidUntilMonth),
+      'paidUntilDay': serializer.toJson<int?>(paidUntilDay),
     };
   }
 
@@ -3052,6 +3162,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     Value<PositionSource?> positionSource = const Value.absent(),
     Value<double?> positionAccuracyM = const Value.absent(),
     Value<DateTime?> positionRecordedAt = const Value.absent(),
+    Value<int?> paidUntilYear = const Value.absent(),
+    Value<int?> paidUntilMonth = const Value.absent(),
+    Value<int?> paidUntilDay = const Value.absent(),
   }) => Grave(
     id: id ?? this.id,
     cemeteryId: cemeteryId ?? this.cemeteryId,
@@ -3070,6 +3183,13 @@ class Grave extends DataClass implements Insertable<Grave> {
     positionRecordedAt: positionRecordedAt.present
         ? positionRecordedAt.value
         : this.positionRecordedAt,
+    paidUntilYear: paidUntilYear.present
+        ? paidUntilYear.value
+        : this.paidUntilYear,
+    paidUntilMonth: paidUntilMonth.present
+        ? paidUntilMonth.value
+        : this.paidUntilMonth,
+    paidUntilDay: paidUntilDay.present ? paidUntilDay.value : this.paidUntilDay,
   );
   Grave copyWithCompanion(GravesCompanion data) {
     return Grave(
@@ -3092,6 +3212,15 @@ class Grave extends DataClass implements Insertable<Grave> {
       positionRecordedAt: data.positionRecordedAt.present
           ? data.positionRecordedAt.value
           : this.positionRecordedAt,
+      paidUntilYear: data.paidUntilYear.present
+          ? data.paidUntilYear.value
+          : this.paidUntilYear,
+      paidUntilMonth: data.paidUntilMonth.present
+          ? data.paidUntilMonth.value
+          : this.paidUntilMonth,
+      paidUntilDay: data.paidUntilDay.present
+          ? data.paidUntilDay.value
+          : this.paidUntilDay,
     );
   }
 
@@ -3108,7 +3237,10 @@ class Grave extends DataClass implements Insertable<Grave> {
           ..write('lon: $lon, ')
           ..write('positionSource: $positionSource, ')
           ..write('positionAccuracyM: $positionAccuracyM, ')
-          ..write('positionRecordedAt: $positionRecordedAt')
+          ..write('positionRecordedAt: $positionRecordedAt, ')
+          ..write('paidUntilYear: $paidUntilYear, ')
+          ..write('paidUntilMonth: $paidUntilMonth, ')
+          ..write('paidUntilDay: $paidUntilDay')
           ..write(')'))
         .toString();
   }
@@ -3126,6 +3258,9 @@ class Grave extends DataClass implements Insertable<Grave> {
     positionSource,
     positionAccuracyM,
     positionRecordedAt,
+    paidUntilYear,
+    paidUntilMonth,
+    paidUntilDay,
   );
   @override
   bool operator ==(Object other) =>
@@ -3141,7 +3276,10 @@ class Grave extends DataClass implements Insertable<Grave> {
           other.lon == this.lon &&
           other.positionSource == this.positionSource &&
           other.positionAccuracyM == this.positionAccuracyM &&
-          other.positionRecordedAt == this.positionRecordedAt);
+          other.positionRecordedAt == this.positionRecordedAt &&
+          other.paidUntilYear == this.paidUntilYear &&
+          other.paidUntilMonth == this.paidUntilMonth &&
+          other.paidUntilDay == this.paidUntilDay);
 }
 
 class GravesCompanion extends UpdateCompanion<Grave> {
@@ -3156,6 +3294,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
   final Value<PositionSource?> positionSource;
   final Value<double?> positionAccuracyM;
   final Value<DateTime?> positionRecordedAt;
+  final Value<int?> paidUntilYear;
+  final Value<int?> paidUntilMonth;
+  final Value<int?> paidUntilDay;
   const GravesCompanion({
     this.id = const Value.absent(),
     this.cemeteryId = const Value.absent(),
@@ -3168,6 +3309,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.positionSource = const Value.absent(),
     this.positionAccuracyM = const Value.absent(),
     this.positionRecordedAt = const Value.absent(),
+    this.paidUntilYear = const Value.absent(),
+    this.paidUntilMonth = const Value.absent(),
+    this.paidUntilDay = const Value.absent(),
   });
   GravesCompanion.insert({
     this.id = const Value.absent(),
@@ -3181,6 +3325,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     this.positionSource = const Value.absent(),
     this.positionAccuracyM = const Value.absent(),
     this.positionRecordedAt = const Value.absent(),
+    this.paidUntilYear = const Value.absent(),
+    this.paidUntilMonth = const Value.absent(),
+    this.paidUntilDay = const Value.absent(),
   }) : cemeteryId = Value(cemeteryId);
   static Insertable<Grave> custom({
     Expression<int>? id,
@@ -3194,6 +3341,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Expression<String>? positionSource,
     Expression<double>? positionAccuracyM,
     Expression<DateTime>? positionRecordedAt,
+    Expression<int>? paidUntilYear,
+    Expression<int>? paidUntilMonth,
+    Expression<int>? paidUntilDay,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3208,6 +3358,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       if (positionAccuracyM != null) 'position_accuracy_m': positionAccuracyM,
       if (positionRecordedAt != null)
         'position_recorded_at': positionRecordedAt,
+      if (paidUntilYear != null) 'paid_until_year': paidUntilYear,
+      if (paidUntilMonth != null) 'paid_until_month': paidUntilMonth,
+      if (paidUntilDay != null) 'paid_until_day': paidUntilDay,
     });
   }
 
@@ -3223,6 +3376,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
     Value<PositionSource?>? positionSource,
     Value<double?>? positionAccuracyM,
     Value<DateTime?>? positionRecordedAt,
+    Value<int?>? paidUntilYear,
+    Value<int?>? paidUntilMonth,
+    Value<int?>? paidUntilDay,
   }) {
     return GravesCompanion(
       id: id ?? this.id,
@@ -3236,6 +3392,9 @@ class GravesCompanion extends UpdateCompanion<Grave> {
       positionSource: positionSource ?? this.positionSource,
       positionAccuracyM: positionAccuracyM ?? this.positionAccuracyM,
       positionRecordedAt: positionRecordedAt ?? this.positionRecordedAt,
+      paidUntilYear: paidUntilYear ?? this.paidUntilYear,
+      paidUntilMonth: paidUntilMonth ?? this.paidUntilMonth,
+      paidUntilDay: paidUntilDay ?? this.paidUntilDay,
     );
   }
 
@@ -3279,6 +3438,15 @@ class GravesCompanion extends UpdateCompanion<Grave> {
         positionRecordedAt.value,
       );
     }
+    if (paidUntilYear.present) {
+      map['paid_until_year'] = Variable<int>(paidUntilYear.value);
+    }
+    if (paidUntilMonth.present) {
+      map['paid_until_month'] = Variable<int>(paidUntilMonth.value);
+    }
+    if (paidUntilDay.present) {
+      map['paid_until_day'] = Variable<int>(paidUntilDay.value);
+    }
     return map;
   }
 
@@ -3295,7 +3463,10 @@ class GravesCompanion extends UpdateCompanion<Grave> {
           ..write('lon: $lon, ')
           ..write('positionSource: $positionSource, ')
           ..write('positionAccuracyM: $positionAccuracyM, ')
-          ..write('positionRecordedAt: $positionRecordedAt')
+          ..write('positionRecordedAt: $positionRecordedAt, ')
+          ..write('paidUntilYear: $paidUntilYear, ')
+          ..write('paidUntilMonth: $paidUntilMonth, ')
+          ..write('paidUntilDay: $paidUntilDay')
           ..write(')'))
         .toString();
   }
@@ -10715,6 +10886,9 @@ typedef $$GravesTableCreateCompanionBuilder =
       Value<PositionSource?> positionSource,
       Value<double?> positionAccuracyM,
       Value<DateTime?> positionRecordedAt,
+      Value<int?> paidUntilYear,
+      Value<int?> paidUntilMonth,
+      Value<int?> paidUntilDay,
     });
 typedef $$GravesTableUpdateCompanionBuilder =
     GravesCompanion Function({
@@ -10729,6 +10903,9 @@ typedef $$GravesTableUpdateCompanionBuilder =
       Value<PositionSource?> positionSource,
       Value<double?> positionAccuracyM,
       Value<DateTime?> positionRecordedAt,
+      Value<int?> paidUntilYear,
+      Value<int?> paidUntilMonth,
+      Value<int?> paidUntilDay,
     });
 
 final class $$GravesTableReferences
@@ -10860,6 +11037,21 @@ class $$GravesTableFilterComposer
 
   ColumnFilters<DateTime> get positionRecordedAt => $composableBuilder(
     column: $table.positionRecordedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get paidUntilYear => $composableBuilder(
+    column: $table.paidUntilYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get paidUntilMonth => $composableBuilder(
+    column: $table.paidUntilMonth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get paidUntilDay => $composableBuilder(
+    column: $table.paidUntilDay,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11014,6 +11206,21 @@ class $$GravesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get paidUntilYear => $composableBuilder(
+    column: $table.paidUntilYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get paidUntilMonth => $composableBuilder(
+    column: $table.paidUntilMonth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get paidUntilDay => $composableBuilder(
+    column: $table.paidUntilDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$CemeteriesTableOrderingComposer get cemeteryId {
     final $$CemeteriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11101,6 +11308,21 @@ class $$GravesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get positionRecordedAt => $composableBuilder(
     column: $table.positionRecordedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get paidUntilYear => $composableBuilder(
+    column: $table.paidUntilYear,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get paidUntilMonth => $composableBuilder(
+    column: $table.paidUntilMonth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get paidUntilDay => $composableBuilder(
+    column: $table.paidUntilDay,
     builder: (column) => column,
   );
 
@@ -11245,6 +11467,9 @@ class $$GravesTableTableManager
                 Value<PositionSource?> positionSource = const Value.absent(),
                 Value<double?> positionAccuracyM = const Value.absent(),
                 Value<DateTime?> positionRecordedAt = const Value.absent(),
+                Value<int?> paidUntilYear = const Value.absent(),
+                Value<int?> paidUntilMonth = const Value.absent(),
+                Value<int?> paidUntilDay = const Value.absent(),
               }) => GravesCompanion(
                 id: id,
                 cemeteryId: cemeteryId,
@@ -11257,6 +11482,9 @@ class $$GravesTableTableManager
                 positionSource: positionSource,
                 positionAccuracyM: positionAccuracyM,
                 positionRecordedAt: positionRecordedAt,
+                paidUntilYear: paidUntilYear,
+                paidUntilMonth: paidUntilMonth,
+                paidUntilDay: paidUntilDay,
               ),
           createCompanionCallback:
               ({
@@ -11271,6 +11499,9 @@ class $$GravesTableTableManager
                 Value<PositionSource?> positionSource = const Value.absent(),
                 Value<double?> positionAccuracyM = const Value.absent(),
                 Value<DateTime?> positionRecordedAt = const Value.absent(),
+                Value<int?> paidUntilYear = const Value.absent(),
+                Value<int?> paidUntilMonth = const Value.absent(),
+                Value<int?> paidUntilDay = const Value.absent(),
               }) => GravesCompanion.insert(
                 id: id,
                 cemeteryId: cemeteryId,
@@ -11283,6 +11514,9 @@ class $$GravesTableTableManager
                 positionSource: positionSource,
                 positionAccuracyM: positionAccuracyM,
                 positionRecordedAt: positionRecordedAt,
+                paidUntilYear: paidUntilYear,
+                paidUntilMonth: paidUntilMonth,
+                paidUntilDay: paidUntilDay,
               ),
           withReferenceMapper: (p0) => p0
               .map(

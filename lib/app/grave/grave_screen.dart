@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/address_text.dart';
 import '../../data/database.dart';
@@ -19,13 +20,15 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/date_block.dart' show ErrorLine;
 import 'cemetery_plan_map.dart' show MapLayer;
 import 'person_form_screen.dart';
 import 'pin_screen.dart';
 
 /// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
 /// above the title (ISSUE-016) and each person's profile photo in their card (v4, ISSUE-017). The grave's
-/// name is set from the pencil next to the title; a person's card opens their view (v5, ISSUE-024).
+/// name is set from the pencil next to the title; a person's card opens their view (v5, ISSUE-024). At the
+/// very bottom, the fee "paid until" (v8, ISSUE-043).
 class GraveScreen extends StatefulWidget {
   const GraveScreen({
     super.key,
@@ -137,8 +140,12 @@ class _GraveScreenState extends State<GraveScreen> {
         ),
       );
 
-  /// ✎ and "Wpisz adres" (elements 3, 4): the window "Popraw grób" with the cemetery's sectors as chips.
-  Future<void> _editGrave(GraveDetail g, {bool address = false}) async {
+  /// ✎, "Wpisz adres" and "Wpisz" (elements 3, 4, 7): the window "Popraw grób" with the cemetery's sectors
+  /// as chips, its keyboard in [focus].
+  Future<void> _editGrave(
+    GraveDetail g, {
+    GraveField focus = GraveField.name,
+  }) async {
     final List<Sector> sectors = await watchSectors(
       widget.database,
       g.cemeteryId,
@@ -149,14 +156,15 @@ class _GraveScreenState extends State<GraveScreen> {
       builder: (_) => GraveDialog(
         grave: g,
         sectors: sectors,
-        focusAddress: address,
-        save: ({name, sector, row, plot}) => setGraveDetails(
+        focus: focus,
+        save: ({name, sector, row, plot, paidUntil}) => setGraveDetails(
           widget.database,
           g.id,
           name: name,
           sector: sector,
           row: row,
           plot: plot,
+          paidUntil: paidUntil,
         ),
       ),
     );
@@ -281,6 +289,13 @@ class _GraveScreenState extends State<GraveScreen> {
           ),
         ],
       ),
+      // Element 7: the fee at the very bottom (v8, D15 — the author: "na samym dole profilu grobu"), 24 dp
+      // after the group above (style-b.md rule 5).
+      const SizedBox(height: 24),
+      _PaidUntilRow(
+        paidUntil: grave.paidUntil,
+        onEnter: () => _editGrave(grave, focus: GraveField.paidUntil),
+      ),
     ],
   );
 
@@ -370,7 +385,7 @@ class _GraveScreenState extends State<GraveScreen> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          onPressed: () => _editGrave(grave, address: true),
+          onPressed: () => _editGrave(grave, focus: GraveField.sector),
           child: const Text('Wpisz adres'),
         ),
         _pin(grave),
@@ -643,17 +658,130 @@ class _ProfileThumbnail extends StatelessWidget {
   );
 }
 
-/// The window "Popraw grób" (05_DESIGN/grob.md v6, elements 3a, 3b): the grave's name and the manager's
-/// address — sector, row and plot — all optional, copied from the manager's search at home (EPIC-002). The
-/// sector is one of the cemetery's sectors: its chips fill the field, and a name no sector has becomes a new
-/// one without a zone (ADR-016). It saves itself, so a failed save keeps it open with the message.
+/// Element 7 (05_DESIGN/grob.md v8, D15–D17): the fee "paid until" at the very bottom — a fact row like
+/// "Daty" in the person's view (osoba.md 8), under a line. Without a date: "nie wiadomo" and "Wpisz", the
+/// shortcut to the window (W1, the author's choice at stop #1 ISSUE-043), at the end of the row or under
+/// the value when both do not fit. The row is a fact, not a button: a date is corrected under ✎. A date
+/// that has passed shows as it is, without the error colour (D19).
+class _PaidUntilRow extends StatelessWidget {
+  const _PaidUntilRow({required this.paidUntil, required this.onEnter});
+
+  final PartialDate? paidUntil;
+  final VoidCallback onEnter;
+
+  static const TextStyle _muted = TextStyle(
+    color: GrobingColors.textMuted,
+    fontSize: 14,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final PartialDate? date = paidUntil;
+    // The label goes over the value when it grows past its 96 dp column (osoba.md v2.2) — measured, not the
+    // person view's 18 sp: "Opłacone do" is longer than "Urodzenie" and fills 95 of the 96 dp at 115%, so a
+    // maker's step of 1.2 would break it in two in the column (ui review, ISSUE-043).
+    final TextPainter measure = TextPainter(
+      text: TextSpan(
+        text: 'Opłacone do',
+        style: DefaultTextStyle.of(context).style.merge(_muted),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final bool onTop = measure.width > 96;
+    measure.dispose();
+    const Widget label = Text('Opłacone do', style: _muted);
+    final Widget value = Text(
+      date == null ? 'nie wiadomo' : formatPartialDate(date),
+      style: TextStyle(
+        color: date == null ? GrobingColors.textMuted : GrobingColors.text,
+        fontSize: 16,
+      ),
+    );
+    final Widget fact = Semantics(
+      container: true,
+      label: date == null
+          ? 'Opłacone do: nie wiadomo'
+          : 'Opłacone do ${formatPartialDate(date)}',
+      excludeSemantics: true,
+      child: onTop
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 2),
+                  child: label,
+                ),
+                value,
+              ],
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(width: 96, child: label),
+                const SizedBox(width: 12),
+                value,
+              ],
+            ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1, thickness: 1, color: GrobingColors.outline),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: date == null ? 0 : 12),
+            // "Wpisz" at the end of the row, or at the start of the next line when it does not fit.
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                fact,
+                if (date == null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: GrobingColors.amber,
+                      minimumSize: const Size(48, 48),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onPressed: onEnter,
+                    // The name holds the visible word (SC 2.5.3).
+                    child: const Text(
+                      'Wpisz',
+                      semanticsLabel: 'Wpisz datę opłaty',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Where the window "Popraw grób" opens its keyboard: ✎ — the name; "Wpisz adres" — the sector (element 4);
+/// "Wpisz" in "Opłacone do" — the fee (element 7, grob.md v8).
+enum GraveField { name, sector, paidUntil }
+
+/// The window "Popraw grób" (05_DESIGN/grob.md v8, elements 3a–3c): the grave's name, the manager's address
+/// — sector, row and plot — copied from the manager's search at home (EPIC-002), and the fee "paid until"
+/// from the sticker or the receipt, all optional. The sector is one of the cemetery's sectors: its chips fill
+/// the field, and a name no sector has becomes a new one without a zone (ADR-016). It saves itself, all or
+/// nothing: a date it cannot read saves nothing, and a failed save keeps it open with the message.
 class GraveDialog extends StatefulWidget {
   const GraveDialog({
     super.key,
     required this.grave,
     required this.sectors,
     required this.save,
-    this.focusAddress = false,
+    this.focus = GraveField.name,
   });
 
   final GraveDetail grave;
@@ -665,11 +793,12 @@ class GraveDialog extends StatefulWidget {
     String? sector,
     String? row,
     String? plot,
+    PartialDate? paidUntil,
   })
   save;
 
-  /// "Wpisz adres" (element 4): the focus in "Kwatera" instead of the name.
-  final bool focusAddress;
+  /// The field with the keyboard when the window opens.
+  final GraveField focus;
 
   @override
   State<GraveDialog> createState() => _GraveDialogState();
@@ -680,14 +809,33 @@ class _GraveDialogState extends State<GraveDialog> {
   late final TextEditingController _sector = _field(widget.grave.sector);
   late final TextEditingController _row = _field(widget.grave.row);
   late final TextEditingController _plot = _field(widget.grave.plot);
+  late final TextEditingController _paidUntil = _field(
+    switch (widget.grave.paidUntil) {
+      final PartialDate d => formatPartialDate(d),
+      null => null,
+    },
+  );
+  final FocusNode _paidUntilNode = FocusNode();
+
+  /// The fee field with its message, to bring into view.
+  final GlobalKey _paidUntilKey = GlobalKey();
   late final List<Sector> _chips = [...widget.sectors]
     ..sort((a, b) => sectorOrder(a.name, b.name));
   bool _saving = false;
   bool _failed = false;
 
+  /// Under "Opłacone do" after "Zapisz" with a date it cannot take (3c, D18); gone as soon as it changes.
+  String? _paidUntilError;
+
   static TextEditingController _field(String? value) =>
       TextEditingController(text: value ?? '')
         ..selection = TextSelection.collapsed(offset: (value ?? '').length);
+
+  @override
+  void initState() {
+    super.initState();
+    _paidUntilNode.addListener(_revealPaidUntil);
+  }
 
   @override
   void dispose() {
@@ -695,11 +843,53 @@ class _GraveDialogState extends State<GraveDialog> {
     _sector.dispose();
     _row.dispose();
     _plot.dispose();
+    _paidUntil.dispose();
+    _paidUntilNode.dispose();
     super.dispose();
+  }
+
+  /// The height of what the window shows, last seen.
+  double? _viewport;
+
+  /// The window's scroll view changed its height — the keyboard came up or went down, and the window has
+  /// followed it (its padding animates over 100 ms, after the keyboard's own change).
+  bool _onScrollMetrics(ScrollMetricsNotification n) {
+    if (n.metrics.viewportDimension != _viewport) {
+      _viewport = n.metrics.viewportDimension;
+      _revealPaidUntil();
+    }
+    return false;
+  }
+
+  /// "Opłacone do" is the last field of a long window, and the window does not bring it up by itself: after
+  /// "Wpisz" at 200% text the numeric keyboard was up and the field below the window's edge (dev pass,
+  /// ISSUE-043). With the focus in it, the field goes to the top of what the window shows — its hint or its
+  /// message under it — when it takes the focus and each time the window's height changes. Not on the
+  /// keyboard's own change: the window shrinks after it, and a field brought up before that stays under
+  /// the edge (qa, ISSUE-043 — the keyboard at once, as a fast phone gives it).
+  void _revealPaidUntil() {
+    if (!_paidUntilNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final BuildContext? field = _paidUntilKey.currentContext;
+      if (!mounted || field == null) return;
+      Scrollable.ensureVisible(field);
+    });
   }
 
   Future<void> _save() async {
     if (_saving) return;
+    // All or nothing (3c): a date it cannot take keeps the window open with nothing saved, the keyboard
+    // back in the field.
+    final ({PartialDate? date, String? error}) paid = readPaidUntil(
+      _paidUntil.text,
+    );
+    if (paid.error case final String error) {
+      setState(() => _paidUntilError = error);
+      // A field already focused gets no focus change, so it is brought up here, with its message.
+      _paidUntilNode.requestFocus();
+      _revealPaidUntil();
+      return;
+    }
     setState(() {
       _saving = true;
       _failed = false;
@@ -710,6 +900,7 @@ class _GraveDialogState extends State<GraveDialog> {
         sector: _sector.text,
         row: _row.text,
         plot: _plot.text,
+        paidUntil: paid.date,
       );
       if (mounted) Navigator.of(context).pop();
     } on Object {
@@ -752,10 +943,11 @@ class _GraveDialogState extends State<GraveDialog> {
       textInputAction: TextInputAction.next,
       decoration: const InputDecoration(labelText: rowWord),
     );
+    // `next` → "Opłacone do", the last field (v8).
     final Widget plot = TextField(
       controller: _plot,
-      textInputAction: TextInputAction.done,
-      onSubmitted: (_) => _save(),
+      textInputAction: TextInputAction.next,
+      onSubmitted: (_) => _paidUntilNode.requestFocus(),
       decoration: const InputDecoration(labelText: plotWord),
     );
     // Side by side, but one under the other at a large system text (element 3b).
@@ -764,107 +956,158 @@ class _GraveDialogState extends State<GraveDialog> {
       data: Theme.of(
         context,
       ).copyWith(inputDecorationTheme: GrobingTheme.fields),
-      child: AlertDialog(
-        backgroundColor: GrobingColors.surface,
-        surfaceTintColor: Colors.transparent,
-        scrollable: true,
-        title: const Text(
-          'Popraw grób',
-          style: TextStyle(
-            color: GrobingColors.text,
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onScrollMetrics,
+        child: AlertDialog(
+          backgroundColor: GrobingColors.surface,
+          surfaceTintColor: Colors.transparent,
+          scrollable: true,
+          title: const Text(
+            'Popraw grób',
+            style: TextStyle(
+              color: GrobingColors.text,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 8),
-            TextField(
-              controller: _name,
-              autofocus: !widget.focusAddress,
-              textCapitalization: TextCapitalization.sentences,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Nazwa grobu',
-                // The text of R4 (05_DESIGN/brand/references.md).
-                hintText: 'np. Grób rodzinny Nowaków',
-                helperText: 'Zostaw puste, jeśli grób nie ma nazwy.',
-                helperStyle: _note,
-                helperMaxLines: 2,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Adres zarządcy', style: _note),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _sector,
-              autofocus: widget.focusAddress,
-              textInputAction: TextInputAction.next,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(labelText: sectorWord),
-            ),
-            if (_chips.isNotEmpty) ...[
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final Sector s in _chips)
-                    _SectorChip(
-                      sector: s,
-                      selected: s.id == matched?.id,
-                      onTap: () => _pick(s),
-                    ),
-                ],
+              TextField(
+                controller: _name,
+                autofocus: widget.focus == GraveField.name,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Nazwa grobu',
+                  // The text of R4 (05_DESIGN/brand/references.md).
+                  hintText: 'np. Grób rodzinny Nowaków',
+                  helperText: 'Zostaw puste, jeśli grób nie ma nazwy.',
+                  helperStyle: _note,
+                  helperMaxLines: 2,
+                ),
               ),
-            ],
-            if (typed != null && matched == null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Nowa kwatera „$typed” — powstanie bez strefy; zaznaczysz ją '
-                'w „Kwaterach”.',
+              const SizedBox(height: 16),
+              const Text('Adres zarządcy', style: _note),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _sector,
+                autofocus: widget.focus == GraveField.sector,
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(labelText: sectorWord),
+              ),
+              if (_chips.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final Sector s in _chips)
+                      _SectorChip(
+                        sector: s,
+                        selected: s.id == matched?.id,
+                        onTap: () => _pick(s),
+                      ),
+                  ],
+                ),
+              ],
+              if (typed != null && matched == null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Nowa kwatera „$typed” — powstanie bez strefy; zaznaczysz ją '
+                  'w „Kwaterach”.',
+                  style: _note,
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (stacked) ...[
+                row,
+                const SizedBox(height: 12),
+                plot,
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: row),
+                    const SizedBox(width: 12),
+                    Expanded(child: plot),
+                  ],
+                ),
+              const SizedBox(height: 8),
+              const Text(
+                'Z wyszukiwarki zarządcy. Zostaw puste, czego nie wiesz.',
                 style: _note,
               ),
-            ],
-            const SizedBox(height: 12),
-            if (stacked) ...[
-              row,
-              const SizedBox(height: 12),
-              plot,
-            ] else
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // Element 3c (v8): the fee from the sticker or the receipt — a year or a date, ahead of today
+              // too (D18). The 16 dp above it belong to what is brought into view, so its floating label is
+              // not cut by the window's edge.
+              Column(
+                key: _paidUntilKey,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: row),
-                  const SizedBox(width: 12),
-                  Expanded(child: plot),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _paidUntil,
+                    focusNode: _paidUntilNode,
+                    autofocus: widget.focus == GraveField.paidUntil,
+                    // Digits and a separator without switching keyboards, as the date block (wpis-osoby.md c).
+                    keyboardType: TextInputType.datetime,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9./-]')),
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    // When the keyboard comes up, the field scrolls into view with room for the error line.
+                    scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 56),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _save(),
+                    onChanged: (_) {
+                      if (_paidUntilError != null) {
+                        setState(() => _paidUntilError = null);
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Opłacone do',
+                      hintText: 'np. 2031',
+                      helperText:
+                          'Rok albo data z\u00A0naklejki na grobie lub z\u00A0pokwitowania. '
+                          'Zostaw puste, jeśli nie wiesz.',
+                      helperStyle: _note,
+                      // Never cut, at any text size (SC 1.4.4).
+                      helperMaxLines: 6,
+                      // The frame turns to the error colour; the message with its icon stands under the field.
+                      error: _paidUntilError == null
+                          ? null
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                  if (_paidUntilError case final String error) ...[
+                    const SizedBox(height: 4),
+                    ErrorLine(error),
+                  ],
                 ],
               ),
-            const SizedBox(height: 8),
-            const Text(
-              'Z wyszukiwarki zarządcy. Zostaw puste, czego nie wiesz.',
-              style: _note,
-            ),
-            if (_failed) ...[
-              const SizedBox(height: 12),
-              const PhotoErrorLine(
-                'Nie udało się zapisać. Spróbuj jeszcze raz.',
-              ),
+              if (_failed) ...[
+                const SizedBox(height: 12),
+                const PhotoErrorLine(
+                  'Nie udało się zapisać. Spróbuj jeszcze raz.',
+                ),
+              ],
             ],
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Anuluj'),
+            ),
+            TextButton(
+              onPressed: _saving ? null : _save,
+              child: const Text('Zapisz'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Anuluj'),
-          ),
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: const Text('Zapisz'),
-          ),
-        ],
       ),
     );
   }

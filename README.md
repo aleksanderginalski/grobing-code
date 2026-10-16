@@ -166,6 +166,11 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   nazwa z tamtego czasu i adres (tekst, punkt zostaje w środku miejscowości). Kopia czyta się więc bez listy miejsc z
   aplikacji. Zapis razem z „Zapisz” wpisu, w jego transakcji (`lib/data/residences.dart` → `writeResidences` przez
   `AlsoWrite`). Migracja v12→v13 to `createTable` z indeksem — kopia v12 odtwarza się z osobami bez zamieszkań.
+- **Opłata za grób (schemat v14, ISSUE-043).** `graves.paid_until_year` / `_month` / `_day`: data „opłacone do”, taka jak na
+  naklejce albo pokwitowaniu (rok, miesiąc albo dzień), bez dopisku — jak daty zamieszkań. Pusta znaczy „nie wiadomo”. Liczby, nie
+  tekst, żeby przypomnienie mogło później wyliczyć najbliższy termin. Pole w oknie „Popraw grób” przyjmuje lata do bieżącego + 50,
+  a daty osoby dalej nie przyjmują przyszłości (`lib/app/dates.dart` → `readPaidUntil`). Zapis: `setGraveDetails` razem z nazwą i
+  adresem, w jednej transakcji. Migracja v13→v14 to trzy kolumny — kopia v13 odtwarza się z grobami bez daty opłaty.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.

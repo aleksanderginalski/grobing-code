@@ -16,9 +16,6 @@ const TextStyle inputTextStyle = TextStyle(
   fontSize: 16,
 );
 
-const String _badDate =
-    'Nie rozumiem tej daty — wpisz rok, mm.rrrr albo dd.mm.rrrr.';
-
 /// An error under a field: the error colour with its icon, never colour alone (SC 1.4.1).
 class ErrorLine extends StatelessWidget {
   const ErrorLine(this.text, {super.key});
@@ -81,13 +78,15 @@ class DateInput {
           : (date: null, error: null, toBad: false);
     }
     final PartialDate? start = parsePartialDate(f);
-    if (start == null) return (date: null, error: _badDate, toBad: false);
+    if (start == null) {
+      return (date: null, error: badDateMessage, toBad: false);
+    }
     if (!between) {
       return (date: QualifiedDate(qualifier, start), error: null, toBad: false);
     }
     if (t.isEmpty) return (date: null, error: 'Podaj drugą datę.', toBad: true);
     final PartialDate? end = parsePartialDate(t);
-    if (end == null) return (date: null, error: _badDate, toBad: true);
+    if (end == null) return (date: null, error: badDateMessage, toBad: true);
     if (!isLater(start, end)) {
       return (
         date: null,

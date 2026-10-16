@@ -9,12 +9,20 @@ import '../data/graves.dart';
 /// (05_DESIGN/wpis-osoby.md → Decisions).
 const int earliestYear = 1500;
 
+/// How far ahead the grave fee "paid until" may be (05_DESIGN/grob.md D18): real fees run 20–25 years,
+/// and "2301" typed for "2031" is caught.
+const int paidUntilYearsAhead = 50;
+
+/// Under a date field whose text [parsePartialDate] does not take.
+const String badDateMessage =
+    'Nie rozumiem tej daty — wpisz rok, mm.rrrr albo dd.mm.rrrr.';
+
 final RegExp _separators = RegExp(r'[.\-/]');
 
 /// What is typed in a date field: `rrrr`, `mm.rrrr` or `dd.mm.rrrr`, with `.`, `-` or `/` between the
-/// parts; a year from [earliestYear] to this year and a day that exists in its month. Null for
-/// anything else.
-PartialDate? parsePartialDate(String text, {DateTime? today}) {
+/// parts; a year from [earliestYear] to [latestYear] — this year unless given, so the dates of a life
+/// never lie ahead — and a day that exists in its month. Null for anything else.
+PartialDate? parsePartialDate(String text, {DateTime? today, int? latestYear}) {
   final List<String> parts = text.trim().split(_separators);
   if (parts.isEmpty || parts.length > 3) return null;
   final List<int?> numbers = [
@@ -26,10 +34,32 @@ PartialDate? parsePartialDate(String text, {DateTime? today}) {
   final int? month = numbers.length >= 2 ? numbers[numbers.length - 2] : null;
   final int? day = numbers.length == 3 ? numbers.first : null;
   if (parts.last.trim().length != 4) return null;
-  if (year < earliestYear || year > (today ?? DateTime.now()).year) return null;
+  if (year < earliestYear ||
+      year > (latestYear ?? (today ?? DateTime.now()).year)) {
+    return null;
+  }
   if (month != null && (month < 1 || month > 12)) return null;
   if (day != null && (day < 1 || day > _daysIn(year, month!))) return null;
   return PartialDate(year, month, day);
+}
+
+/// The fee field "Opłacone do" (05_DESIGN/grob.md 3c, D18): empty is no date ("nie wiadomo"); a date
+/// without a qualifier, ahead of today too, up to [paidUntilYearsAhead] years; otherwise the message for
+/// under the field — a year further ahead gets its own, since the date is right but likely mistyped.
+({PartialDate? date, String? error}) readPaidUntil(
+  String text, {
+  DateTime? today,
+}) {
+  if (text.trim().isEmpty) return (date: null, error: null);
+  final int latest = (today ?? DateTime.now()).year + paidUntilYearsAhead;
+  final PartialDate? date = parsePartialDate(text, latestYear: latest);
+  if (date != null) return (date: date, error: null);
+  return parsePartialDate(text, latestYear: 9999) == null
+      ? (date: null, error: badDateMessage)
+      : (
+          date: null,
+          error: 'Tak odległa data to raczej pomyłka — sprawdź rok.',
+        );
 }
 
 int _daysIn(int year, int month) => DateTime.utc(year, month + 1, 0).day;

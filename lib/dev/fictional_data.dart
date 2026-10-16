@@ -66,13 +66,23 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
             centerLon: Value(point?.lon),
           ),
         );
-    // One grave with a name and one without, so the grave screens show both (ISSUE-012).
+    // One grave with a name and one without, so the grave screens show both (ISSUE-012). The named one
+    // has the fee "paid until" — ahead, passed, or to the day by turns — and the other none, so every state
+    // of its row shows (grob.md v8, ISSUE-043).
+    final PartialDate paidUntil = switch (batch % 3) {
+      1 => const PartialDate(2031),
+      2 => const PartialDate(2019, 3),
+      _ => const PartialDate(2045, 12, 31),
+    };
     final int grave = await db
         .into(db.graves)
         .insert(
           GravesCompanion.insert(
             cemeteryId: cemetery,
             name: const Value('Grób rodzinny Wymyślonych'),
+            paidUntilYear: Value(paidUntil.year),
+            paidUntilMonth: Value(paidUntil.month),
+            paidUntilDay: Value(paidUntil.day),
           ),
         );
     final int graveWithAddress = await db

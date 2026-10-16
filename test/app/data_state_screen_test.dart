@@ -78,9 +78,9 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('13'),
+        find.text('14'),
         findsOneWidget,
-      ); // the schema version (13 since ISSUE-042); every count is 0
+      ); // the schema version (14 since ISSUE-043); every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
       expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
@@ -116,7 +116,7 @@ void main() {
             of: find.text('Wersja schematu'),
             matching: find.byType(Row),
           ),
-          matching: find.text('13'),
+          matching: find.text('14'),
         ),
         findsOneWidget,
       );

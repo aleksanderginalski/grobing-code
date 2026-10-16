@@ -44,16 +44,16 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 13, integrity ok, exactly the v13 tables (v12 added a column, v13 residences), foreign keys on, the crop and the background '
-      'on the photo link, claims on families and on children\'s links, a person\'s sex, a photo\'s '
-      'cemetery, a pin with its date',
+      'user_version 14, integrity ok, exactly the v13 tables (v12 added a column, v13 residences, v14 three columns), foreign keys '
+      'on, the crop and the background on the photo link, claims on families and on children\'s links, a person\'s sex, a '
+      'photo\'s cemetery, a pin with its date, the grave fee "paid until"',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 13);
+        expect(await _single(db, 'PRAGMA user_version'), 14);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -105,6 +105,10 @@ void main() {
             'position_source',
             'position_accuracy_m',
             'position_recorded_at',
+            // ISSUE-043: the fee "paid until" as the sticker gives it.
+            'paid_until_year',
+            'paid_until_month',
+            'paid_until_day',
           ]),
         );
         // ISSUE-042 (ADR-020): a residence's period, level and place in words, the name of the time and the address.

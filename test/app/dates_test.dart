@@ -49,6 +49,64 @@ void main() {
     });
   });
 
+  group('ISSUE-043 — the fee field "Opłacone do" (grob.md 3c, D18)', () {
+    ({PartialDate? date, String? error}) read(String s) =>
+        readPaidUntil(s, today: _today);
+
+    test(
+      'a year, a month or a day as on the sticker, ahead of today up to 50 years',
+      () {
+        expect(read('2031'), (date: const PartialDate(2031), error: null));
+        expect(read('03.2031'), (
+          date: const PartialDate(2031, 3),
+          error: null,
+        ));
+        expect(read('31.12.2045'), (
+          date: const PartialDate(2045, 12, 31),
+          error: null,
+        ));
+        expect(read('2076'), (date: const PartialDate(2076), error: null));
+        // A fee that has passed is a fact too (D19).
+        expect(read('03.2019'), (
+          date: const PartialDate(2019, 3),
+          error: null,
+        ));
+      },
+    );
+
+    test('empty is no date — "nie wiadomo" — and no message', () {
+      expect(read(''), (date: null, error: null));
+      expect(read('  '), (date: null, error: null));
+    });
+
+    test(
+      'a year further ahead is likely mistyped; anything unreadable gets the date block\'s message',
+      () {
+        expect(read('2077').date, isNull);
+        expect(
+          read('2301').error,
+          'Tak odległa data to raczej pomyłka — sprawdź rok.',
+        );
+        for (final String bad in ['13.2031', '31.02.2031', '203', 'ok. 2031']) {
+          expect(read(bad), (date: null, error: badDateMessage), reason: bad);
+        }
+        expect(
+          badDateMessage,
+          'Nie rozumiem tej daty — wpisz rok, mm.rrrr albo dd.mm.rrrr.',
+        );
+      },
+    );
+
+    test('the dates of a life still never lie ahead (regression)', () {
+      expect(_parse('2027'), isNull);
+      expect(_parse('2031'), isNull);
+      expect(
+        parsePartialDate('2031', today: _today, latestYear: 2031),
+        const PartialDate(2031),
+      );
+    });
+  });
+
   test('"między": the second date is later as far as both dates say', () {
     expect(isLater(const PartialDate(1893), const PartialDate(1895)), isTrue);
     expect(isLater(const PartialDate(1895), const PartialDate(1893)), isFalse);

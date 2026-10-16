@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/app/dates.dart' show badDateMessage;
 import 'package:grobing/app/grave/cemetery_screen.dart';
 import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
@@ -12,6 +13,8 @@ import 'package:grobing/data/claims.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/sectors.dart';
+
+import '../../support/a11y.dart';
 
 // ISSUE-012 — the transcription screens (05_DESIGN/cmentarz.md, grob.md, wpis-osoby.md v2), happy path
 // per AC: US-002 AC-1 a grave shows everyone in it · AC-2 names, birth surname, "kim była" · AC-3 the
@@ -743,6 +746,236 @@ void main() {
       await cleanUp(tester);
     },
   );
+
+  group('ISSUE-043 — the fee "paid until" (grob.md v8, element 7, 3c)', () {
+    Finder feeField() => find.widgetWithText(TextField, 'Opłacone do');
+    bool feeFocused(WidgetTester tester) =>
+        tester.widget<TextField>(feeField()).focusNode!.hasFocus;
+
+    Future<int> graveWithJan(WidgetTester tester) async {
+      await withCemetery(tester);
+      late int grave;
+      await tester.runAsync(() async {
+        grave = await addPersonToNewGrave(
+          db,
+          cemeteryId: cemetery,
+          entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+        );
+      });
+      return grave;
+    }
+
+    testWidgets(
+      'AC-1, AC-2, W1 — at the very bottom, under "Dodaj osobę": "nie wiadomo" and "Wpisz"; "Wpisz" opens the window '
+      'with the numeric keyboard in "Opłacone do"; "2031" and done → "Opłacone do 2031" without "Wpisz"; ✎ corrects '
+      'it to a date that has passed, shown plain',
+      (tester) async {
+        final SemanticsHandle semantics = tester.ensureSemantics();
+        final int grave = await graveWithJan(tester);
+        await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
+        await _pumpUntil(
+          tester,
+          () => find.text('nie wiadomo').evaluate().isNotEmpty,
+        );
+
+        // AC-2 (W1): the row says the date is missing, and makes none up.
+        expect(find.text('Opłacone do'), findsOneWidget);
+        expect(find.text('Wpisz'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.text('Opłacone do')).dy,
+          greaterThan(tester.getBottomLeft(find.text('Dodaj osobę')).dy),
+        );
+        expect(
+          find.bySemanticsLabel('Opłacone do: nie wiadomo'),
+          findsOneWidget,
+        );
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('Wpisz datę opłaty')),
+          isSemantics(isButton: true, hasTapAction: true),
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        expectEveryButtonTappable(tester);
+
+        // AC-1 through "Wpisz": the keyboard is in the fee field, digits and a separator.
+        await tester.tap(find.text('Wpisz'));
+        await tester.pumpAndSettle();
+        expect(feeFocused(tester), isTrue);
+        expect(
+          tester.widget<TextField>(feeField()).keyboardType,
+          TextInputType.datetime,
+        );
+        expect(
+          find.text(
+            'Rok albo data z naklejki na grobie lub z pokwitowania. '
+            'Zostaw puste, jeśli nie wiesz.',
+          ),
+          findsOneWidget,
+        );
+        await tester.enterText(feeField(), '2031');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await _pumpUntil(
+          tester,
+          () => find.byType(AlertDialog).evaluate().isEmpty,
+        );
+        await _pumpUntil(tester, () => find.text('2031').evaluate().isNotEmpty);
+        expect(find.text('Wpisz'), findsNothing);
+        expect(find.bySemanticsLabel('Opłacone do 2031'), findsOneWidget);
+
+        // The correction is under ✎ (D17): the field holds the date; a date that has passed is a fact (D19).
+        await tester.tap(find.byTooltip('Popraw grób'));
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(TextField, '2031'), findsOneWidget);
+        await tester.enterText(feeField(), '03.2019');
+        await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+        await _pumpUntil(
+          tester,
+          () =>
+              find.text('03.2019').evaluate().isNotEmpty &&
+              find.byType(AlertDialog).evaluate().isEmpty,
+        );
+        expect(
+          tester.widget<Text>(find.text('03.2019')).style?.color,
+          GrobingColors.text,
+        );
+        semantics.dispose();
+        await leaveScreen(tester);
+        final GraveDetail? saved = await tester.runAsync<GraveDetail?>(
+          () => loadGrave(db, grave),
+        );
+        expect(saved?.paidUntil, const PartialDate(2019, 3));
+        await cleanUp(tester);
+      },
+    );
+
+    testWidgets(
+      'D18 — all or nothing: "2301" and "13.2031" keep the window open with their message under the field and save '
+      'nothing, not the name typed either; the message goes as the date changes; Miejsce `next` goes to the fee',
+      (tester) async {
+        final int grave = await graveWithJan(tester);
+        await pumpScreen(tester, GraveScreen(database: db, graveId: grave));
+        await _pumpUntil(
+          tester,
+          () => find.text('nie wiadomo').evaluate().isNotEmpty,
+        );
+
+        await tester.tap(find.byTooltip('Popraw grób'));
+        await tester.pumpAndSettle();
+        // `next` from "Miejsce" goes to "Opłacone do", the last field (3b, v8).
+        await tester.tap(find.widgetWithText(TextField, 'Miejsce'));
+        await tester.pump();
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(feeFocused(tester), isTrue);
+
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Nazwa grobu'),
+          'Grób rodzinny Wymyślonych',
+        );
+        await tester.enterText(feeField(), '2301');
+        await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(
+          find.text('Tak odległa data to raczej pomyłka — sprawdź rok.'),
+          findsOneWidget,
+        );
+        expect(find.byIcon(Icons.error_outline), findsOneWidget);
+        expect(feeFocused(tester), isTrue);
+
+        await tester.enterText(feeField(), '13.2031');
+        await tester.pump();
+        expect(
+          find.text('Tak odległa data to raczej pomyłka — sprawdź rok.'),
+          findsNothing,
+        );
+        await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+        await tester.pumpAndSettle();
+        expect(find.text(badDateMessage), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(TextButton, 'Anuluj'));
+        await tester.pumpAndSettle();
+        expect(find.text('Grób'), findsOneWidget);
+        await leaveScreen(tester);
+        final GraveDetail? saved = await tester.runAsync<GraveDetail?>(
+          () => loadGrave(db, grave),
+        );
+        expect((saved?.name, saved?.paidUntil), (null, null));
+        await cleanUp(tester);
+      },
+    );
+
+    // Whether the row's label, value and "Wpisz" fit at 200% on 360 dp is measured on the emulator (Dev report →
+    // Emulator pass: 162 + 88 dp of 328): the test font draws every letter as a square, wider than Roboto, and the
+    // tab bar under the grave would overflow in it, not on a phone (as in map_r1_and_cemetery_photo_test). Here
+    // the window stands alone.
+    testWidgets(
+      '200% text on 360 dp, the window from "Wpisz": with the keyboard up, the fee field with its floating label '
+      'lies in what the window shows, above the keyboard (dev pass: it stayed under the window\'s edge)',
+      (tester) async {
+        tester.view.physicalSize = const Size(720, 1280);
+        tester.view.devicePixelRatio = 2;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        const GraveDetail grave = GraveDetail(
+          id: 1,
+          cemeteryId: 1,
+          cemeteryName: 'Cmentarz Wymyślony',
+          people: [],
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: GrobingTheme.dark,
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: TextButton(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => GraveDialog(
+                        grave: grave,
+                        sectors: const [],
+                        focus: GraveField.paidUntil,
+                        save: ({name, sector, row, plot, paidUntil}) async {},
+                      ),
+                    ),
+                    child: const Text('otwórz'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('otwórz'));
+        await tester.pumpAndSettle();
+        expect(feeFocused(tester), isTrue);
+
+        // The numeric keyboard: 300 dp of the 640.
+        tester.view.viewInsets = const FakeViewPadding(bottom: 600);
+        await tester.pumpAndSettle();
+        // The decorator holds the hint under the field too (six lines here), so what must show is the floating
+        // label and the line typed in — at the top of the window, the hint under it as far as it goes.
+        final Rect label = tester.getRect(
+          find.descendant(of: feeField(), matching: find.text('Opłacone do')),
+        );
+        final Rect typed = tester.getRect(
+          find.descendant(of: feeField(), matching: find.byType(EditableText)),
+        );
+        final Rect window = tester.getRect(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(SingleChildScrollView),
+          ),
+        );
+        expect(label.top, greaterThanOrEqualTo(window.top));
+        expect(typed.bottom, lessThanOrEqualTo(window.bottom));
+        expect(typed.bottom, lessThanOrEqualTo(640 - 300));
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(db.close);
+      },
+    );
+  });
 }
 
 /// ISSUE-025 AC-1: the sex icon named [label] ("Kobieta", "Mężczyzna") is chosen — or not — as the screen

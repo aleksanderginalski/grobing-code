@@ -9,12 +9,12 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v13 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v14 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
 // claims on families and children's links (ISSUE-019), a person's sex with the start of a union
 // (ISSUE-025), a person's background photo (ISSUE-024), a cemetery's photo (ISSUE-023) and its plan
 // (ISSUE-027, ADR-015), sectors as records the graves point at (ISSUE-028, ADR-016), the pin's date
-// (ISSUE-029), places of residence (ISSUE-042, ADR-020), still without the grave fee (S4). Enums are
+// (ISSUE-029), places of residence (ISSUE-042, ADR-020), the grave fee "paid until" (ISSUE-043, S4). Enums are
 // stored by name, not index: data lives
 // for decades and a reordered enum must not silently change meaning. Renaming an enum value is a schema
 // change and needs a migration; a new value at the end is not.
@@ -220,6 +220,14 @@ class Graves extends Table {
   /// When the pin was saved (ISSUE-029, v12). Pins written before v12 — only the made-up debug data — have
   /// none.
   DateTimeColumn get positionRecordedAt => dateTime().nullable()();
+
+  /// The fee "paid until" (ISSUE-043, v14; brief S4): a year, a month or a day as the sticker or the
+  /// receipt says, without a qualifier (05_DESIGN/grob.md D18) — the shape of a residence's dates. A
+  /// month needs the year and a day the month; none is "nie wiadomo". Kept as numbers, not text, so the
+  /// reminder can later find the earliest date.
+  IntColumn get paidUntilYear => integer().nullable()();
+  IntColumn get paidUntilMonth => integer().nullable()();
+  IntColumn get paidUntilDay => integer().nullable()();
 }
 
 /// FR-003: many burials per grave. A person is buried in one place, but the sources may disagree on
@@ -427,7 +435,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 13;
+  static const int currentSchemaVersion = 14;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -460,6 +468,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from10To11: _from10To11,
             from11To12: _from11To12,
             from12To13: _from12To13,
+            from13To14: _from13To14,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -658,6 +667,14 @@ class GrobingDatabase extends _$GrobingDatabase {
   Future<void> _from12To13(Migrator m, Schema13 schema) async {
     await m.createTable(schema.residences);
     await m.createIndex(schema.residencesPerson);
+  }
+
+  /// ISSUE-043: the grave fee "paid until". Three new nullable columns: no row changes, nothing dropped —
+  /// a restored v13 backup has graves whose fee is "nie wiadomo".
+  Future<void> _from13To14(Migrator m, Schema14 schema) async {
+    await m.addColumn(schema.graves, schema.graves.paidUntilYear);
+    await m.addColumn(schema.graves, schema.graves.paidUntilMonth);
+    await m.addColumn(schema.graves, schema.graves.paidUntilDay);
   }
 }
 

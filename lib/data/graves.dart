@@ -259,6 +259,7 @@ class GraveDetail {
     this.row,
     this.plot,
     this.pin,
+    this.paidUntil,
     required this.people,
     this.photoPath,
   });
@@ -276,6 +277,9 @@ class GraveDetail {
   final GravePin? pin;
 
   bool get hasPin => pin != null;
+
+  /// The fee "paid until" (05_DESIGN/grob.md v8, element 7); null is "nie wiadomo".
+  final PartialDate? paidUntil;
   final List<BuriedPerson> people;
 
   /// The grave's only photo, relative to the media directory (05_DESIGN/grob.md, element 1a).
@@ -430,6 +434,14 @@ Future<GraveDetail?> loadGrave(GrobingDatabase db, int graveId) async {
     row: grave.row,
     plot: grave.plot,
     pin: GravePin.of(grave),
+    paidUntil: switch (grave.paidUntilYear) {
+      final int year => PartialDate(
+        year,
+        grave.paidUntilMonth,
+        grave.paidUntilMonth == null ? null : grave.paidUntilDay,
+      ),
+      null => null,
+    },
     people: [
       for (final Person p in persons) await _buried(db, p, profiles[p.id]),
     ],
@@ -732,10 +744,11 @@ Future<void> setGraveName(GrobingDatabase db, int graveId, String? name) async {
   if (updated != 1) throw StateError('No grave with id $graveId');
 }
 
-/// "Popraw grób" (05_DESIGN/grob.md v6, elements 3a, 3b): the grave's name and the manager's address, in one
-/// transaction. The sector is the cemetery's sector of that name — "b" finds "B" — or a new one without a
-/// zone (ADR-016); the sector the grave had before goes when nothing else keeps it (cmentarz.md D27). Each
-/// part is stored without its own word in front ("Rząd 4" is "4") and none when blank.
+/// "Popraw grób" (05_DESIGN/grob.md v8, elements 3a–3c): the grave's name, the manager's address and the
+/// fee "paid until", in one transaction. The sector is the cemetery's sector of that name — "b" finds "B" —
+/// or a new one without a zone (ADR-016); the sector the grave had before goes when nothing else keeps it
+/// (cmentarz.md D27). Each part is stored without its own word in front ("Rząd 4" is "4") and none when
+/// blank; so is the fee — every call writes the whole window.
 Future<void> setGraveDetails(
   GrobingDatabase db,
   int graveId, {
@@ -743,6 +756,7 @@ Future<void> setGraveDetails(
   String? sector,
   String? row,
   String? plot,
+  PartialDate? paidUntil,
 }) => db.transaction(() async {
   final Grave? grave = await (db.select(
     db.graves,
@@ -755,6 +769,9 @@ Future<void> setGraveDetails(
       sectorId: Value(sectorId),
       row: Value(addressPart(row, rowWord)),
       plot: Value(addressPart(plot, plotWord)),
+      paidUntilYear: Value(paidUntil?.year),
+      paidUntilMonth: Value(paidUntil?.month),
+      paidUntilDay: Value(paidUntil?.day),
     ),
   );
   if (grave.sectorId case final int before? when before != sectorId) {

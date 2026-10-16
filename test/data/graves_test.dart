@@ -355,4 +355,66 @@ void main() {
     expect(seen.first!.graves, isEmpty);
     expect(seen.last!.graves.single.people.single.givenNames, 'Jan');
   });
+
+  test(
+    'ISSUE-043 AC-1, AC-2 — the fee "paid until": none at first; a year, then a month, then a day with the name '
+    'and the address in one write; the view updates; every call writes the whole window, so a call without it '
+    'clears it',
+    () async {
+      final int grave = await addPersonToNewGrave(
+        db,
+        cemeteryId: cemetery,
+        entry: _jan,
+      );
+      final List<PartialDate?> seen = [];
+      final sub = watchGrave(db, grave).listen((g) => seen.add(g?.paidUntil));
+
+      // AC-2: no date is none — the view does not make one up.
+      expect((await loadGrave(db, grave))!.paidUntil, isNull);
+
+      await setGraveDetails(db, grave, paidUntil: const PartialDate(2031));
+      expect((await loadGrave(db, grave))!.paidUntil, const PartialDate(2031));
+
+      await setGraveDetails(
+        db,
+        grave,
+        name: 'Grób rodzinny Wymyślonych',
+        row: '4',
+        paidUntil: const PartialDate(2031, 3),
+      );
+      GraveDetail g = (await loadGrave(db, grave))!;
+      expect(
+        (g.name, g.row, g.paidUntil),
+        ('Grób rodzinny Wymyślonych', '4', const PartialDate(2031, 3)),
+      );
+
+      await setGraveDetails(
+        db,
+        grave,
+        name: 'Grób rodzinny Wymyślonych',
+        paidUntil: const PartialDate(2045, 12, 31),
+      );
+      expect(
+        (await loadGrave(db, grave))!.paidUntil,
+        const PartialDate(2045, 12, 31),
+      );
+      final Grave row = await (db.select(
+        db.graves,
+      )..where((r) => r.id.equals(grave))).getSingle();
+      expect(
+        (row.paidUntilYear, row.paidUntilMonth, row.paidUntilDay),
+        (2045, 12, 31),
+      );
+
+      await setGraveDetails(db, grave, name: 'Grób rodzinny Wymyślonych');
+      g = (await loadGrave(db, grave))!;
+      expect((g.name, g.paidUntil), ('Grób rodzinny Wymyślonych', null));
+
+      await pumpEventQueue();
+      await sub.cancel();
+      expect(seen.first, isNull);
+      expect(seen, contains(const PartialDate(2045, 12, 31)));
+      expect(seen.last, isNull);
+    },
+  );
 }
