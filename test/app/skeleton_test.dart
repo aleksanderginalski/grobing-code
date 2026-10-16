@@ -15,7 +15,6 @@ import 'package:grobing/app/people/me_picker_screen.dart';
 import 'package:grobing/app/people/people_list.dart';
 import 'package:grobing/app/people/people_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
-import 'package:grobing/app/settings/export_placeholder_screen.dart';
 import 'package:grobing/app/settings/hand_over_note_screen.dart';
 import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/app/tabs.dart';
@@ -378,7 +377,6 @@ void main() {
           'Skonfiguruj kopię',
           'Odtwórz z kopii',
           'Dla rodziny',
-          'Eksport dla rodziny',
           'Notka przekazania',
           'Techniczne',
           'Stan danych',
@@ -388,6 +386,9 @@ void main() {
           expect(find.text(t), findsOneWidget, reason: t);
         }
         expect(find.byType(GrobingTabBar), findsNothing);
+        // The backup is the export (ISSUE-040, ADR-018): no export row.
+        expect(find.text('Eksport dla rodziny'), findsNothing);
+        expect(find.textContaining('HTML i PDF'), findsNothing);
 
         await tester.tap(find.text('Notka przekazania'));
         await tester.pumpAndSettle();
@@ -397,16 +398,10 @@ void main() {
           findsOneWidget,
         );
         expect(find.textContaining('program age'), findsOneWidget);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Eksport dla rodziny'));
-        await tester.pumpAndSettle();
-        expect(find.byType(ExportPlaceholderScreen), findsOneWidget);
-        expect(
-          find.textContaining('Eksport powstanie z US-006'),
-          findsOneWidget,
-        );
+        // Four points, none of them about an export.
+        expect(find.text('4.'), findsOneWidget);
+        expect(find.text('5.'), findsNothing);
+        expect(find.textContaining('eksport'), findsNothing);
         await tester.pageBack();
         await tester.pumpAndSettle();
 

@@ -5,7 +5,8 @@ import '../widgets/title_bar.dart';
 
 /// "Notka przekazania" (ISSUE-022 D4; 05_DESIGN/ustawienia.md, element 6, D3): what the paper note kept
 /// by the family must say — the note itself lives outside the app (NT-007). General words only: the
-/// app knows neither where the note is nor the passphrase, and never shows the key.
+/// app knows neither where the note is nor the passphrase, and never shows the key. Four points since
+/// ISSUE-040: there is no separate export to point to — the backup is the export (ADR-018).
 class HandOverNoteScreen extends StatelessWidget {
   const HandOverNoteScreen({super.key});
 
@@ -17,7 +18,6 @@ class HandOverNoteScreen extends StatelessWidget {
         'Zgubione hasło albo plik klucza to utracona kopia.',
     'Jak otworzyć kopię bez Grobing: program age (age-encryption.org) '
         'odszyfrowuje plik, w środku jest archiwum tar z bazą SQLite i zdjęciami.',
-    'Gdzie leży eksport dla rodziny — otworzy się w zwykłej przeglądarce.',
   ];
 
   static const TextStyle _text = TextStyle(

@@ -474,8 +474,12 @@ void main() {
         () => find.byType(SettingsScreen).evaluate().isNotEmpty,
       );
       expect(find.byType(DataStateScreen), findsNothing);
-      // On a 360 dp wide phone the row is below the fold of the settings list.
+      // On a 360 dp wide phone the row is below the fold of the settings list. It may already be built
+      // (inside the list's cache) yet off screen, so bring it into view before the tap (ISSUE-040: one row
+      // fewer made it so).
       await tester.scrollUntilVisible(find.text('Stan danych'), 200);
+      await tester.ensureVisible(find.text('Stan danych'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Stan danych'));
       await _pumpUntil(
         tester,

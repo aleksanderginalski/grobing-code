@@ -15,7 +15,6 @@ import '../photo/photos.dart';
 import '../restore_screen.dart';
 import '../theme.dart';
 import '../widgets/title_bar.dart';
-import 'export_placeholder_screen.dart';
 import 'hand_over_note_screen.dart';
 
 /// The app's version, as `pubspec.yaml` gives it (`version`, without the build number) — kept here so the
@@ -167,14 +166,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   leadsOn: true,
                   dimmed: _backingUp,
                 ),
+                // No export row: the backup is the export (ADR-018; 05_DESIGN/ustawienia.md v3, D10).
                 const _Section('Dla rodziny'),
-                _SettingRow(
-                  leading: const _ActionIcon(Icons.ios_share),
-                  title: 'Eksport dla rodziny',
-                  subtitle: 'HTML i PDF — otworzą się bez Grobing',
-                  onTap: () => _push(const ExportPlaceholderScreen()),
-                  leadsOn: true,
-                ),
                 _SettingRow(
                   leading: const _ActionIcon(Icons.description_outlined),
                   title: 'Notka przekazania',
