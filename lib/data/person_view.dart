@@ -6,6 +6,7 @@ import 'families.dart';
 import 'graves.dart';
 import 'kinship.dart';
 import 'photos.dart';
+import 'residences.dart';
 
 /// Where the person lies, as the "Pochówek" row shows it (05_DESIGN/osoba.md element 9): their first
 /// burial (ADR-006 D3) — the grave and its cemetery.
@@ -63,6 +64,7 @@ class PersonView {
     required this.photoCount,
     required this.firstPhotos,
     this.burial,
+    this.residences = const [],
     required this.relations,
     required this.relativeProfiles,
     this.meId,
@@ -93,6 +95,9 @@ class PersonView {
   final List<String> firstPhotos;
 
   final BurialPlace? burial;
+
+  /// Where the person lived, in the order of the years (element 9a, ISSUE-042).
+  final List<Residence> residences;
 
   /// One level of family for the mini tree (element 6).
   final PersonRelations relations;
@@ -125,6 +130,7 @@ Stream<PersonView?> watchPersonView(GrobingDatabase db, int personId) =>
       db.media,
       db.personMedia,
       db.settings,
+      db.residences,
     }, () => loadPersonView(db, personId));
 
 Future<PersonView?> loadPersonView(GrobingDatabase db, int personId) async {
@@ -182,6 +188,7 @@ Future<PersonView?> loadPersonView(GrobingDatabase db, int personId) async {
     photoCount: photos.length,
     firstPhotos: [for (final PersonPhoto ph in photos.take(4)) ph.relativePath],
     burial: await _burialPlace(db, personId),
+    residences: await residencesOf(db, personId),
     relations: relations,
     relativeProfiles: profiles,
     meId: meId,

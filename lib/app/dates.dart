@@ -66,6 +66,25 @@ String formatDate(QualifiedDate d) {
   };
 }
 
+/// The years of a residence (05_DESIGN/zamieszkanie.md, element 2, D3): `1946–1978`, `ok. 1925 – 1945`,
+/// `od 1946`, `do ok. 1925`; null when neither is known. Bare years stand next to a dash without spaces,
+/// as in [lifeLine]. Hard spaces after "ok.", "od", "do" and before the dash (style-b.md rule 6): in the view's
+/// column of 112 dp the line breaks only after the dash, never between "ok." and its year (seen on the
+/// emulator, ISSUE-042).
+String? stayYears(QualifiedDate? from, QualifiedDate? to) {
+  String held(QualifiedDate d) =>
+      formatDate(d).replaceFirst('ok. ', 'ok.\u00A0');
+  return switch ((from, to)) {
+    (null, null) => null,
+    (final QualifiedDate f, null) => 'od\u00A0${held(f)}',
+    (null, final QualifiedDate t) => 'do\u00A0${held(t)}',
+    (final QualifiedDate f, final QualifiedDate t) =>
+      _bareYear(f) && _bareYear(t)
+          ? '${formatDate(f)}–${formatDate(t)}'
+          : '${held(f)}\u00A0– ${held(t)}',
+  };
+}
+
 /// The years of a life, for a list of people (05_DESIGN/osoby.md, element 4): `1926–2010`, `ur. 1955`,
 /// `ok. 1890 – 1951`; `bez dat` when nothing is known. Months and days stay in the person's entry.
 String lifeYears({QualifiedDate? birth, QualifiedDate? death}) =>

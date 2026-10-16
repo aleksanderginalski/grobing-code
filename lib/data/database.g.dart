@@ -5624,6 +5624,1142 @@ class CemeteryPlansCompanion extends UpdateCompanion<CemeteryPlanRow> {
   }
 }
 
+class $ResidencesTable extends Residences
+    with TableInfo<$ResidencesTable, ResidenceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ResidencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _personIdMeta = const VerificationMeta(
+    'personId',
+  );
+  @override
+  late final GeneratedColumn<int> personId = GeneratedColumn<int>(
+    'person_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES persons (id)',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DateQualifier?, String>
+  fromQualifier = GeneratedColumn<String>(
+    'from_qualifier',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<DateQualifier?>($ResidencesTable.$converterfromQualifiern);
+  static const VerificationMeta _fromYearMeta = const VerificationMeta(
+    'fromYear',
+  );
+  @override
+  late final GeneratedColumn<int> fromYear = GeneratedColumn<int>(
+    'from_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fromMonthMeta = const VerificationMeta(
+    'fromMonth',
+  );
+  @override
+  late final GeneratedColumn<int> fromMonth = GeneratedColumn<int>(
+    'from_month',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fromDayMeta = const VerificationMeta(
+    'fromDay',
+  );
+  @override
+  late final GeneratedColumn<int> fromDay = GeneratedColumn<int>(
+    'from_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DateQualifier?, String>
+  toQualifier = GeneratedColumn<String>(
+    'to_qualifier',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<DateQualifier?>($ResidencesTable.$convertertoQualifiern);
+  static const VerificationMeta _toYearMeta = const VerificationMeta('toYear');
+  @override
+  late final GeneratedColumn<int> toYear = GeneratedColumn<int>(
+    'to_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toMonthMeta = const VerificationMeta(
+    'toMonth',
+  );
+  @override
+  late final GeneratedColumn<int> toMonth = GeneratedColumn<int>(
+    'to_month',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toDayMeta = const VerificationMeta('toDay');
+  @override
+  late final GeneratedColumn<int> toDay = GeneratedColumn<int>(
+    'to_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PlaceLevel, String> level =
+      GeneratedColumn<String>(
+        'level',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<PlaceLevel>($ResidencesTable.$converterlevel);
+  static const VerificationMeta _placeNameMeta = const VerificationMeta(
+    'placeName',
+  );
+  @override
+  late final GeneratedColumn<String> placeName = GeneratedColumn<String>(
+    'place_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _placeUnitMeta = const VerificationMeta(
+    'placeUnit',
+  );
+  @override
+  late final GeneratedColumn<String> placeUnit = GeneratedColumn<String>(
+    'place_unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _countryCodeMeta = const VerificationMeta(
+    'countryCode',
+  );
+  @override
+  late final GeneratedColumn<String> countryCode = GeneratedColumn<String>(
+    'country_code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _countryNameMeta = const VerificationMeta(
+    'countryName',
+  );
+  @override
+  late final GeneratedColumn<String> countryName = GeneratedColumn<String>(
+    'country_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _latMeta = const VerificationMeta('lat');
+  @override
+  late final GeneratedColumn<double> lat = GeneratedColumn<double>(
+    'lat',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lonMeta = const VerificationMeta('lon');
+  @override
+  late final GeneratedColumn<double> lon = GeneratedColumn<double>(
+    'lon',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _geonamesIdMeta = const VerificationMeta(
+    'geonamesId',
+  );
+  @override
+  late final GeneratedColumn<int> geonamesId = GeneratedColumn<int>(
+    'geonames_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameThenMeta = const VerificationMeta(
+    'nameThen',
+  );
+  @override
+  late final GeneratedColumn<String> nameThen = GeneratedColumn<String>(
+    'name_then',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addressMeta = const VerificationMeta(
+    'address',
+  );
+  @override
+  late final GeneratedColumn<String> address = GeneratedColumn<String>(
+    'address',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    personId,
+    fromQualifier,
+    fromYear,
+    fromMonth,
+    fromDay,
+    toQualifier,
+    toYear,
+    toMonth,
+    toDay,
+    level,
+    placeName,
+    placeUnit,
+    countryCode,
+    countryName,
+    lat,
+    lon,
+    geonamesId,
+    nameThen,
+    address,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'residences';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ResidenceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('person_id')) {
+      context.handle(
+        _personIdMeta,
+        personId.isAcceptableOrUnknown(data['person_id']!, _personIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_personIdMeta);
+    }
+    if (data.containsKey('from_year')) {
+      context.handle(
+        _fromYearMeta,
+        fromYear.isAcceptableOrUnknown(data['from_year']!, _fromYearMeta),
+      );
+    }
+    if (data.containsKey('from_month')) {
+      context.handle(
+        _fromMonthMeta,
+        fromMonth.isAcceptableOrUnknown(data['from_month']!, _fromMonthMeta),
+      );
+    }
+    if (data.containsKey('from_day')) {
+      context.handle(
+        _fromDayMeta,
+        fromDay.isAcceptableOrUnknown(data['from_day']!, _fromDayMeta),
+      );
+    }
+    if (data.containsKey('to_year')) {
+      context.handle(
+        _toYearMeta,
+        toYear.isAcceptableOrUnknown(data['to_year']!, _toYearMeta),
+      );
+    }
+    if (data.containsKey('to_month')) {
+      context.handle(
+        _toMonthMeta,
+        toMonth.isAcceptableOrUnknown(data['to_month']!, _toMonthMeta),
+      );
+    }
+    if (data.containsKey('to_day')) {
+      context.handle(
+        _toDayMeta,
+        toDay.isAcceptableOrUnknown(data['to_day']!, _toDayMeta),
+      );
+    }
+    if (data.containsKey('place_name')) {
+      context.handle(
+        _placeNameMeta,
+        placeName.isAcceptableOrUnknown(data['place_name']!, _placeNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_placeNameMeta);
+    }
+    if (data.containsKey('place_unit')) {
+      context.handle(
+        _placeUnitMeta,
+        placeUnit.isAcceptableOrUnknown(data['place_unit']!, _placeUnitMeta),
+      );
+    }
+    if (data.containsKey('country_code')) {
+      context.handle(
+        _countryCodeMeta,
+        countryCode.isAcceptableOrUnknown(
+          data['country_code']!,
+          _countryCodeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_countryCodeMeta);
+    }
+    if (data.containsKey('country_name')) {
+      context.handle(
+        _countryNameMeta,
+        countryName.isAcceptableOrUnknown(
+          data['country_name']!,
+          _countryNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_countryNameMeta);
+    }
+    if (data.containsKey('lat')) {
+      context.handle(
+        _latMeta,
+        lat.isAcceptableOrUnknown(data['lat']!, _latMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_latMeta);
+    }
+    if (data.containsKey('lon')) {
+      context.handle(
+        _lonMeta,
+        lon.isAcceptableOrUnknown(data['lon']!, _lonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_lonMeta);
+    }
+    if (data.containsKey('geonames_id')) {
+      context.handle(
+        _geonamesIdMeta,
+        geonamesId.isAcceptableOrUnknown(data['geonames_id']!, _geonamesIdMeta),
+      );
+    }
+    if (data.containsKey('name_then')) {
+      context.handle(
+        _nameThenMeta,
+        nameThen.isAcceptableOrUnknown(data['name_then']!, _nameThenMeta),
+      );
+    }
+    if (data.containsKey('address')) {
+      context.handle(
+        _addressMeta,
+        address.isAcceptableOrUnknown(data['address']!, _addressMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ResidenceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ResidenceRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      personId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}person_id'],
+      )!,
+      fromQualifier: $ResidencesTable.$converterfromQualifiern.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}from_qualifier'],
+        ),
+      ),
+      fromYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_year'],
+      ),
+      fromMonth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_month'],
+      ),
+      fromDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_day'],
+      ),
+      toQualifier: $ResidencesTable.$convertertoQualifiern.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}to_qualifier'],
+        ),
+      ),
+      toYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}to_year'],
+      ),
+      toMonth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}to_month'],
+      ),
+      toDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}to_day'],
+      ),
+      level: $ResidencesTable.$converterlevel.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}level'],
+        )!,
+      ),
+      placeName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}place_name'],
+      )!,
+      placeUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}place_unit'],
+      ),
+      countryCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}country_code'],
+      )!,
+      countryName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}country_name'],
+      )!,
+      lat: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}lat'],
+      )!,
+      lon: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}lon'],
+      )!,
+      geonamesId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}geonames_id'],
+      ),
+      nameThen: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_then'],
+      ),
+      address: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}address'],
+      ),
+    );
+  }
+
+  @override
+  $ResidencesTable createAlias(String alias) {
+    return $ResidencesTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<DateQualifier, String, String>
+  $converterfromQualifier = const EnumNameConverter<DateQualifier>(
+    DateQualifier.values,
+  );
+  static JsonTypeConverter2<DateQualifier?, String?, String?>
+  $converterfromQualifiern = JsonTypeConverter2.asNullable(
+    $converterfromQualifier,
+  );
+  static JsonTypeConverter2<DateQualifier, String, String>
+  $convertertoQualifier = const EnumNameConverter<DateQualifier>(
+    DateQualifier.values,
+  );
+  static JsonTypeConverter2<DateQualifier?, String?, String?>
+  $convertertoQualifiern = JsonTypeConverter2.asNullable($convertertoQualifier);
+  static JsonTypeConverter2<PlaceLevel, String, String> $converterlevel =
+      const EnumNameConverter<PlaceLevel>(PlaceLevel.values);
+}
+
+class ResidenceRow extends DataClass implements Insertable<ResidenceRow> {
+  final int id;
+  final int personId;
+
+  /// `exact` or `about` (D3); null with the date.
+  final DateQualifier? fromQualifier;
+  final int? fromYear;
+  final int? fromMonth;
+  final int? fromDay;
+  final DateQualifier? toQualifier;
+  final int? toYear;
+  final int? toMonth;
+  final int? toDay;
+  final PlaceLevel level;
+
+  /// Today's name of the locality, or of the country when [level] is `country`.
+  final String placeName;
+
+  /// The locality's unit of the first order ("woj. testowe"); null for a country.
+  final String? placeUnit;
+  final String countryCode;
+  final String countryName;
+  final double lat;
+  final double lon;
+
+  /// The locality's GeoNames id; null for a country.
+  final int? geonamesId;
+  final String? nameThen;
+
+  /// "ul. Przykładowa 3" — text (A1); only in a locality, and then the level is `address`.
+  final String? address;
+  const ResidenceRow({
+    required this.id,
+    required this.personId,
+    this.fromQualifier,
+    this.fromYear,
+    this.fromMonth,
+    this.fromDay,
+    this.toQualifier,
+    this.toYear,
+    this.toMonth,
+    this.toDay,
+    required this.level,
+    required this.placeName,
+    this.placeUnit,
+    required this.countryCode,
+    required this.countryName,
+    required this.lat,
+    required this.lon,
+    this.geonamesId,
+    this.nameThen,
+    this.address,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['person_id'] = Variable<int>(personId);
+    if (!nullToAbsent || fromQualifier != null) {
+      map['from_qualifier'] = Variable<String>(
+        $ResidencesTable.$converterfromQualifiern.toSql(fromQualifier),
+      );
+    }
+    if (!nullToAbsent || fromYear != null) {
+      map['from_year'] = Variable<int>(fromYear);
+    }
+    if (!nullToAbsent || fromMonth != null) {
+      map['from_month'] = Variable<int>(fromMonth);
+    }
+    if (!nullToAbsent || fromDay != null) {
+      map['from_day'] = Variable<int>(fromDay);
+    }
+    if (!nullToAbsent || toQualifier != null) {
+      map['to_qualifier'] = Variable<String>(
+        $ResidencesTable.$convertertoQualifiern.toSql(toQualifier),
+      );
+    }
+    if (!nullToAbsent || toYear != null) {
+      map['to_year'] = Variable<int>(toYear);
+    }
+    if (!nullToAbsent || toMonth != null) {
+      map['to_month'] = Variable<int>(toMonth);
+    }
+    if (!nullToAbsent || toDay != null) {
+      map['to_day'] = Variable<int>(toDay);
+    }
+    {
+      map['level'] = Variable<String>(
+        $ResidencesTable.$converterlevel.toSql(level),
+      );
+    }
+    map['place_name'] = Variable<String>(placeName);
+    if (!nullToAbsent || placeUnit != null) {
+      map['place_unit'] = Variable<String>(placeUnit);
+    }
+    map['country_code'] = Variable<String>(countryCode);
+    map['country_name'] = Variable<String>(countryName);
+    map['lat'] = Variable<double>(lat);
+    map['lon'] = Variable<double>(lon);
+    if (!nullToAbsent || geonamesId != null) {
+      map['geonames_id'] = Variable<int>(geonamesId);
+    }
+    if (!nullToAbsent || nameThen != null) {
+      map['name_then'] = Variable<String>(nameThen);
+    }
+    if (!nullToAbsent || address != null) {
+      map['address'] = Variable<String>(address);
+    }
+    return map;
+  }
+
+  ResidencesCompanion toCompanion(bool nullToAbsent) {
+    return ResidencesCompanion(
+      id: Value(id),
+      personId: Value(personId),
+      fromQualifier: fromQualifier == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromQualifier),
+      fromYear: fromYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromYear),
+      fromMonth: fromMonth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromMonth),
+      fromDay: fromDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromDay),
+      toQualifier: toQualifier == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toQualifier),
+      toYear: toYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toYear),
+      toMonth: toMonth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toMonth),
+      toDay: toDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toDay),
+      level: Value(level),
+      placeName: Value(placeName),
+      placeUnit: placeUnit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(placeUnit),
+      countryCode: Value(countryCode),
+      countryName: Value(countryName),
+      lat: Value(lat),
+      lon: Value(lon),
+      geonamesId: geonamesId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(geonamesId),
+      nameThen: nameThen == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameThen),
+      address: address == null && nullToAbsent
+          ? const Value.absent()
+          : Value(address),
+    );
+  }
+
+  factory ResidenceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ResidenceRow(
+      id: serializer.fromJson<int>(json['id']),
+      personId: serializer.fromJson<int>(json['personId']),
+      fromQualifier: $ResidencesTable.$converterfromQualifiern.fromJson(
+        serializer.fromJson<String?>(json['fromQualifier']),
+      ),
+      fromYear: serializer.fromJson<int?>(json['fromYear']),
+      fromMonth: serializer.fromJson<int?>(json['fromMonth']),
+      fromDay: serializer.fromJson<int?>(json['fromDay']),
+      toQualifier: $ResidencesTable.$convertertoQualifiern.fromJson(
+        serializer.fromJson<String?>(json['toQualifier']),
+      ),
+      toYear: serializer.fromJson<int?>(json['toYear']),
+      toMonth: serializer.fromJson<int?>(json['toMonth']),
+      toDay: serializer.fromJson<int?>(json['toDay']),
+      level: $ResidencesTable.$converterlevel.fromJson(
+        serializer.fromJson<String>(json['level']),
+      ),
+      placeName: serializer.fromJson<String>(json['placeName']),
+      placeUnit: serializer.fromJson<String?>(json['placeUnit']),
+      countryCode: serializer.fromJson<String>(json['countryCode']),
+      countryName: serializer.fromJson<String>(json['countryName']),
+      lat: serializer.fromJson<double>(json['lat']),
+      lon: serializer.fromJson<double>(json['lon']),
+      geonamesId: serializer.fromJson<int?>(json['geonamesId']),
+      nameThen: serializer.fromJson<String?>(json['nameThen']),
+      address: serializer.fromJson<String?>(json['address']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'personId': serializer.toJson<int>(personId),
+      'fromQualifier': serializer.toJson<String?>(
+        $ResidencesTable.$converterfromQualifiern.toJson(fromQualifier),
+      ),
+      'fromYear': serializer.toJson<int?>(fromYear),
+      'fromMonth': serializer.toJson<int?>(fromMonth),
+      'fromDay': serializer.toJson<int?>(fromDay),
+      'toQualifier': serializer.toJson<String?>(
+        $ResidencesTable.$convertertoQualifiern.toJson(toQualifier),
+      ),
+      'toYear': serializer.toJson<int?>(toYear),
+      'toMonth': serializer.toJson<int?>(toMonth),
+      'toDay': serializer.toJson<int?>(toDay),
+      'level': serializer.toJson<String>(
+        $ResidencesTable.$converterlevel.toJson(level),
+      ),
+      'placeName': serializer.toJson<String>(placeName),
+      'placeUnit': serializer.toJson<String?>(placeUnit),
+      'countryCode': serializer.toJson<String>(countryCode),
+      'countryName': serializer.toJson<String>(countryName),
+      'lat': serializer.toJson<double>(lat),
+      'lon': serializer.toJson<double>(lon),
+      'geonamesId': serializer.toJson<int?>(geonamesId),
+      'nameThen': serializer.toJson<String?>(nameThen),
+      'address': serializer.toJson<String?>(address),
+    };
+  }
+
+  ResidenceRow copyWith({
+    int? id,
+    int? personId,
+    Value<DateQualifier?> fromQualifier = const Value.absent(),
+    Value<int?> fromYear = const Value.absent(),
+    Value<int?> fromMonth = const Value.absent(),
+    Value<int?> fromDay = const Value.absent(),
+    Value<DateQualifier?> toQualifier = const Value.absent(),
+    Value<int?> toYear = const Value.absent(),
+    Value<int?> toMonth = const Value.absent(),
+    Value<int?> toDay = const Value.absent(),
+    PlaceLevel? level,
+    String? placeName,
+    Value<String?> placeUnit = const Value.absent(),
+    String? countryCode,
+    String? countryName,
+    double? lat,
+    double? lon,
+    Value<int?> geonamesId = const Value.absent(),
+    Value<String?> nameThen = const Value.absent(),
+    Value<String?> address = const Value.absent(),
+  }) => ResidenceRow(
+    id: id ?? this.id,
+    personId: personId ?? this.personId,
+    fromQualifier: fromQualifier.present
+        ? fromQualifier.value
+        : this.fromQualifier,
+    fromYear: fromYear.present ? fromYear.value : this.fromYear,
+    fromMonth: fromMonth.present ? fromMonth.value : this.fromMonth,
+    fromDay: fromDay.present ? fromDay.value : this.fromDay,
+    toQualifier: toQualifier.present ? toQualifier.value : this.toQualifier,
+    toYear: toYear.present ? toYear.value : this.toYear,
+    toMonth: toMonth.present ? toMonth.value : this.toMonth,
+    toDay: toDay.present ? toDay.value : this.toDay,
+    level: level ?? this.level,
+    placeName: placeName ?? this.placeName,
+    placeUnit: placeUnit.present ? placeUnit.value : this.placeUnit,
+    countryCode: countryCode ?? this.countryCode,
+    countryName: countryName ?? this.countryName,
+    lat: lat ?? this.lat,
+    lon: lon ?? this.lon,
+    geonamesId: geonamesId.present ? geonamesId.value : this.geonamesId,
+    nameThen: nameThen.present ? nameThen.value : this.nameThen,
+    address: address.present ? address.value : this.address,
+  );
+  ResidenceRow copyWithCompanion(ResidencesCompanion data) {
+    return ResidenceRow(
+      id: data.id.present ? data.id.value : this.id,
+      personId: data.personId.present ? data.personId.value : this.personId,
+      fromQualifier: data.fromQualifier.present
+          ? data.fromQualifier.value
+          : this.fromQualifier,
+      fromYear: data.fromYear.present ? data.fromYear.value : this.fromYear,
+      fromMonth: data.fromMonth.present ? data.fromMonth.value : this.fromMonth,
+      fromDay: data.fromDay.present ? data.fromDay.value : this.fromDay,
+      toQualifier: data.toQualifier.present
+          ? data.toQualifier.value
+          : this.toQualifier,
+      toYear: data.toYear.present ? data.toYear.value : this.toYear,
+      toMonth: data.toMonth.present ? data.toMonth.value : this.toMonth,
+      toDay: data.toDay.present ? data.toDay.value : this.toDay,
+      level: data.level.present ? data.level.value : this.level,
+      placeName: data.placeName.present ? data.placeName.value : this.placeName,
+      placeUnit: data.placeUnit.present ? data.placeUnit.value : this.placeUnit,
+      countryCode: data.countryCode.present
+          ? data.countryCode.value
+          : this.countryCode,
+      countryName: data.countryName.present
+          ? data.countryName.value
+          : this.countryName,
+      lat: data.lat.present ? data.lat.value : this.lat,
+      lon: data.lon.present ? data.lon.value : this.lon,
+      geonamesId: data.geonamesId.present
+          ? data.geonamesId.value
+          : this.geonamesId,
+      nameThen: data.nameThen.present ? data.nameThen.value : this.nameThen,
+      address: data.address.present ? data.address.value : this.address,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResidenceRow(')
+          ..write('id: $id, ')
+          ..write('personId: $personId, ')
+          ..write('fromQualifier: $fromQualifier, ')
+          ..write('fromYear: $fromYear, ')
+          ..write('fromMonth: $fromMonth, ')
+          ..write('fromDay: $fromDay, ')
+          ..write('toQualifier: $toQualifier, ')
+          ..write('toYear: $toYear, ')
+          ..write('toMonth: $toMonth, ')
+          ..write('toDay: $toDay, ')
+          ..write('level: $level, ')
+          ..write('placeName: $placeName, ')
+          ..write('placeUnit: $placeUnit, ')
+          ..write('countryCode: $countryCode, ')
+          ..write('countryName: $countryName, ')
+          ..write('lat: $lat, ')
+          ..write('lon: $lon, ')
+          ..write('geonamesId: $geonamesId, ')
+          ..write('nameThen: $nameThen, ')
+          ..write('address: $address')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    personId,
+    fromQualifier,
+    fromYear,
+    fromMonth,
+    fromDay,
+    toQualifier,
+    toYear,
+    toMonth,
+    toDay,
+    level,
+    placeName,
+    placeUnit,
+    countryCode,
+    countryName,
+    lat,
+    lon,
+    geonamesId,
+    nameThen,
+    address,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ResidenceRow &&
+          other.id == this.id &&
+          other.personId == this.personId &&
+          other.fromQualifier == this.fromQualifier &&
+          other.fromYear == this.fromYear &&
+          other.fromMonth == this.fromMonth &&
+          other.fromDay == this.fromDay &&
+          other.toQualifier == this.toQualifier &&
+          other.toYear == this.toYear &&
+          other.toMonth == this.toMonth &&
+          other.toDay == this.toDay &&
+          other.level == this.level &&
+          other.placeName == this.placeName &&
+          other.placeUnit == this.placeUnit &&
+          other.countryCode == this.countryCode &&
+          other.countryName == this.countryName &&
+          other.lat == this.lat &&
+          other.lon == this.lon &&
+          other.geonamesId == this.geonamesId &&
+          other.nameThen == this.nameThen &&
+          other.address == this.address);
+}
+
+class ResidencesCompanion extends UpdateCompanion<ResidenceRow> {
+  final Value<int> id;
+  final Value<int> personId;
+  final Value<DateQualifier?> fromQualifier;
+  final Value<int?> fromYear;
+  final Value<int?> fromMonth;
+  final Value<int?> fromDay;
+  final Value<DateQualifier?> toQualifier;
+  final Value<int?> toYear;
+  final Value<int?> toMonth;
+  final Value<int?> toDay;
+  final Value<PlaceLevel> level;
+  final Value<String> placeName;
+  final Value<String?> placeUnit;
+  final Value<String> countryCode;
+  final Value<String> countryName;
+  final Value<double> lat;
+  final Value<double> lon;
+  final Value<int?> geonamesId;
+  final Value<String?> nameThen;
+  final Value<String?> address;
+  const ResidencesCompanion({
+    this.id = const Value.absent(),
+    this.personId = const Value.absent(),
+    this.fromQualifier = const Value.absent(),
+    this.fromYear = const Value.absent(),
+    this.fromMonth = const Value.absent(),
+    this.fromDay = const Value.absent(),
+    this.toQualifier = const Value.absent(),
+    this.toYear = const Value.absent(),
+    this.toMonth = const Value.absent(),
+    this.toDay = const Value.absent(),
+    this.level = const Value.absent(),
+    this.placeName = const Value.absent(),
+    this.placeUnit = const Value.absent(),
+    this.countryCode = const Value.absent(),
+    this.countryName = const Value.absent(),
+    this.lat = const Value.absent(),
+    this.lon = const Value.absent(),
+    this.geonamesId = const Value.absent(),
+    this.nameThen = const Value.absent(),
+    this.address = const Value.absent(),
+  });
+  ResidencesCompanion.insert({
+    this.id = const Value.absent(),
+    required int personId,
+    this.fromQualifier = const Value.absent(),
+    this.fromYear = const Value.absent(),
+    this.fromMonth = const Value.absent(),
+    this.fromDay = const Value.absent(),
+    this.toQualifier = const Value.absent(),
+    this.toYear = const Value.absent(),
+    this.toMonth = const Value.absent(),
+    this.toDay = const Value.absent(),
+    required PlaceLevel level,
+    required String placeName,
+    this.placeUnit = const Value.absent(),
+    required String countryCode,
+    required String countryName,
+    required double lat,
+    required double lon,
+    this.geonamesId = const Value.absent(),
+    this.nameThen = const Value.absent(),
+    this.address = const Value.absent(),
+  }) : personId = Value(personId),
+       level = Value(level),
+       placeName = Value(placeName),
+       countryCode = Value(countryCode),
+       countryName = Value(countryName),
+       lat = Value(lat),
+       lon = Value(lon);
+  static Insertable<ResidenceRow> custom({
+    Expression<int>? id,
+    Expression<int>? personId,
+    Expression<String>? fromQualifier,
+    Expression<int>? fromYear,
+    Expression<int>? fromMonth,
+    Expression<int>? fromDay,
+    Expression<String>? toQualifier,
+    Expression<int>? toYear,
+    Expression<int>? toMonth,
+    Expression<int>? toDay,
+    Expression<String>? level,
+    Expression<String>? placeName,
+    Expression<String>? placeUnit,
+    Expression<String>? countryCode,
+    Expression<String>? countryName,
+    Expression<double>? lat,
+    Expression<double>? lon,
+    Expression<int>? geonamesId,
+    Expression<String>? nameThen,
+    Expression<String>? address,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (personId != null) 'person_id': personId,
+      if (fromQualifier != null) 'from_qualifier': fromQualifier,
+      if (fromYear != null) 'from_year': fromYear,
+      if (fromMonth != null) 'from_month': fromMonth,
+      if (fromDay != null) 'from_day': fromDay,
+      if (toQualifier != null) 'to_qualifier': toQualifier,
+      if (toYear != null) 'to_year': toYear,
+      if (toMonth != null) 'to_month': toMonth,
+      if (toDay != null) 'to_day': toDay,
+      if (level != null) 'level': level,
+      if (placeName != null) 'place_name': placeName,
+      if (placeUnit != null) 'place_unit': placeUnit,
+      if (countryCode != null) 'country_code': countryCode,
+      if (countryName != null) 'country_name': countryName,
+      if (lat != null) 'lat': lat,
+      if (lon != null) 'lon': lon,
+      if (geonamesId != null) 'geonames_id': geonamesId,
+      if (nameThen != null) 'name_then': nameThen,
+      if (address != null) 'address': address,
+    });
+  }
+
+  ResidencesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? personId,
+    Value<DateQualifier?>? fromQualifier,
+    Value<int?>? fromYear,
+    Value<int?>? fromMonth,
+    Value<int?>? fromDay,
+    Value<DateQualifier?>? toQualifier,
+    Value<int?>? toYear,
+    Value<int?>? toMonth,
+    Value<int?>? toDay,
+    Value<PlaceLevel>? level,
+    Value<String>? placeName,
+    Value<String?>? placeUnit,
+    Value<String>? countryCode,
+    Value<String>? countryName,
+    Value<double>? lat,
+    Value<double>? lon,
+    Value<int?>? geonamesId,
+    Value<String?>? nameThen,
+    Value<String?>? address,
+  }) {
+    return ResidencesCompanion(
+      id: id ?? this.id,
+      personId: personId ?? this.personId,
+      fromQualifier: fromQualifier ?? this.fromQualifier,
+      fromYear: fromYear ?? this.fromYear,
+      fromMonth: fromMonth ?? this.fromMonth,
+      fromDay: fromDay ?? this.fromDay,
+      toQualifier: toQualifier ?? this.toQualifier,
+      toYear: toYear ?? this.toYear,
+      toMonth: toMonth ?? this.toMonth,
+      toDay: toDay ?? this.toDay,
+      level: level ?? this.level,
+      placeName: placeName ?? this.placeName,
+      placeUnit: placeUnit ?? this.placeUnit,
+      countryCode: countryCode ?? this.countryCode,
+      countryName: countryName ?? this.countryName,
+      lat: lat ?? this.lat,
+      lon: lon ?? this.lon,
+      geonamesId: geonamesId ?? this.geonamesId,
+      nameThen: nameThen ?? this.nameThen,
+      address: address ?? this.address,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (personId.present) {
+      map['person_id'] = Variable<int>(personId.value);
+    }
+    if (fromQualifier.present) {
+      map['from_qualifier'] = Variable<String>(
+        $ResidencesTable.$converterfromQualifiern.toSql(fromQualifier.value),
+      );
+    }
+    if (fromYear.present) {
+      map['from_year'] = Variable<int>(fromYear.value);
+    }
+    if (fromMonth.present) {
+      map['from_month'] = Variable<int>(fromMonth.value);
+    }
+    if (fromDay.present) {
+      map['from_day'] = Variable<int>(fromDay.value);
+    }
+    if (toQualifier.present) {
+      map['to_qualifier'] = Variable<String>(
+        $ResidencesTable.$convertertoQualifiern.toSql(toQualifier.value),
+      );
+    }
+    if (toYear.present) {
+      map['to_year'] = Variable<int>(toYear.value);
+    }
+    if (toMonth.present) {
+      map['to_month'] = Variable<int>(toMonth.value);
+    }
+    if (toDay.present) {
+      map['to_day'] = Variable<int>(toDay.value);
+    }
+    if (level.present) {
+      map['level'] = Variable<String>(
+        $ResidencesTable.$converterlevel.toSql(level.value),
+      );
+    }
+    if (placeName.present) {
+      map['place_name'] = Variable<String>(placeName.value);
+    }
+    if (placeUnit.present) {
+      map['place_unit'] = Variable<String>(placeUnit.value);
+    }
+    if (countryCode.present) {
+      map['country_code'] = Variable<String>(countryCode.value);
+    }
+    if (countryName.present) {
+      map['country_name'] = Variable<String>(countryName.value);
+    }
+    if (lat.present) {
+      map['lat'] = Variable<double>(lat.value);
+    }
+    if (lon.present) {
+      map['lon'] = Variable<double>(lon.value);
+    }
+    if (geonamesId.present) {
+      map['geonames_id'] = Variable<int>(geonamesId.value);
+    }
+    if (nameThen.present) {
+      map['name_then'] = Variable<String>(nameThen.value);
+    }
+    if (address.present) {
+      map['address'] = Variable<String>(address.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResidencesCompanion(')
+          ..write('id: $id, ')
+          ..write('personId: $personId, ')
+          ..write('fromQualifier: $fromQualifier, ')
+          ..write('fromYear: $fromYear, ')
+          ..write('fromMonth: $fromMonth, ')
+          ..write('fromDay: $fromDay, ')
+          ..write('toQualifier: $toQualifier, ')
+          ..write('toYear: $toYear, ')
+          ..write('toMonth: $toMonth, ')
+          ..write('toDay: $toDay, ')
+          ..write('level: $level, ')
+          ..write('placeName: $placeName, ')
+          ..write('placeUnit: $placeUnit, ')
+          ..write('countryCode: $countryCode, ')
+          ..write('countryName: $countryName, ')
+          ..write('lat: $lat, ')
+          ..write('lon: $lon, ')
+          ..write('geonamesId: $geonamesId, ')
+          ..write('nameThen: $nameThen, ')
+          ..write('address: $address')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$GrobingDatabase extends GeneratedDatabase {
   _$GrobingDatabase(QueryExecutor e) : super(e);
   $GrobingDatabaseManager get managers => $GrobingDatabaseManager(this);
@@ -5641,6 +6777,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final $PersonMediaTable personMedia = $PersonMediaTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $CemeteryPlansTable cemeteryPlans = $CemeteryPlansTable(this);
+  late final $ResidencesTable residences = $ResidencesTable(this);
   late final Index personMediaMedia = Index(
     'person_media_media',
     'CREATE INDEX person_media_media ON person_media (media_id)',
@@ -5648,6 +6785,10 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   late final Index personMediaBackground = Index(
     'person_media_background',
     'CREATE UNIQUE INDEX person_media_background ON person_media (person_id) WHERE is_background',
+  );
+  late final Index residencesPerson = Index(
+    'residences_person',
+    'CREATE INDEX residences_person ON residences (person_id)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -5668,8 +6809,10 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
     personMedia,
     settings,
     cemeteryPlans,
+    residences,
     personMediaMedia,
     personMediaBackground,
+    residencesPerson,
   ];
 }
 
@@ -5808,6 +6951,24 @@ final class $$PersonsTableReferences
     ).filter((f) => f.mePersonId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_settingsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ResidencesTable, List<ResidenceRow>>
+  _residencesRefsTable(_$GrobingDatabase db) => MultiTypedResultKey.fromTable(
+    db.residences,
+    aliasName: 'persons__id__residences__person_id',
+  );
+
+  $$ResidencesTableProcessedTableManager get residencesRefs {
+    final manager = $$ResidencesTableTableManager(
+      $_db,
+      $_db.residences,
+    ).filter((f) => f.personId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_residencesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -6005,6 +7166,31 @@ class $$PersonsTableFilterComposer
           }) => $$SettingsTableFilterComposer(
             $db: $db,
             $table: $db.settings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> residencesRefs(
+    Expression<bool> Function($$ResidencesTableFilterComposer f) f,
+  ) {
+    final $$ResidencesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.residences,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ResidencesTableFilterComposer(
+            $db: $db,
+            $table: $db.residences,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -6251,6 +7437,31 @@ class $$PersonsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> residencesRefs<T extends Object>(
+    Expression<T> Function($$ResidencesTableAnnotationComposer a) f,
+  ) {
+    final $$ResidencesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.residences,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ResidencesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.residences,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$PersonsTableTableManager
@@ -6273,6 +7484,7 @@ class $$PersonsTableTableManager
             bool burialsRefs,
             bool personMediaRefs,
             bool settingsRefs,
+            bool residencesRefs,
           })
         > {
   $$PersonsTableTableManager(_$GrobingDatabase db, $PersonsTable table)
@@ -6342,6 +7554,7 @@ class $$PersonsTableTableManager
                 burialsRefs = false,
                 personMediaRefs = false,
                 settingsRefs = false,
+                residencesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -6352,6 +7565,7 @@ class $$PersonsTableTableManager
                     if (burialsRefs) db.burials,
                     if (personMediaRefs) db.personMedia,
                     if (settingsRefs) db.settings,
+                    if (residencesRefs) db.residences,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -6478,6 +7692,27 @@ class $$PersonsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (residencesRefs)
+                        await $_getPrefetchedData<
+                          Person,
+                          $PersonsTable,
+                          ResidenceRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PersonsTableReferences
+                              ._residencesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PersonsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).residencesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.personId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -6505,6 +7740,7 @@ typedef $$PersonsTableProcessedTableManager =
         bool burialsRefs,
         bool personMediaRefs,
         bool settingsRefs,
+        bool residencesRefs,
       })
     >;
 typedef $$FamiliesTableCreateCompanionBuilder =
@@ -12832,6 +14068,617 @@ typedef $$CemeteryPlansTableProcessedTableManager =
       CemeteryPlanRow,
       PrefetchHooks Function({bool cemeteryId})
     >;
+typedef $$ResidencesTableCreateCompanionBuilder =
+    ResidencesCompanion Function({
+      Value<int> id,
+      required int personId,
+      Value<DateQualifier?> fromQualifier,
+      Value<int?> fromYear,
+      Value<int?> fromMonth,
+      Value<int?> fromDay,
+      Value<DateQualifier?> toQualifier,
+      Value<int?> toYear,
+      Value<int?> toMonth,
+      Value<int?> toDay,
+      required PlaceLevel level,
+      required String placeName,
+      Value<String?> placeUnit,
+      required String countryCode,
+      required String countryName,
+      required double lat,
+      required double lon,
+      Value<int?> geonamesId,
+      Value<String?> nameThen,
+      Value<String?> address,
+    });
+typedef $$ResidencesTableUpdateCompanionBuilder =
+    ResidencesCompanion Function({
+      Value<int> id,
+      Value<int> personId,
+      Value<DateQualifier?> fromQualifier,
+      Value<int?> fromYear,
+      Value<int?> fromMonth,
+      Value<int?> fromDay,
+      Value<DateQualifier?> toQualifier,
+      Value<int?> toYear,
+      Value<int?> toMonth,
+      Value<int?> toDay,
+      Value<PlaceLevel> level,
+      Value<String> placeName,
+      Value<String?> placeUnit,
+      Value<String> countryCode,
+      Value<String> countryName,
+      Value<double> lat,
+      Value<double> lon,
+      Value<int?> geonamesId,
+      Value<String?> nameThen,
+      Value<String?> address,
+    });
+
+final class $$ResidencesTableReferences
+    extends BaseReferences<_$GrobingDatabase, $ResidencesTable, ResidenceRow> {
+  $$ResidencesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PersonsTable _personIdTable(_$GrobingDatabase db) =>
+      db.persons.createAlias('residences__person_id__persons__id');
+
+  $$PersonsTableProcessedTableManager get personId {
+    final $_column = $_itemColumn<int>('person_id')!;
+
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_personIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ResidencesTableFilterComposer
+    extends Composer<_$GrobingDatabase, $ResidencesTable> {
+  $$ResidencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DateQualifier?, DateQualifier, String>
+  get fromQualifier => $composableBuilder(
+    column: $table.fromQualifier,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get fromYear => $composableBuilder(
+    column: $table.fromYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get fromMonth => $composableBuilder(
+    column: $table.fromMonth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get fromDay => $composableBuilder(
+    column: $table.fromDay,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DateQualifier?, DateQualifier, String>
+  get toQualifier => $composableBuilder(
+    column: $table.toQualifier,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get toYear => $composableBuilder(
+    column: $table.toYear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get toMonth => $composableBuilder(
+    column: $table.toMonth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get toDay => $composableBuilder(
+    column: $table.toDay,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PlaceLevel, PlaceLevel, String> get level =>
+      $composableBuilder(
+        column: $table.level,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get placeName => $composableBuilder(
+    column: $table.placeName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get placeUnit => $composableBuilder(
+    column: $table.placeUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get countryName => $composableBuilder(
+    column: $table.countryName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lat => $composableBuilder(
+    column: $table.lat,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lon => $composableBuilder(
+    column: $table.lon,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get geonamesId => $composableBuilder(
+    column: $table.geonamesId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameThen => $composableBuilder(
+    column: $table.nameThen,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get address => $composableBuilder(
+    column: $table.address,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PersonsTableFilterComposer get personId {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ResidencesTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $ResidencesTable> {
+  $$ResidencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fromQualifier => $composableBuilder(
+    column: $table.fromQualifier,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fromYear => $composableBuilder(
+    column: $table.fromYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fromMonth => $composableBuilder(
+    column: $table.fromMonth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fromDay => $composableBuilder(
+    column: $table.fromDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toQualifier => $composableBuilder(
+    column: $table.toQualifier,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get toYear => $composableBuilder(
+    column: $table.toYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get toMonth => $composableBuilder(
+    column: $table.toMonth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get toDay => $composableBuilder(
+    column: $table.toDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get level => $composableBuilder(
+    column: $table.level,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get placeName => $composableBuilder(
+    column: $table.placeName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get placeUnit => $composableBuilder(
+    column: $table.placeUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get countryName => $composableBuilder(
+    column: $table.countryName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lat => $composableBuilder(
+    column: $table.lat,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lon => $composableBuilder(
+    column: $table.lon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get geonamesId => $composableBuilder(
+    column: $table.geonamesId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameThen => $composableBuilder(
+    column: $table.nameThen,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get address => $composableBuilder(
+    column: $table.address,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PersonsTableOrderingComposer get personId {
+    final $$PersonsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableOrderingComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ResidencesTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $ResidencesTable> {
+  $$ResidencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DateQualifier?, String> get fromQualifier =>
+      $composableBuilder(
+        column: $table.fromQualifier,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<int> get fromYear =>
+      $composableBuilder(column: $table.fromYear, builder: (column) => column);
+
+  GeneratedColumn<int> get fromMonth =>
+      $composableBuilder(column: $table.fromMonth, builder: (column) => column);
+
+  GeneratedColumn<int> get fromDay =>
+      $composableBuilder(column: $table.fromDay, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DateQualifier?, String> get toQualifier =>
+      $composableBuilder(
+        column: $table.toQualifier,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<int> get toYear =>
+      $composableBuilder(column: $table.toYear, builder: (column) => column);
+
+  GeneratedColumn<int> get toMonth =>
+      $composableBuilder(column: $table.toMonth, builder: (column) => column);
+
+  GeneratedColumn<int> get toDay =>
+      $composableBuilder(column: $table.toDay, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<PlaceLevel, String> get level =>
+      $composableBuilder(column: $table.level, builder: (column) => column);
+
+  GeneratedColumn<String> get placeName =>
+      $composableBuilder(column: $table.placeName, builder: (column) => column);
+
+  GeneratedColumn<String> get placeUnit =>
+      $composableBuilder(column: $table.placeUnit, builder: (column) => column);
+
+  GeneratedColumn<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get countryName => $composableBuilder(
+    column: $table.countryName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get lat =>
+      $composableBuilder(column: $table.lat, builder: (column) => column);
+
+  GeneratedColumn<double> get lon =>
+      $composableBuilder(column: $table.lon, builder: (column) => column);
+
+  GeneratedColumn<int> get geonamesId => $composableBuilder(
+    column: $table.geonamesId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get nameThen =>
+      $composableBuilder(column: $table.nameThen, builder: (column) => column);
+
+  GeneratedColumn<String> get address =>
+      $composableBuilder(column: $table.address, builder: (column) => column);
+
+  $$PersonsTableAnnotationComposer get personId {
+    final $$PersonsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ResidencesTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $ResidencesTable,
+          ResidenceRow,
+          $$ResidencesTableFilterComposer,
+          $$ResidencesTableOrderingComposer,
+          $$ResidencesTableAnnotationComposer,
+          $$ResidencesTableCreateCompanionBuilder,
+          $$ResidencesTableUpdateCompanionBuilder,
+          (ResidenceRow, $$ResidencesTableReferences),
+          ResidenceRow,
+          PrefetchHooks Function({bool personId})
+        > {
+  $$ResidencesTableTableManager(_$GrobingDatabase db, $ResidencesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ResidencesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ResidencesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ResidencesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> personId = const Value.absent(),
+                Value<DateQualifier?> fromQualifier = const Value.absent(),
+                Value<int?> fromYear = const Value.absent(),
+                Value<int?> fromMonth = const Value.absent(),
+                Value<int?> fromDay = const Value.absent(),
+                Value<DateQualifier?> toQualifier = const Value.absent(),
+                Value<int?> toYear = const Value.absent(),
+                Value<int?> toMonth = const Value.absent(),
+                Value<int?> toDay = const Value.absent(),
+                Value<PlaceLevel> level = const Value.absent(),
+                Value<String> placeName = const Value.absent(),
+                Value<String?> placeUnit = const Value.absent(),
+                Value<String> countryCode = const Value.absent(),
+                Value<String> countryName = const Value.absent(),
+                Value<double> lat = const Value.absent(),
+                Value<double> lon = const Value.absent(),
+                Value<int?> geonamesId = const Value.absent(),
+                Value<String?> nameThen = const Value.absent(),
+                Value<String?> address = const Value.absent(),
+              }) => ResidencesCompanion(
+                id: id,
+                personId: personId,
+                fromQualifier: fromQualifier,
+                fromYear: fromYear,
+                fromMonth: fromMonth,
+                fromDay: fromDay,
+                toQualifier: toQualifier,
+                toYear: toYear,
+                toMonth: toMonth,
+                toDay: toDay,
+                level: level,
+                placeName: placeName,
+                placeUnit: placeUnit,
+                countryCode: countryCode,
+                countryName: countryName,
+                lat: lat,
+                lon: lon,
+                geonamesId: geonamesId,
+                nameThen: nameThen,
+                address: address,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int personId,
+                Value<DateQualifier?> fromQualifier = const Value.absent(),
+                Value<int?> fromYear = const Value.absent(),
+                Value<int?> fromMonth = const Value.absent(),
+                Value<int?> fromDay = const Value.absent(),
+                Value<DateQualifier?> toQualifier = const Value.absent(),
+                Value<int?> toYear = const Value.absent(),
+                Value<int?> toMonth = const Value.absent(),
+                Value<int?> toDay = const Value.absent(),
+                required PlaceLevel level,
+                required String placeName,
+                Value<String?> placeUnit = const Value.absent(),
+                required String countryCode,
+                required String countryName,
+                required double lat,
+                required double lon,
+                Value<int?> geonamesId = const Value.absent(),
+                Value<String?> nameThen = const Value.absent(),
+                Value<String?> address = const Value.absent(),
+              }) => ResidencesCompanion.insert(
+                id: id,
+                personId: personId,
+                fromQualifier: fromQualifier,
+                fromYear: fromYear,
+                fromMonth: fromMonth,
+                fromDay: fromDay,
+                toQualifier: toQualifier,
+                toYear: toYear,
+                toMonth: toMonth,
+                toDay: toDay,
+                level: level,
+                placeName: placeName,
+                placeUnit: placeUnit,
+                countryCode: countryCode,
+                countryName: countryName,
+                lat: lat,
+                lon: lon,
+                geonamesId: geonamesId,
+                nameThen: nameThen,
+                address: address,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ResidencesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({personId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (personId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.personId,
+                                referencedTable: $$ResidencesTableReferences
+                                    ._personIdTable(db),
+                                referencedColumn: $$ResidencesTableReferences
+                                    ._personIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ResidencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $ResidencesTable,
+      ResidenceRow,
+      $$ResidencesTableFilterComposer,
+      $$ResidencesTableOrderingComposer,
+      $$ResidencesTableAnnotationComposer,
+      $$ResidencesTableCreateCompanionBuilder,
+      $$ResidencesTableUpdateCompanionBuilder,
+      (ResidenceRow, $$ResidencesTableReferences),
+      ResidenceRow,
+      PrefetchHooks Function({bool personId})
+    >;
 
 class $GrobingDatabaseManager {
   final _$GrobingDatabase _db;
@@ -12864,4 +14711,6 @@ class $GrobingDatabaseManager {
       $$SettingsTableTableManager(_db, _db.settings);
   $$CemeteryPlansTableTableManager get cemeteryPlans =>
       $$CemeteryPlansTableTableManager(_db, _db.cemeteryPlans);
+  $$ResidencesTableTableManager get residences =>
+      $$ResidencesTableTableManager(_db, _db.residences);
 }

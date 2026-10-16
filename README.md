@@ -160,6 +160,12 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   `gps`) i data zapisu (`position_recorded_at`, od v12). Zapis: `setGravePin` w `lib/data/graves.dart`. Migracja v11→v12 to
   jedna kolumna — pinezki sprzed v12 (tylko wymyślone) zostają bez daty. Wartość `plan` nie potrzebowała kroku, bo źródło
   jest zapisane nazwą.
+- **Miejsca zamieszkania (schemat v13, ISSUE-042, ADR-020 w vaulcie).** Tabela `residences`: osoba, okres „od – do” (każdy
+  koniec z dopiskiem `exact`/`about` albo pusty — `RESI` z `FROM … TO …` w GEDCOM 7), poziom miejsca (`country` · `locality` ·
+  `address`) i samo miejsce **słowami w wierszu**: nazwa dziś, jednostka, kraj (kod i nazwa), punkt, id z GeoNames, opcjonalnie
+  nazwa z tamtego czasu i adres (tekst, punkt zostaje w środku miejscowości). Kopia czyta się więc bez listy miejsc z
+  aplikacji. Zapis razem z „Zapisz” wpisu, w jego transakcji (`lib/data/residences.dart` → `writeResidences` przez
+  `AlsoWrite`). Migracja v12→v13 to `createTable` z indeksem — kopia v12 odtwarza się z osobami bez zamieszkań.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
@@ -291,6 +297,35 @@ Cmentarz dodaje się z wbudowanej bazy cmentarzy Polski (ISSUE-015): `assets/cem
 - **Zdjęcie satelitarne** otwiera się w innej aplikacji (Mapy Google, bez nich przeglądarka) adresem z
   `basemap=satellite`, tylko po dotknięciu (`lib/app/external_link.dart`, kanał `grobing/external` w
   `ExternalLinks.kt`). `geo:` nie umie wybrać warstwy satelitarnej.
+
+## Lista miejsc
+
+Miejsce zamieszkania wybiera się z listy w aplikacji (ISSUE-042): `assets/places/places.db` (SQLite, ok. 11,7 MB) — 239 krajów
+i ok. 188 tys. miejscowości. Działa bez sieci.
+
+- **⚠️ Pliku nie ma w repo** — `*.db` jest w `.gitignore` (blok danych rodziny). To celowe: lista ma nazwy wszystkich
+  miejscowości, także tych z listy rdzeni strażnika treści, więc w repo zatrzymałaby każdy commit, a wyjątek w strażniku byłby
+  dziurą w jedynej ochronie publikacji (plan ISSUE-042, G1). **Na czystym klonie zbuduj listę przed pierwszym
+  `flutter test`, `run` albo `build`** — `pubspec.yaml` ją wymienia, więc bez niej Flutter nie zbuduje assetów.
+- **Zakres:** wszystkie miejscowości (GeoNames, klasa `P`, bez dzielnic `PPLX`) **Polski, Ukrainy, Białorusi i Litwy** (granice
+  sprzed 1945), a ze świata `cities5000` (powyżej 5000 mieszkańców i stolice jednostek 1. rzędu). Z `cities1000` plik miał 18 MB,
+  ponad próg 15 MB z planu. Kraje i ich punkty etykiet: Natural Earth 1:10m admin-0. Polskie nazwy z nazw alternatywnych GeoNames
+  (`pl`); nazwy historyczne i inne polskie zapisy wsi z czterech krajów są tylko słowami do szukania.
+- **Kolejność wyników:** dopasowanie od początku nazwy przed dopasowaniem w środku, potem liczba mieszkańców (mieszkańcy Polski ×10,
+  Ukrainy, Białorusi i Litwy ×3), stolica i siedziby jednostek, potem alfabet. Dla 1–2 liter wyniki są policzone przy budowie
+  (tabela `short_keys`), bo zakres jednej litery to dziesiątki tysięcy słów.
+- **Licencje:** GeoNames — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (pod wynikami podpis „Lista miejsc: GeoNames
+  (CC BY 4.0) · Natural Earth”); Natural Earth — domena publiczna.
+- **W aplikacji** pierwszy wybór miejsca kopiuje plik do `places/` w katalogu wsparcia aplikacji (SQLite nie otwiera assetu) i
+  otwiera go tylko do odczytu (`lib/app/person/place_list_asset.dart`). Kopia zapasowa bierze tylko `grobing.db` i `media/`, więc
+  lista do niej nie wchodzi. Nowa wersja aplikacji z inną listą (inny rozmiar pliku) kopiuje ją od nowa.
+- **Budowa:** pobierz do jednego katalogu (poza repo) i rozpakuj:
+  - z [GeoNames](https://download.geonames.org/export/dump/): `PL.zip`, `UA.zip`, `BY.zip`, `LT.zip`, `cities5000.zip`,
+    `alternateNamesV2.zip` (ok. 200 MB, po rozpakowaniu ok. 800 MB), `admin1CodesASCII.txt`;
+  - z [Natural Earth](https://github.com/nvkelso/natural-earth-vector/tree/master/geojson): `ne_10m_admin_0_countries.geojson`;
+
+  potem `dart run tool/places/build_places.dart <katalog>` (ok. 25 s). Obecny plik: zrzut GeoNames z 2026-10-16, Natural Earth
+  pobrany tego samego dnia (tabela `meta` w pliku). Nowy zrzut oznacza nową wersję aplikacji.
 
 ## Zdjęcia
 

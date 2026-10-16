@@ -12,7 +12,7 @@ import 'package:grobing/data/database.dart';
 // cemetery; v8 (ISSUE-024) — a photo link got its
 // background mark; v7 (ISSUE-025) — persons got a sex; v6 (ISSUE-019) gave family_children an id and let
 // assertions cite a family or a child's link (ADR-011).
-const List<String> _v11Tables = [
+const List<String> _v13Tables = [
   'assertions',
   'burials',
   'cemeteries',
@@ -25,6 +25,7 @@ const List<String> _v11Tables = [
   'media',
   'person_media',
   'persons',
+  'residences',
   'sectors',
   'settings',
 ];
@@ -43,7 +44,7 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 12, integrity ok, exactly the v11 tables (v12 adds a column), foreign keys on, the crop and the background '
+      'user_version 13, integrity ok, exactly the v13 tables (v12 added a column, v13 residences), foreign keys on, the crop and the background '
       'on the photo link, claims on families and on children\'s links, a person\'s sex, a photo\'s '
       'cemetery, a pin with its date',
       () async {
@@ -52,7 +53,7 @@ void main() {
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 12);
+        expect(await _single(db, 'PRAGMA user_version'), 13);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -65,7 +66,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v11Tables);
+        expect(tables, _v13Tables);
         final List<String> linkColumns =
             (await db.customSelect('PRAGMA table_info(person_media)').get())
                 .map((r) => r.read<String>('name'))
@@ -104,6 +105,27 @@ void main() {
             'position_source',
             'position_accuracy_m',
             'position_recorded_at',
+          ]),
+        );
+        // ISSUE-042 (ADR-020): a residence's period, level and place in words, the name of the time and the address.
+        expect(
+          await columns('residences'),
+          containsAll([
+            'person_id',
+            'from_qualifier',
+            'from_year',
+            'to_qualifier',
+            'to_year',
+            'level',
+            'place_name',
+            'place_unit',
+            'country_code',
+            'country_name',
+            'lat',
+            'lon',
+            'geonames_id',
+            'name_then',
+            'address',
           ]),
         );
       },

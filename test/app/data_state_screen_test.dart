@@ -78,9 +78,9 @@ void main() {
 
       expect(find.text('Wersja schematu'), findsOneWidget);
       expect(
-        find.text('12'),
+        find.text('13'),
         findsOneWidget,
-      ); // the schema version (12 since ISSUE-029); every count is 0
+      ); // the schema version (13 since ISSUE-042); every count is 0
       expect(find.text('Osoby'), findsOneWidget);
       expect(find.text('Pliki zdjęć'), findsOneWidget);
       expect(find.text('Twierdzenia (źródła)'), findsOneWidget);
@@ -93,7 +93,7 @@ void main() {
       // ISSUE-028: and the sectors.
       expect(find.text('Kwatery'), findsOneWidget);
       expect(find.text('sectors'), findsNothing);
-      expect(find.text('0'), findsNWidgets(15)); // 14 tables + photo files
+      expect(find.text('0'), findsNWidgets(16)); // 15 tables + photo files
 
       // The button writes a file and a transaction: run it on the real clock, not the test's fake one.
       await tester.runAsync(() async {
@@ -116,7 +116,7 @@ void main() {
             of: find.text('Wersja schematu'),
             matching: find.byType(Row),
           ),
-          matching: find.text('12'),
+          matching: find.text('13'),
         ),
         findsOneWidget,
       );

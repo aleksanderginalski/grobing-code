@@ -26,23 +26,21 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test(
-    'empty database: schema 12, zero rows in every table, no photos',
-    () async {
-      final DataState state = await readDataState(db, mediaDir: media);
+  test('empty database: schema 13, zero rows in every table, no photos', () async {
+    final DataState state = await readDataState(db, mediaDir: media);
 
-      expect(state.schemaVersion, 12);
-      // v4 (ISSUE-017): person_media joins the 11 tables of v3, v10 (ISSUE-027) cemetery_plans, v11
-      // (ISSUE-028) sectors — and the fingerprint finds each by itself.
-      expect(state.rowCounts, hasLength(14));
-      expect(state.rowCounts, contains('cemetery_plans'));
-      expect(state.rowCounts, contains('sectors'));
-      expect(state.rowCounts, contains('person_media'));
-      expect(state.rowCounts.values, everyElement(0));
-      expect(state.mediaFileCount, 0);
-      expect(state.shortFingerprint, hasLength(16));
-    },
-  );
+    expect(state.schemaVersion, 13);
+    // v4 (ISSUE-017): person_media joins the 11 tables of v3, v10 (ISSUE-027) cemetery_plans, v11
+    // (ISSUE-028) sectors, v13 (ISSUE-042) residences — and the fingerprint finds each by itself.
+    expect(state.rowCounts, hasLength(15));
+    expect(state.rowCounts, contains('residences'));
+    expect(state.rowCounts, contains('cemetery_plans'));
+    expect(state.rowCounts, contains('sectors'));
+    expect(state.rowCounts, contains('person_media'));
+    expect(state.rowCounts.values, everyElement(0));
+    expect(state.mediaFileCount, 0);
+    expect(state.shortFingerprint, hasLength(16));
+  });
 
   test('row counts follow the data', () async {
     await addFictionalData(db, media);

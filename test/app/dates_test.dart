@@ -187,4 +187,28 @@ void main() {
     );
     expect(lifeYears(), 'bez dat');
   });
+
+  test(
+    'ISSUE-042 — the years of a residence (zamieszkanie.md element 2, D3): a period of two bare years with a '
+    'dash, otherwise spaced; "od", "do"; none without years — hard spaces after "ok.", "od", "do" and before '
+    'the dash, so a line breaks only after it',
+    () {
+      QualifiedDate exact(int y, [int? m]) =>
+          QualifiedDate(DateQualifier.exact, PartialDate(y, m));
+      QualifiedDate about(int y) =>
+          QualifiedDate(DateQualifier.about, PartialDate(y));
+      const String nb = '\u00A0';
+
+      expect(stayYears(exact(1946), exact(1978)), '1946–1978');
+      expect(stayYears(about(1925), exact(1945)), 'ok.${nb}1925$nb– 1945');
+      expect(
+        stayYears(about(1930), about(1945)),
+        'ok.${nb}1930$nb– ok.${nb}1945',
+      );
+      expect(stayYears(exact(1946, 3), exact(1978)), '03.1946$nb– 1978');
+      expect(stayYears(exact(1946), null), 'od${nb}1946');
+      expect(stayYears(null, about(1925)), 'do${nb}ok.${nb}1925');
+      expect(stayYears(null, null), isNull);
+    },
+  );
 }

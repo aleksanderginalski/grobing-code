@@ -284,8 +284,10 @@ void main() {
     (tester) async {
       await withFamily(tester);
       await pumpView(tester, maria);
-      await scrollTo(tester, find.text('Jej mama Maria'));
+      // The header checked on the way: steps of 200 to the last row go past it since the view grew (ISSUE-042, 9a).
+      await scrollTo(tester, find.text('Jak łączy się ze mną'));
       expect(find.text('Jak łączy się ze mną'), findsOneWidget);
+      await scrollTo(tester, find.text('Jej mama Maria'));
       expect(
         find.text('Ja'),
         findsNWidgets(2),
@@ -300,6 +302,8 @@ void main() {
         findsNothing,
       ); // G2 (ISSUE-035): the tree's words, not here
 
+      await tester.ensureVisible(find.text('Mama Anna'));
+      await _settle(tester);
       await tester.tap(find.text('Mama Anna'));
       await _pumpUntil(tester, () => _shown(find.text('Anna Wymyślona')));
       await _settle(tester);
@@ -342,12 +346,13 @@ void main() {
         );
       });
       await pumpView(tester, stranger);
+      // The upper text first: steps of 200 to the lower one went past it once the view grew (ISSUE-042, 9a).
       await scrollTo(
         tester,
-        find.textContaining('Nie wiadomo jeszcze, jak łączy się z Tobą'),
+        find.text('Rodziny jeszcze nie ma. Dodasz ją pod ✎.'),
       );
       expect(
-        find.text('Rodziny jeszcze nie ma. Dodasz ją pod ✎.'),
+        find.textContaining('Nie wiadomo jeszcze, jak łączy się z Tobą'),
         findsOneWidget,
       );
       await cleanUp(tester);

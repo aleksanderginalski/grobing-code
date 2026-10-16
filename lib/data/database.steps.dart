@@ -3344,6 +3344,493 @@ i1.GeneratedColumn<int> _column_62(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NULL',
     );
+
+final class Schema13 extends i0.VersionedSchema {
+  Schema13({required super.database}) : super(version: 13);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    persons,
+    families,
+    familyPartners,
+    familyChildren,
+    events,
+    cemeteries,
+    sectors,
+    graves,
+    burials,
+    assertions,
+    media,
+    personMedia,
+    settings,
+    cemeteryPlans,
+    residences,
+    personMediaMedia,
+    personMediaBackground,
+    residencesPerson,
+  ];
+  late final Shape16 persons = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'persons',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_52,
+        _column_4,
+        _column_5,
+        _column_6,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 families = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'families',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_0],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 familyPartners = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'family_partners',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(family_id, person_id)'],
+      columns: [_column_7, _column_8],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape14 familyChildren = Shape14(
+    source: i0.VersionedTable(
+      entityName: 'family_children',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(family_id, person_id)'],
+      columns: [_column_0, _column_7, _column_8],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 events = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'events',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((person_id IS NULL)<>(family_id IS NULL))',
+        'CHECK((type IN (\'birth\', \'death\', \'burial\'))=(person_id IS NOT NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape4 cemeteries = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'cemeteries',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_24,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape20 sectors = Shape20(
+    source: i0.VersionedTable(
+      entityName: 'sectors',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(cemetery_id, name_key)'],
+      columns: [_column_0, _column_25, _column_20, _column_59, _column_60],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape22 graves = Shape22(
+    source: i0.VersionedTable(
+      entityName: 'graves',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [
+        _column_0,
+        _column_25,
+        _column_44,
+        _column_61,
+        _column_27,
+        _column_28,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_62,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 burials = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'burials',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['UNIQUE(person_id, grave_id)'],
+      columns: [_column_0, _column_8, _column_33],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape15 assertions = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'assertions',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((event_id IS NOT NULL)+(burial_id IS NOT NULL)+(family_id IS NOT NULL)+(family_child_id IS NOT NULL)= 1)',
+      ],
+      columns: [
+        _column_0,
+        _column_34,
+        _column_35,
+        _column_11,
+        _column_51,
+        _column_36,
+        _column_37,
+        _column_38,
+        _column_39,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape18 media = Shape18(
+    source: i0.VersionedTable(
+      entityName: 'media',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_0, _column_40, _column_41, _column_54],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape17 personMedia = Shape17(
+    source: i0.VersionedTable(
+      entityName: 'person_media',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(person_id, media_id)'],
+      columns: [
+        _column_8,
+        _column_45,
+        _column_46,
+        _column_47,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_53,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 settings = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(id = 1)'],
+      columns: [_column_42, _column_43],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape19 cemeteryPlans = Shape19(
+    source: i0.VersionedTable(
+      entityName: 'cemetery_plans',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(cemetery_id)'],
+      columns: [
+        _column_25,
+        _column_38,
+        _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape23 residences = Shape23(
+    source: i0.VersionedTable(
+      entityName: 'residences',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((level = \'address\')=(address IS NOT NULL))',
+        'CHECK((level = \'country\')=(geonames_id IS NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_8,
+        _column_63,
+        _column_64,
+        _column_65,
+        _column_66,
+        _column_67,
+        _column_68,
+        _column_69,
+        _column_70,
+        _column_71,
+        _column_72,
+        _column_73,
+        _column_74,
+        _column_75,
+        _column_76,
+        _column_77,
+        _column_78,
+        _column_79,
+        _column_80,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index personMediaMedia = i1.Index(
+    'person_media_media',
+    'CREATE INDEX person_media_media ON person_media (media_id)',
+  );
+  final i1.Index personMediaBackground = i1.Index(
+    'person_media_background',
+    'CREATE UNIQUE INDEX person_media_background ON person_media (person_id) WHERE is_background',
+  );
+  final i1.Index residencesPerson = i1.Index(
+    'residences_person',
+    'CREATE INDEX residences_person ON residences (person_id)',
+  );
+}
+
+class Shape23 extends i0.VersionedTable {
+  Shape23({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get personId =>
+      columnsByName['person_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get fromQualifier =>
+      columnsByName['from_qualifier']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get fromYear =>
+      columnsByName['from_year']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get fromMonth =>
+      columnsByName['from_month']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get fromDay =>
+      columnsByName['from_day']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get toQualifier =>
+      columnsByName['to_qualifier']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get toYear =>
+      columnsByName['to_year']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get toMonth =>
+      columnsByName['to_month']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get toDay =>
+      columnsByName['to_day']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get level =>
+      columnsByName['level']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get placeName =>
+      columnsByName['place_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get placeUnit =>
+      columnsByName['place_unit']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get countryCode =>
+      columnsByName['country_code']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get countryName =>
+      columnsByName['country_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<double> get lat =>
+      columnsByName['lat']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<double> get lon =>
+      columnsByName['lon']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<int> get geonamesId =>
+      columnsByName['geonames_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get nameThen =>
+      columnsByName['name_then']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get address =>
+      columnsByName['address']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_63(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'from_qualifier',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_64(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'from_year',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_65(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'from_month',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_66(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'from_day',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_67(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'to_qualifier',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_68(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'to_year',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_69(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'to_month',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_70(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'to_day',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_71(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'level',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_72(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'place_name',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_73(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'place_unit',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_74(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'country_code',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_75(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'country_name',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<double> _column_76(String aliasedName) =>
+    i1.GeneratedColumn<double>(
+      'lat',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.double,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<double> _column_77(String aliasedName) =>
+    i1.GeneratedColumn<double>(
+      'lon',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.double,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_78(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'geonames_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_79(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'name_then',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_80(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'address',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
@@ -3356,6 +3843,7 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema10 schema) from9To10,
   required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
   required Future<void> Function(i1.Migrator m, Schema12 schema) from11To12,
+  required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -3414,6 +3902,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from11To12(migrator, schema);
         return 12;
+      case 12:
+        final schema = Schema13(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from12To13(migrator, schema);
+        return 13;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -3432,6 +3925,7 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema10 schema) from9To10,
   required Future<void> Function(i1.Migrator m, Schema11 schema) from10To11,
   required Future<void> Function(i1.Migrator m, Schema12 schema) from11To12,
+  required Future<void> Function(i1.Migrator m, Schema13 schema) from12To13,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -3445,5 +3939,6 @@ i1.OnUpgrade stepByStep({
     from9To10: from9To10,
     from10To11: from10To11,
     from11To12: from11To12,
+    from12To13: from12To13,
   ),
 );

@@ -7,6 +7,7 @@ import '../../data/families.dart';
 import '../../data/graves.dart' show QualifiedDate;
 import '../../data/person_view.dart';
 import '../../data/photos.dart' show PersonPhotoEdits, ProfilePhoto;
+import '../../data/residences.dart' show Residence, impliedEnds;
 import '../dates.dart';
 import '../grave/cemetery_screen.dart';
 import '../grave/person_form_screen.dart';
@@ -24,6 +25,7 @@ import '../theme.dart';
 import '../widgets/buttons.dart';
 import 'kinship_names.dart';
 import 'mini_tree.dart';
+import 'residence_screen.dart' show residenceLabel, residenceLines;
 
 /// Opens the view of [personId] (05_DESIGN/osoba.md, ISSUE-024) — the one way to it: a person's card in
 /// the grave and in Osoby, a relative's chip or card in the form, a node of the mini tree or the chain
@@ -84,14 +86,16 @@ class _PersonScreenState extends State<PersonScreen> {
 
   /// ✎ (element 1) — and "Dodaj zdjęcie" (element 10, D20), which opens the same correction with the
   /// photo sheet over it at once.
-  Future<void> _correct({bool pickPhotos = false}) => openPersonEntry(
-    context,
-    widget.database,
-    widget.personId,
-    photos: widget.photos,
-    tab: widget.tab,
-    pickPhotosAtStart: pickPhotos,
-  );
+  Future<void> _correct({bool pickPhotos = false, bool addResidence = false}) =>
+      openPersonEntry(
+        context,
+        widget.database,
+        widget.personId,
+        photos: widget.photos,
+        tab: widget.tab,
+        pickPhotosAtStart: pickPhotos,
+        addResidenceAtStart: addResidence,
+      );
 
   /// Pochówek (element 9): the cemetery with this grave marked — on the map when it has a pin, on the list
   /// without one (05_DESIGN/cmentarz.md D23; D17 holds until pins can be set, US-008).
@@ -428,6 +432,14 @@ class _PersonScreenState extends State<PersonScreen> {
           ),
           _padded(_dates(v)),
         ],
+        // Element 9a (v2.5): the residences — also without any, as the place to add them (zamieszkanie.md D1).
+        _padded(
+          const _SectionHeader(
+            icon: Icons.home_outlined,
+            text: 'Miejsca zamieszkania',
+          ),
+        ),
+        _padded(_residences(v)),
         // Element 10: the photos — also without any (D20), as the place to add them.
         _padded(
           _SectionHeader(
@@ -629,6 +641,41 @@ class _PersonScreenState extends State<PersonScreen> {
         for (final (int i, Widget row) in rows.indexed) ...[
           if (i > 0) const Divider(height: 1, color: GrobingColors.outline),
           row,
+        ],
+      ],
+    );
+  }
+
+  /// Element 9a (zamieszkanie.md 1–4): a row for each residence in the order of the years, without an action
+  /// (the map is ISSUE-045's); without any, "Dodaj miejsce" opens the correction with the window at once.
+  Widget _residences(PersonView v) {
+    if (v.residences.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Nie ma jeszcze zapisanych miejsc.',
+            style: TextStyle(color: GrobingColors.textMuted, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            style: secondaryButtonStyle.copyWith(
+              minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
+            ),
+            onPressed: () => _correct(addResidence: true),
+            icon: const Icon(Icons.add_home_outlined),
+            label: const Text('Dodaj miejsce'),
+          ),
+        ],
+      );
+    }
+    final List<QualifiedDate?> ends = impliedEnds(v.residences);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (int i, Residence r) in v.residences.indexed) ...[
+          if (i > 0) const Divider(height: 1, color: GrobingColors.outline),
+          _ResidenceRow(r, impliedTo: ends[i]),
         ],
       ],
     );
@@ -957,6 +1004,76 @@ class _DateRow extends StatelessWidget {
                     _RowLabel(label, onTop: false),
                     const SizedBox(width: 12),
                     Expanded(child: valueText),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A row of element 9a (zamieszkanie.md, element 2): the years in a column of 112 dp — over the place with
+/// large text, as the rows of element 8 — and the place in one or two lines. No action.
+class _ResidenceRow extends StatelessWidget {
+  const _ResidenceRow(this.residence, {this.impliedTo});
+
+  final Residence residence;
+
+  /// The end the next residence gives this one when it has none (zamieszkanie.md v1.2, D12).
+  final QualifiedDate? impliedTo;
+
+  @override
+  Widget build(BuildContext context) {
+    final ({String first, String? second}) lines = residenceLines(residence);
+    final bool onTop = _labelOnTop(context);
+    final Widget years = Text(
+      stayYears(residence.from, residence.to ?? impliedTo) ?? '',
+      style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+    );
+    final Widget place = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          lines.first,
+          style: const TextStyle(color: GrobingColors.text, fontSize: 16),
+        ),
+        if (lines.second case final String second)
+          Text(
+            second,
+            style: const TextStyle(
+              color: GrobingColors.textMuted,
+              fontSize: 14,
+            ),
+          ),
+      ],
+    );
+    final bool noYears = residence.from == null && residence.to == null;
+    return Semantics(
+      container: true,
+      label: residenceLabel(residence, impliedTo: impliedTo),
+      excludeSemantics: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: onTop
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!noYears)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: years,
+                      ),
+                    place,
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 112, child: years),
+                    const SizedBox(width: 12),
+                    Expanded(child: place),
                   ],
                 ),
         ),

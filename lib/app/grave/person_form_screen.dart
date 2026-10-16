@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/graves.dart';
+import '../../data/places.dart' show PlaceList;
+import '../../data/residences.dart';
 import '../family/family_section.dart';
+import '../person/residence_screen.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
 import '../photo/photo_viewer_screen.dart' show PhotoErrorLine;
@@ -83,6 +86,7 @@ Future<void> openPersonEntry(
   Photos? photos,
   AppTab tab = AppTab.map,
   bool pickPhotosAtStart = false,
+  bool addResidenceAtStart = false,
 }) async {
   if (PersonFormScreen.isCorrecting(personId)) {
     Navigator.of(context).popUntil(
@@ -114,6 +118,7 @@ Future<void> openPersonEntry(
         photos: photos,
         tab: tab,
         pickPhotosAtStart: pickPhotosAtStart,
+        addResidenceAtStart: addResidenceAtStart,
       ),
     ),
   );
@@ -129,10 +134,19 @@ class PersonFormScreen extends StatefulWidget {
     this.photos,
     this.tab = AppTab.map,
     this.pickPhotosAtStart = false,
+    this.addResidenceAtStart = false,
+    this.places,
   });
 
   final GrobingDatabase database;
   final PersonFormMode mode;
+
+  /// "Dodaj miejsce" in the person's view (05_DESIGN/zamieszkanie.md, element 4): the window "Miejsce
+  /// zamieszkania" opens over the form at once, as "Dodaj zdjęcie" opens the photo sheet.
+  final bool addResidenceAtStart;
+
+  /// The list of places for the residences' choice; the bundled one when null (tests give a made-up one).
+  final Future<PlaceList>? places;
 
   /// The person's photos (element 1a, ISSUE-017), and passed on to the grave view that replaces the form
   /// after a new grave (ISSUE-016). Null only in tests of other features: then the form has no photos.
@@ -209,6 +223,13 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 
   late final String _initialSnapshot = _snapshot();
 
+  /// The person's residences while the form is open, in the order they were entered (element 9b); written
+  /// with "Zapisz" (zamieszkanie.md D5). A correction reads the stored ones first; until then the section
+  /// is not shown and "Zapisz" leaves them as they are.
+  List<Residence> _residences = [];
+  List<Residence> _storedResidences = [];
+  late bool _residencesRead = widget.mode is! Correction;
+
   /// The person's photos while the form is open; written with "Zapisz" (wpis-osoby.md D-zdjęcie-2).
   late final PersonPhotosDraft? _photos = switch (widget.photos) {
     final Photos photos => PersonPhotosDraft(
@@ -247,6 +268,19 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     final Future<void>? loaded = _photos?.load();
     if (widget.mode case Correction(:final BuriedPerson person)) {
       PersonFormScreen._correcting.add(person.id);
+      residencesOf(widget.database, person.id).then((stored) {
+        if (!mounted) return;
+        setState(() {
+          _storedResidences = stored;
+          _residences = [...stored];
+          _residencesRead = true;
+        });
+        if (widget.addResidenceAtStart) _editResidence(null);
+      }, onError: (Object _) {});
+    } else if (widget.addResidenceAtStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _editResidence(null);
+      });
     }
     if (widget.pickPhotosAtStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -312,9 +346,64 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     ],
   ].join('\u0000');
 
-  /// A photo picked or changed is entered data too (wpis-osoby.md → Navigation).
+  /// A photo picked or changed is entered data too (wpis-osoby.md → Navigation), and so is a residence
+  /// added, corrected or removed (zamieszkanie.md D5).
   bool get _dirty =>
-      _snapshot() != _initialSnapshot || (_photos?.hasChanges ?? false);
+      _snapshot() != _initialSnapshot ||
+      (_photos?.hasChanges ?? false) ||
+      _residencesChanged;
+
+  bool get _residencesChanged {
+    if (_residences.length != _storedResidences.length) return true;
+    final Map<int, Residence> stored = {
+      for (final Residence r in _storedResidences) r.id!: r,
+    };
+    return _residences.any((r) {
+      final Residence? s = r.id == null ? null : stored[r.id];
+      return s == null || !s.sameAs(r);
+    });
+  }
+
+  /// The window "Miejsce zamieszkania" (A) for [residence], or a new one: its answer changes the list here,
+  /// not the database.
+  Future<void> _editResidence(Residence? residence) async {
+    final ResidenceChange? change = await Navigator.of(context)
+        .push<ResidenceChange>(
+          MaterialPageRoute(
+            builder: (_) => ResidenceScreen(
+              initial: residence,
+              recent: _recentPlaces,
+              places: widget.places,
+            ),
+          ),
+        );
+    if (change == null || !mounted) return;
+    setState(() {
+      final int at = residence == null ? -1 : _residences.indexOf(residence);
+      switch (change) {
+        case ResidenceDone(residence: final Residence r) when at >= 0:
+          _residences[at] = r;
+        case ResidenceDone(residence: final Residence r):
+          _residences.add(r);
+        case ResidenceRemoved() when at >= 0:
+          _residences.removeAt(at);
+        case ResidenceRemoved():
+      }
+    });
+  }
+
+  /// "Ostatnio wybrane" (zamieszkanie.md D6): the places of this form's residences first — the newest
+  /// entered first — then those written before.
+  Future<List<ResidencePlace>> _recentPlaces() async {
+    final List<ResidencePlace> places = [];
+    for (final ResidencePlace p in [
+      for (final Residence r in _residences.reversed) r.place,
+      ...await recentPlaces(widget.database),
+    ]) {
+      if (!places.contains(p)) places.add(p);
+    }
+    return places.take(5).toList();
+  }
 
   /// The person as typed now, for the photo screens: "Nowa osoba" before a name is typed.
   String _nameNow({bool withBirthSurname = false}) {
@@ -387,16 +476,30 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       _saveFailed = false;
     });
     final NavigatorState navigator = Navigator.of(context);
-    // The photos go in the person's transaction (D-zdjęcie-2); without photos it is the write alone.
-    Future<T> write<T>(Future<T> Function(AlsoWrite? alsoWrite) w) =>
-        switch (widget.photos) {
-          final Photos photos => photos.writeWithPersonPhotos(
-            widget.database,
-            _photos?.edits(),
-            w,
-          ),
-          null => w(null),
-        };
+    // The photos and the residences go in the person's transaction (D-zdjęcie-2; zamieszkanie.md D5);
+    // without them it is the write alone.
+    final List<Residence>? residences = _residencesRead && _residencesChanged
+        ? List.of(_residences)
+        : null;
+    Future<T> write<T>(Future<T> Function(AlsoWrite? alsoWrite) w) {
+      Future<T> withResidences(AlsoWrite? photos) => w(
+        residences == null
+            ? photos
+            : (personId) async {
+                await photos?.call(personId);
+                await writeResidences(widget.database, personId, residences);
+              },
+      );
+      return switch (widget.photos) {
+        final Photos photos => photos.writeWithPersonPhotos(
+          widget.database,
+          _photos?.edits(),
+          withResidences,
+        ),
+        null => withResidences(null),
+      };
+    }
+
     try {
       final PersonEntry entry = _entry();
       switch (widget.mode) {
@@ -692,6 +795,16 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
               _ => null,
             },
             photos: widget.photos,
+          ),
+        ],
+        // Element 9b (v5.9): the residences — in every mode, written with "Zapisz" (zamieszkanie.md D5).
+        // Outside the `next` order.
+        if (_residencesRead) ...[
+          const SizedBox(height: 24),
+          ResidencesFormSection(
+            residences: inStayOrder(_residences),
+            onEdit: _editResidence,
+            onAdd: () => _editResidence(null),
           ),
         ],
       ],

@@ -130,11 +130,25 @@ class DateBlock extends StatelessWidget {
     required this.onChanged,
     this.note,
     this.onDone,
+    this.onNext,
     this.error,
+    this.qualifiers = DateQualifier.values,
+    this.preview = true,
   });
 
   final DateInput input;
   final VoidCallback onChanged;
+
+  /// The qualifiers the menu offers — a residence's start and end take only "dokładnie" and "około"
+  /// (05_DESIGN/zamieszkanie.md D3).
+  final List<DateQualifier> qualifiers;
+
+  /// The line "→ …" under the block; a residence shows one line for its whole period instead (element 11).
+  final bool preview;
+
+  /// What `next` on the last field does instead of moving the focus — the residence's end opens the choice
+  /// of the place (05_DESIGN/zamieszkanie.md, element 10).
+  final VoidCallback? onNext;
 
   /// A line under the label — "np. rozwód albo rozstanie…" at the end of a union (05_DESIGN/rodzina.md A6').
   final String? note;
@@ -212,7 +226,7 @@ class DateBlock extends StatelessWidget {
               padding: const EdgeInsets.only(top: 5),
               child: ErrorLine(shownError),
             )
-          else if (r.date != null)
+          else if (r.date != null && preview)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 2),
               child: Text('→ ${formatDate(r.date!)}', style: _muted),
@@ -227,7 +241,7 @@ class DateBlock extends StatelessWidget {
       backgroundColor: WidgetStatePropertyAll(GrobingColors.surface),
     ),
     menuChildren: [
-      for (final DateQualifier q in DateQualifier.values)
+      for (final DateQualifier q in qualifiers)
         MenuItemButton(
           style: MenuItemButton.styleFrom(
             foregroundColor: q == d.qualifier
@@ -302,7 +316,14 @@ class DateBlock extends StatelessWidget {
     textInputAction: last && onDone != null
         ? TextInputAction.done
         : TextInputAction.next,
-    onSubmitted: last && onDone != null ? (_) => onDone!() : null,
+    onSubmitted: last && onDone != null
+        ? (_) => onDone!()
+        : last && onNext != null
+        ? (_) => onNext!()
+        : null,
+    // With [onNext] the focus stays where it is: the next field would take it first, and its keyboard would
+    // come back over the window when the choice returns.
+    onEditingComplete: last && onNext != null ? () {} : null,
     style: inputTextStyle,
     onChanged: (_) => onChanged(),
     decoration: InputDecoration(

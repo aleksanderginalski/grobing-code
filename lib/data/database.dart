@@ -9,12 +9,13 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v11 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v13 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
 // claims on families and children's links (ISSUE-019), a person's sex with the start of a union
 // (ISSUE-025), a person's background photo (ISSUE-024), a cemetery's photo (ISSUE-023) and its plan
-// (ISSUE-027, ADR-015), sectors as records the graves point at (ISSUE-028, ADR-016), still without the
-// grave fee (S4). Enums are stored by name, not index: data lives
+// (ISSUE-027, ADR-015), sectors as records the graves point at (ISSUE-028, ADR-016), the pin's date
+// (ISSUE-029), places of residence (ISSUE-042, ADR-020), still without the grave fee (S4). Enums are
+// stored by name, not index: data lives
 // for decades and a reordered enum must not silently change meaning. Renaming an enum value is a schema
 // change and needs a migration; a new value at the end is not.
 
@@ -47,6 +48,11 @@ enum AssertionStatus { claimed, confirmed, contradicted, unknown }
 /// no outline around the cemetery's point — kept, so the app does not ask the server at every start
 /// (05_DESIGN/cmentarz.md, element 2a (d)). A failed download writes nothing: it is tried again.
 enum PlanStatus { ok, notInOsm }
+
+/// How exactly a residence's place is known (ISSUE-042 — "od ogółu do szczegółu"): the country only, a
+/// locality, or an address in a locality. The point is the country's label point or the locality's
+/// centre; an address is text and keeps its locality's point (A1, stop #1).
+enum PlaceLevel { country, locality, address }
 
 class Persons extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -307,6 +313,55 @@ class PersonMedia extends Table {
   Set<Column<Object>> get primaryKey => {personId, mediaId};
 }
 
+/// Where a person lived, and when (ISSUE-042, ADR-020 R1) — GEDCOM 7's `RESI` with a period
+/// `FROM … TO …`, not `BET … AND …`: a stay has a start and an end, each exact or about, either empty
+/// (05_DESIGN/zamieszkanie.md D3). The place lives in the row, in words: a backup (= the export, ADR-018)
+/// reads without the app's list of places, and the list's id is only a link back to it. No claims (D28).
+///
+/// [nameThen] is the place's name at the time — the border may have moved since (N2, FamilySearch); the
+/// place itself is today's, from the list, so it has a point. The row's own name leaves `Residence` to the
+/// screens' model (`residences.dart`).
+@DataClassName('ResidenceRow')
+@TableIndex(name: 'residences_person', columns: {#personId})
+class Residences extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get personId => integer().references(Persons, #id)();
+
+  /// `exact` or `about` (D3); null with the date.
+  TextColumn get fromQualifier => textEnum<DateQualifier>().nullable()();
+  IntColumn get fromYear => integer().nullable()();
+  IntColumn get fromMonth => integer().nullable()();
+  IntColumn get fromDay => integer().nullable()();
+  TextColumn get toQualifier => textEnum<DateQualifier>().nullable()();
+  IntColumn get toYear => integer().nullable()();
+  IntColumn get toMonth => integer().nullable()();
+  IntColumn get toDay => integer().nullable()();
+  TextColumn get level => textEnum<PlaceLevel>()();
+
+  /// Today's name of the locality, or of the country when [level] is `country`.
+  TextColumn get placeName => text()();
+
+  /// The locality's unit of the first order ("woj. testowe"); null for a country.
+  TextColumn get placeUnit => text().nullable()();
+  TextColumn get countryCode => text()();
+  TextColumn get countryName => text()();
+  RealColumn get lat => real()();
+  RealColumn get lon => real()();
+
+  /// The locality's GeoNames id; null for a country.
+  IntColumn get geonamesId => integer().nullable()();
+  TextColumn get nameThen => text().nullable()();
+
+  /// "ul. Przykładowa 3" — text (A1); only in a locality, and then the level is `address`.
+  TextColumn get address => text().nullable()();
+
+  @override
+  List<String> get customConstraints => [
+    "CHECK ((level = 'address') = (address IS NOT NULL))",
+    "CHECK ((level = 'country') = (geonames_id IS NULL))",
+  ];
+}
+
 /// Single row: which person is the author ("ja" — the anchor of "how they connect to me").
 @DataClassName('Setting')
 class Settings extends Table {
@@ -360,6 +415,7 @@ class DataLocation {
     Settings,
     CemeteryPlans,
     Sectors,
+    Residences,
   ],
 )
 class GrobingDatabase extends _$GrobingDatabase {
@@ -371,7 +427,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 12;
+  static const int currentSchemaVersion = 13;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -403,6 +459,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from9To10: _from9To10,
             from10To11: _from10To11,
             from11To12: _from11To12,
+            from12To13: _from12To13,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -595,6 +652,13 @@ class GrobingDatabase extends _$GrobingDatabase {
   /// step: the source is stored by name, without a CHECK on its values.
   Future<void> _from11To12(Migrator m, Schema12 schema) =>
       m.addColumn(schema.graves, schema.graves.positionRecordedAt);
+
+  /// ISSUE-042 (ADR-020): places of residence. A new empty table and its index: no row changes, nothing
+  /// dropped — a restored v12 backup has people without residences.
+  Future<void> _from12To13(Migrator m, Schema13 schema) async {
+    await m.createTable(schema.residences);
+    await m.createIndex(schema.residencesPerson);
+  }
 }
 
 /// [Assertions.sourceDetail] of the claims the v1→v2 migration gives to existing rows (ADR-006 D5).

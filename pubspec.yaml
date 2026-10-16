@@ -69,3 +69,7 @@ flutter:
     # database under the same licence, attribution shown under the results; rebuilt by
     # tool/cemeteries/extract_cemeteries.dart (README → Baza cmentarzy).
     - assets/cemeteries/poland_cemeteries.json
+    # Countries and localities a residence's place is chosen from (ISSUE-042) — GeoNames (CC BY 4.0, the
+    # source shown under the results) and Natural Earth. NOT in git (*.db, the family-data block): build it
+    # with tool/places/build_places.dart before the first build of a clean clone (README → Lista miejsc).
+    - assets/places/places.db
