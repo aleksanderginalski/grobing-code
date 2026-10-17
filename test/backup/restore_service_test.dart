@@ -16,15 +16,18 @@ import 'package:grobing/backup/restore_service.dart';
 import 'package:grobing/backup/tar_writer.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/cemetery_plans.dart';
+import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/families.dart';
+import 'package:grobing/data/family_tree.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/people.dart';
 import 'package:grobing/data/person_view.dart';
 import 'package:grobing/data/photos.dart';
 import 'package:grobing/data/residences.dart';
 import 'package:grobing/data/sectors.dart';
+import 'package:grobing/data/wreaths.dart';
 import 'package:grobing/dev/fictional_data.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 
@@ -32,6 +35,7 @@ import '../drift/grobing/generated/schema_v1.dart' as v1;
 import '../drift/grobing/generated/schema_v10.dart' as v10;
 import '../drift/grobing/generated/schema_v12.dart' as v12;
 import '../drift/grobing/generated/schema_v13.dart' as v13;
+import '../drift/grobing/generated/schema_v14.dart' as v14;
 import '../drift/grobing/generated/schema_v2.dart' as v2;
 import '../drift/grobing/generated/schema_v3.dart' as v3;
 import '../drift/grobing/generated/schema_v4.dart' as v4;
@@ -1595,6 +1599,7 @@ void main() {
         'cemetery_plans': 0,
         'sectors': 0,
         'residences': 0,
+        'clans': 0,
       });
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -1677,6 +1682,7 @@ void main() {
         'cemetery_plans': 0,
         'sectors': 0,
         'residences': 0,
+        'clans': 0,
       });
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -1760,6 +1766,7 @@ void main() {
       'cemetery_plans': 0,
       'sectors': 0,
       'residences': 0,
+      'clans': 0,
     });
     final GrobingDatabase reopened = GrobingDatabase(
       NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -1851,6 +1858,7 @@ void main() {
         'cemetery_plans': 0,
         'sectors': 0,
         'residences': 0,
+        'clans': 0,
       });
       expect(after.mediaFileCount, 2);
       final GrobingDatabase reopened = GrobingDatabase(
@@ -2000,6 +2008,7 @@ void main() {
         'cemetery_plans': 0,
         'sectors': 0,
         'residences': 0,
+        'clans': 0,
       });
       expect(after.mediaFileCount, 3);
       final GrobingDatabase reopened = GrobingDatabase(
@@ -2169,6 +2178,7 @@ void main() {
         ...v10State.rowCounts,
         'sectors': 1,
         'residences': 0,
+        'clans': 0,
       });
       expect(after.mediaFileCount, 2);
       final GrobingDatabase reopened = GrobingDatabase(
@@ -2327,6 +2337,7 @@ void main() {
         'cemetery_plans': 0,
         'sectors': 0,
         'residences': 0,
+        'clans': 0,
       });
       expect(after.mediaFileCount, 3);
       final GrobingDatabase reopened = GrobingDatabase(
@@ -2603,7 +2614,11 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      expect(after.rowCounts, {...v12State.rowCounts, 'residences': 0});
+      expect(after.rowCounts, {
+        ...v12State.rowCounts,
+        'residences': 0,
+        'clans': 0,
+      });
       expect(after.mediaFileCount, 2);
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -2799,7 +2814,7 @@ void main() {
       );
       final DataState after = await stateOnDisk(fresh.dir);
       expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
-      expect(after.rowCounts, v13State.rowCounts);
+      expect(after.rowCounts, {...v13State.rowCounts, 'clans': 0});
       expect(after.mediaFileCount, 2);
       final GrobingDatabase reopened = GrobingDatabase(
         NativeDatabase(File('${fresh.dir.path}/grobing.db')),
@@ -2815,7 +2830,7 @@ void main() {
   );
 
   test(
-    'ISSUE-043 AC-3 — a v14 backup with a grave\'s fee restores with it: the same fingerprint, the date to the '
+    'ISSUE-043 AC-3 — a backup with a grave\'s fee restores with it: the same fingerprint, the date to the '
     'month as it was saved, the other grave still "nie wiadomo"',
     () async {
       final Directory v14 = Directory('${tmp.path}/v14-source')..createSync();
@@ -2841,7 +2856,7 @@ void main() {
         paidUntil: const PartialDate(2031, 3),
       );
       final DataState state = await readDataState(db, mediaDir: media);
-      expect(state.schemaVersion, 14);
+      expect(state.schemaVersion, GrobingDatabase.currentSchemaVersion);
       await db.customStatement('VACUUM INTO ?', [
         '${tmp.path}/v14-snapshot.db',
       ]);
@@ -2877,6 +2892,158 @@ void main() {
         ('Grób rodzinny Wymyślonych', const PartialDate(2031, 3)),
       );
       expect(without?.paidUntil, isNull);
+    },
+  );
+
+  test(
+    'ISSUE-044 AC-3 — a v14 backup restores into the v15 app: every v14 table and count kept, no lines, nobody '
+    'with a choice, nobody with a wreath',
+    () async {
+      final File v14File = File('${tmp.path}/v14-old.db');
+      final Directory v14Media = Directory('${tmp.path}/v14-old-media');
+      final v14.DatabaseAtV14 old = v14.DatabaseAtV14(NativeDatabase(v14File));
+      for (final String row in _v8Rows) {
+        await old.customStatement(row);
+      }
+      await old.customStatement('PRAGMA user_version = 14');
+      const List<String> photoPaths = [
+        'groby/1/nagrobek.png',
+        'zdjecia/ewa.png',
+      ];
+      for (final (int i, String path) in photoPaths.indexed) {
+        File('${v14Media.path}/$path')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalGravestonePng(i + 1));
+      }
+      final DataState v14State = await readDataState(old, mediaDir: v14Media);
+      expect(v14State.schemaVersion, 14);
+      expect(v14State.rowCounts['persons'], greaterThan(0));
+      expect(v14State.rowCounts, isNot(contains('clans')));
+      await old.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v14-old-snapshot.db',
+      ]);
+      await old.close();
+      final List<_Entry> files = [
+        (
+          path: backupDatabaseName,
+          data: File('${tmp.path}/v14-old-snapshot.db').readAsBytesSync(),
+        ),
+        for (final String path in photoPaths)
+          (
+            path: 'media/$path',
+            data: File('${v14Media.path}/$path').readAsBytesSync(),
+          ),
+      ];
+      final String uri = await uploadTar(
+        'kopia-v14-stara.age',
+        _tar([
+          ...files,
+          _manifestEntry(
+            _withFiles({
+              ..._manifestOf(_untar(backupTar)),
+              'schema_version': 14,
+              'record_counts': v14State.rowCounts,
+              'data_fingerprint': v14State.fingerprint,
+            }, files),
+          ),
+        ]),
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone('v15');
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(
+        (result.schemaFrom, result.schemaTo),
+        (14, GrobingDatabase.currentSchemaVersion),
+      );
+      final DataState after = await stateOnDisk(fresh.dir);
+      expect(after.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      // The table v15 added is there, empty; every v14 table keeps its count.
+      expect(after.rowCounts, {...v14State.rowCounts, 'clans': 0});
+      expect(after.mediaFileCount, 2);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final List<Person> people = await reopened.select(reopened.persons).get();
+      final FamilyTreeData tree = await loadFamilyTree(reopened);
+      await reopened.close();
+      expect(people, hasLength(v14State.rowCounts['persons']));
+      expect(people.map((p) => p.clanId), everyElement(isNull));
+      expect(people.map((p) => p.noWreath), everyElement(isFalse));
+      expect(
+        people.map((p) => tree.wreaths.of(p.id).isEmpty),
+        everyElement(isTrue),
+      );
+    },
+  );
+
+  test(
+    'ISSUE-044 AC-3, AC-4 — a backup with family lines restores with them: the same fingerprint, the choices '
+    'kept, and the wreaths worked out as before — the father\'s line on his child, half and half on his wife',
+    () async {
+      final Directory source = Directory('${tmp.path}/v15-source')
+        ..createSync();
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${source.path}/grobing.db')),
+      );
+      final Directory media = Directory('${source.path}/media');
+      // Made-up data with two lines: at the father, at the mother; the second union's child "bez wieńca".
+      await addFictionalData(db, media);
+      final DataState state = await readDataState(db, mediaDir: media);
+      expect(state.schemaVersion, GrobingDatabase.currentSchemaVersion);
+      expect(state.rowCounts['clans'], 2);
+      Future<int> idOf(GrobingDatabase d, String given) async =>
+          (await (d.select(
+            d.persons,
+          )..where((p) => p.givenNames.equals(given))).getSingle()).id;
+      final int father = await idOf(db, 'Ojciec 1');
+      final int mother = await idOf(db, 'Matka 1');
+      final int child = await idOf(db, 'Dziecko 1');
+      await db.customStatement('VACUUM INTO ?', [
+        '${tmp.path}/v15-snapshot.db',
+      ]);
+      await db.close();
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/v15-snapshot.db'),
+        mediaDir: media,
+        recipient: identity.recipient,
+        output: drive.fileFor(FakeDocumentStore.uriOf('kopia-v15.age')),
+        createdAt: _createdAt,
+      );
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+        'v15-fresh',
+      );
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: FakeDocumentStore.uriOf('kopia-v15.age'),
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.dataFingerprint, state.fingerprint);
+      expect((await stateOnDisk(fresh.dir)).fingerprint, state.fingerprint);
+      final GrobingDatabase reopened = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      final FamilyTreeData tree = await loadFamilyTree(reopened);
+      await reopened.close();
+      final PersonWreath f = tree.wreaths.of(father);
+      final PersonWreath m = tree.wreaths.of(mother);
+      final PersonWreath c = tree.wreaths.of(child);
+      expect(f.own?.name, 'Wymyślscy 1');
+      expect(
+        (f.own?.motif, f.own?.colour),
+        (WreathMotif.dab, ClanColour.stareZloto),
+      );
+      expect((m.left?.name, m.right?.name), ('Zmyśleńscy 1', 'Wymyślscy 1'));
+      expect(m.isHalved, isTrue);
+      expect((c.own?.name, c.origin), ('Wymyślscy 1', WreathOrigin.fromFather));
     },
   );
 }

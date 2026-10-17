@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/tree/tree_layout.dart';
 import 'package:grobing/app/tree/tree_path.dart' show pathLevel;
+import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/family_tree.dart';
 import 'package:grobing/data/kinship.dart';
@@ -261,6 +262,71 @@ void main() {
       );
       final TreeLayout l = layoutTree(TreeGraph(looped), 1, 4);
       expect(l.count, 2);
+    },
+  );
+
+  test(
+    'ISSUE-044 (wieniec.md D3) — the trace to a partner beyond the view starts past the wreath of a person who '
+    'has one, 43 dp from the centre, and at the circle of one who has none',
+    () {
+      List<Offset> trace(TreeLayout l) => l.lines
+          .singleWhere((lines) => lines.kind == TreeLineKind.tracePartner)
+          .points;
+      FamilyTreeData withChoices(Map<int, WreathChoice> choices) =>
+          FamilyTreeData(
+            people: family.people,
+            unions: family.unions,
+            meId: family.meId,
+            choices: choices,
+            clans: const {
+              1: Clan(
+                id: 1,
+                name: 'Wymyślscy',
+                motif: WreathMotif.dab,
+                colour: ClanColour.stareZloto,
+              ),
+            },
+          );
+      const TreeMetrics wide = TreeMetrics(slot: 96, wreaths: true);
+      final int marek = id['Marek Wymyślony']!;
+      final int michal = id['Michał Wymyślony']!;
+
+      // Marek's line: his son Michał wears it.
+      final TreeLayout wreathed = layoutTree(
+        TreeGraph(withChoices({marek: const WreathChoice.clan(1)})),
+        ja,
+        2,
+        metrics: wide,
+      );
+      final Offset brother = wreathed.positions[michal]!;
+      expect(
+        trace(wreathed),
+        containsAllInOrder([
+          Offset(brother.dx - 43, brother.dy + 22),
+          Offset(brother.dx - 57, brother.dy + 22),
+        ]),
+      );
+
+      // "Bez wieńca" at Michał, the others with Marek's line: his trace at his circle again.
+      final TreeLayout bare = layoutTree(
+        TreeGraph(
+          withChoices({
+            marek: const WreathChoice.clan(1),
+            michal: const WreathChoice.none(),
+          }),
+        ),
+        ja,
+        2,
+        metrics: wide,
+      );
+      final Offset bareBrother = bare.positions[michal]!;
+      expect(
+        trace(bare),
+        containsAllInOrder([
+          Offset(bareBrother.dx - 22, bareBrother.dy + 22),
+          Offset(bareBrother.dx - 36, bareBrother.dy + 22),
+        ]),
+      );
     },
   );
 }

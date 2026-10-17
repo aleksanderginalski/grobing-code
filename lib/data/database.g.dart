@@ -3,6 +3,299 @@
 part of 'database.dart';
 
 // ignore_for_file: type=lint
+class $ClansTable extends Clans with TableInfo<$ClansTable, ClanRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ClansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _motifMeta = const VerificationMeta('motif');
+  @override
+  late final GeneratedColumn<String> motif = GeneratedColumn<String>(
+    'motif',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colourMeta = const VerificationMeta('colour');
+  @override
+  late final GeneratedColumn<String> colour = GeneratedColumn<String>(
+    'colour',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, motif, colour];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'clans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ClanRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('motif')) {
+      context.handle(
+        _motifMeta,
+        motif.isAcceptableOrUnknown(data['motif']!, _motifMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_motifMeta);
+    }
+    if (data.containsKey('colour')) {
+      context.handle(
+        _colourMeta,
+        colour.isAcceptableOrUnknown(data['colour']!, _colourMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colourMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ClanRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ClanRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      motif: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}motif'],
+      )!,
+      colour: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}colour'],
+      )!,
+    );
+  }
+
+  @override
+  $ClansTable createAlias(String alias) {
+    return $ClansTable(attachedDatabase, alias);
+  }
+}
+
+class ClanRow extends DataClass implements Insertable<ClanRow> {
+  final int id;
+  final String name;
+
+  /// `laur`, `dab`, … — `WreathMotif` in `clans.dart`.
+  final String motif;
+
+  /// `stare_zloto`, `braz`, … — `ClanColour` in `clans.dart`.
+  final String colour;
+  const ClanRow({
+    required this.id,
+    required this.name,
+    required this.motif,
+    required this.colour,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['motif'] = Variable<String>(motif);
+    map['colour'] = Variable<String>(colour);
+    return map;
+  }
+
+  ClansCompanion toCompanion(bool nullToAbsent) {
+    return ClansCompanion(
+      id: Value(id),
+      name: Value(name),
+      motif: Value(motif),
+      colour: Value(colour),
+    );
+  }
+
+  factory ClanRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ClanRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      motif: serializer.fromJson<String>(json['motif']),
+      colour: serializer.fromJson<String>(json['colour']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'motif': serializer.toJson<String>(motif),
+      'colour': serializer.toJson<String>(colour),
+    };
+  }
+
+  ClanRow copyWith({int? id, String? name, String? motif, String? colour}) =>
+      ClanRow(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        motif: motif ?? this.motif,
+        colour: colour ?? this.colour,
+      );
+  ClanRow copyWithCompanion(ClansCompanion data) {
+    return ClanRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      motif: data.motif.present ? data.motif.value : this.motif,
+      colour: data.colour.present ? data.colour.value : this.colour,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClanRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('motif: $motif, ')
+          ..write('colour: $colour')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, motif, colour);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ClanRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.motif == this.motif &&
+          other.colour == this.colour);
+}
+
+class ClansCompanion extends UpdateCompanion<ClanRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String> motif;
+  final Value<String> colour;
+  const ClansCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.motif = const Value.absent(),
+    this.colour = const Value.absent(),
+  });
+  ClansCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required String motif,
+    required String colour,
+  }) : name = Value(name),
+       motif = Value(motif),
+       colour = Value(colour);
+  static Insertable<ClanRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? motif,
+    Expression<String>? colour,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (motif != null) 'motif': motif,
+      if (colour != null) 'colour': colour,
+    });
+  }
+
+  ClansCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String>? motif,
+    Value<String>? colour,
+  }) {
+    return ClansCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      motif: motif ?? this.motif,
+      colour: colour ?? this.colour,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (motif.present) {
+      map['motif'] = Variable<String>(motif.value);
+    }
+    if (colour.present) {
+      map['colour'] = Variable<String>(colour.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClansCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('motif: $motif, ')
+          ..write('colour: $colour')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -98,6 +391,33 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _clanIdMeta = const VerificationMeta('clanId');
+  @override
+  late final GeneratedColumn<int> clanId = GeneratedColumn<int>(
+    'clan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES clans (id)',
+    ),
+  );
+  static const VerificationMeta _noWreathMeta = const VerificationMeta(
+    'noWreath',
+  );
+  @override
+  late final GeneratedColumn<bool> noWreath = GeneratedColumn<bool>(
+    'no_wreath',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("no_wreath" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -108,6 +428,8 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     bio,
     bioSource,
     isLiving,
+    clanId,
+    noWreath,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -163,6 +485,18 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
         isLiving.isAcceptableOrUnknown(data['is_living']!, _isLivingMeta),
       );
     }
+    if (data.containsKey('clan_id')) {
+      context.handle(
+        _clanIdMeta,
+        clanId.isAcceptableOrUnknown(data['clan_id']!, _clanIdMeta),
+      );
+    }
+    if (data.containsKey('no_wreath')) {
+      context.handle(
+        _noWreathMeta,
+        noWreath.isAcceptableOrUnknown(data['no_wreath']!, _noWreathMeta),
+      );
+    }
     return context;
   }
 
@@ -206,6 +540,14 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_living'],
       )!,
+      clanId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}clan_id'],
+      ),
+      noWreath: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}no_wreath'],
+      )!,
     );
   }
 
@@ -235,6 +577,15 @@ class Person extends DataClass implements Insertable<Person> {
   final String? bio;
   final String? bioSource;
   final bool isLiving;
+
+  /// The family line chosen at this person (ISSUE-044, ADR-021): at the top of a line, or an exception
+  /// to the father's. Null: the wreath comes from the father (`wreaths.dart`). Only the choice is
+  /// stored; every wreath is worked out from the tree when it is read.
+  final int? clanId;
+
+  /// "Bez wieńca" chosen at this person, although the father has a line. Never together with [clanId]
+  /// (`clans.dart` writes one and clears the other).
+  final bool noWreath;
   const Person({
     required this.id,
     this.givenNames,
@@ -244,6 +595,8 @@ class Person extends DataClass implements Insertable<Person> {
     this.bio,
     this.bioSource,
     required this.isLiving,
+    this.clanId,
+    required this.noWreath,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -268,6 +621,10 @@ class Person extends DataClass implements Insertable<Person> {
       map['bio_source'] = Variable<String>(bioSource);
     }
     map['is_living'] = Variable<bool>(isLiving);
+    if (!nullToAbsent || clanId != null) {
+      map['clan_id'] = Variable<int>(clanId);
+    }
+    map['no_wreath'] = Variable<bool>(noWreath);
     return map;
   }
 
@@ -289,6 +646,10 @@ class Person extends DataClass implements Insertable<Person> {
           ? const Value.absent()
           : Value(bioSource),
       isLiving: Value(isLiving),
+      clanId: clanId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clanId),
+      noWreath: Value(noWreath),
     );
   }
 
@@ -308,6 +669,8 @@ class Person extends DataClass implements Insertable<Person> {
       bio: serializer.fromJson<String?>(json['bio']),
       bioSource: serializer.fromJson<String?>(json['bioSource']),
       isLiving: serializer.fromJson<bool>(json['isLiving']),
+      clanId: serializer.fromJson<int?>(json['clanId']),
+      noWreath: serializer.fromJson<bool>(json['noWreath']),
     );
   }
   @override
@@ -324,6 +687,8 @@ class Person extends DataClass implements Insertable<Person> {
       'bio': serializer.toJson<String?>(bio),
       'bioSource': serializer.toJson<String?>(bioSource),
       'isLiving': serializer.toJson<bool>(isLiving),
+      'clanId': serializer.toJson<int?>(clanId),
+      'noWreath': serializer.toJson<bool>(noWreath),
     };
   }
 
@@ -336,6 +701,8 @@ class Person extends DataClass implements Insertable<Person> {
     Value<String?> bio = const Value.absent(),
     Value<String?> bioSource = const Value.absent(),
     bool? isLiving,
+    Value<int?> clanId = const Value.absent(),
+    bool? noWreath,
   }) => Person(
     id: id ?? this.id,
     givenNames: givenNames.present ? givenNames.value : this.givenNames,
@@ -345,6 +712,8 @@ class Person extends DataClass implements Insertable<Person> {
     bio: bio.present ? bio.value : this.bio,
     bioSource: bioSource.present ? bioSource.value : this.bioSource,
     isLiving: isLiving ?? this.isLiving,
+    clanId: clanId.present ? clanId.value : this.clanId,
+    noWreath: noWreath ?? this.noWreath,
   );
   Person copyWithCompanion(PersonsCompanion data) {
     return Person(
@@ -360,6 +729,8 @@ class Person extends DataClass implements Insertable<Person> {
       bio: data.bio.present ? data.bio.value : this.bio,
       bioSource: data.bioSource.present ? data.bioSource.value : this.bioSource,
       isLiving: data.isLiving.present ? data.isLiving.value : this.isLiving,
+      clanId: data.clanId.present ? data.clanId.value : this.clanId,
+      noWreath: data.noWreath.present ? data.noWreath.value : this.noWreath,
     );
   }
 
@@ -373,7 +744,9 @@ class Person extends DataClass implements Insertable<Person> {
           ..write('sex: $sex, ')
           ..write('bio: $bio, ')
           ..write('bioSource: $bioSource, ')
-          ..write('isLiving: $isLiving')
+          ..write('isLiving: $isLiving, ')
+          ..write('clanId: $clanId, ')
+          ..write('noWreath: $noWreath')
           ..write(')'))
         .toString();
   }
@@ -388,6 +761,8 @@ class Person extends DataClass implements Insertable<Person> {
     bio,
     bioSource,
     isLiving,
+    clanId,
+    noWreath,
   );
   @override
   bool operator ==(Object other) =>
@@ -400,7 +775,9 @@ class Person extends DataClass implements Insertable<Person> {
           other.sex == this.sex &&
           other.bio == this.bio &&
           other.bioSource == this.bioSource &&
-          other.isLiving == this.isLiving);
+          other.isLiving == this.isLiving &&
+          other.clanId == this.clanId &&
+          other.noWreath == this.noWreath);
 }
 
 class PersonsCompanion extends UpdateCompanion<Person> {
@@ -412,6 +789,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
   final Value<String?> bio;
   final Value<String?> bioSource;
   final Value<bool> isLiving;
+  final Value<int?> clanId;
+  final Value<bool> noWreath;
   const PersonsCompanion({
     this.id = const Value.absent(),
     this.givenNames = const Value.absent(),
@@ -421,6 +800,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     this.bio = const Value.absent(),
     this.bioSource = const Value.absent(),
     this.isLiving = const Value.absent(),
+    this.clanId = const Value.absent(),
+    this.noWreath = const Value.absent(),
   });
   PersonsCompanion.insert({
     this.id = const Value.absent(),
@@ -431,6 +812,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     this.bio = const Value.absent(),
     this.bioSource = const Value.absent(),
     this.isLiving = const Value.absent(),
+    this.clanId = const Value.absent(),
+    this.noWreath = const Value.absent(),
   });
   static Insertable<Person> custom({
     Expression<int>? id,
@@ -441,6 +824,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     Expression<String>? bio,
     Expression<String>? bioSource,
     Expression<bool>? isLiving,
+    Expression<int>? clanId,
+    Expression<bool>? noWreath,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -451,6 +836,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
       if (bio != null) 'bio': bio,
       if (bioSource != null) 'bio_source': bioSource,
       if (isLiving != null) 'is_living': isLiving,
+      if (clanId != null) 'clan_id': clanId,
+      if (noWreath != null) 'no_wreath': noWreath,
     });
   }
 
@@ -463,6 +850,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     Value<String?>? bio,
     Value<String?>? bioSource,
     Value<bool>? isLiving,
+    Value<int?>? clanId,
+    Value<bool>? noWreath,
   }) {
     return PersonsCompanion(
       id: id ?? this.id,
@@ -473,6 +862,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
       bio: bio ?? this.bio,
       bioSource: bioSource ?? this.bioSource,
       isLiving: isLiving ?? this.isLiving,
+      clanId: clanId ?? this.clanId,
+      noWreath: noWreath ?? this.noWreath,
     );
   }
 
@@ -505,6 +896,12 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     if (isLiving.present) {
       map['is_living'] = Variable<bool>(isLiving.value);
     }
+    if (clanId.present) {
+      map['clan_id'] = Variable<int>(clanId.value);
+    }
+    if (noWreath.present) {
+      map['no_wreath'] = Variable<bool>(noWreath.value);
+    }
     return map;
   }
 
@@ -518,7 +915,9 @@ class PersonsCompanion extends UpdateCompanion<Person> {
           ..write('sex: $sex, ')
           ..write('bio: $bio, ')
           ..write('bioSource: $bioSource, ')
-          ..write('isLiving: $isLiving')
+          ..write('isLiving: $isLiving, ')
+          ..write('clanId: $clanId, ')
+          ..write('noWreath: $noWreath')
           ..write(')'))
         .toString();
   }
@@ -6934,6 +7333,7 @@ class ResidencesCompanion extends UpdateCompanion<ResidenceRow> {
 abstract class _$GrobingDatabase extends GeneratedDatabase {
   _$GrobingDatabase(QueryExecutor e) : super(e);
   $GrobingDatabaseManager get managers => $GrobingDatabaseManager(this);
+  late final $ClansTable clans = $ClansTable(this);
   late final $PersonsTable persons = $PersonsTable(this);
   late final $FamiliesTable families = $FamiliesTable(this);
   late final $FamilyPartnersTable familyPartners = $FamilyPartnersTable(this);
@@ -6966,6 +7366,7 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    clans,
     persons,
     families,
     familyPartners,
@@ -6987,6 +7388,274 @@ abstract class _$GrobingDatabase extends GeneratedDatabase {
   ];
 }
 
+typedef $$ClansTableCreateCompanionBuilder =
+    ClansCompanion Function({
+      Value<int> id,
+      required String name,
+      required String motif,
+      required String colour,
+    });
+typedef $$ClansTableUpdateCompanionBuilder =
+    ClansCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String> motif,
+      Value<String> colour,
+    });
+
+final class $$ClansTableReferences
+    extends BaseReferences<_$GrobingDatabase, $ClansTable, ClanRow> {
+  $$ClansTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$PersonsTable, List<Person>> _personsRefsTable(
+    _$GrobingDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.persons,
+    aliasName: 'clans__id__persons__clan_id',
+  );
+
+  $$PersonsTableProcessedTableManager get personsRefs {
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.clanId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_personsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ClansTableFilterComposer
+    extends Composer<_$GrobingDatabase, $ClansTable> {
+  $$ClansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get motif => $composableBuilder(
+    column: $table.motif,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get colour => $composableBuilder(
+    column: $table.colour,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> personsRefs(
+    Expression<bool> Function($$PersonsTableFilterComposer f) f,
+  ) {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.clanId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ClansTableOrderingComposer
+    extends Composer<_$GrobingDatabase, $ClansTable> {
+  $$ClansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get motif => $composableBuilder(
+    column: $table.motif,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get colour => $composableBuilder(
+    column: $table.colour,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ClansTableAnnotationComposer
+    extends Composer<_$GrobingDatabase, $ClansTable> {
+  $$ClansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get motif =>
+      $composableBuilder(column: $table.motif, builder: (column) => column);
+
+  GeneratedColumn<String> get colour =>
+      $composableBuilder(column: $table.colour, builder: (column) => column);
+
+  Expression<T> personsRefs<T extends Object>(
+    Expression<T> Function($$PersonsTableAnnotationComposer a) f,
+  ) {
+    final $$PersonsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.clanId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ClansTableTableManager
+    extends
+        RootTableManager<
+          _$GrobingDatabase,
+          $ClansTable,
+          ClanRow,
+          $$ClansTableFilterComposer,
+          $$ClansTableOrderingComposer,
+          $$ClansTableAnnotationComposer,
+          $$ClansTableCreateCompanionBuilder,
+          $$ClansTableUpdateCompanionBuilder,
+          (ClanRow, $$ClansTableReferences),
+          ClanRow,
+          PrefetchHooks Function({bool personsRefs})
+        > {
+  $$ClansTableTableManager(_$GrobingDatabase db, $ClansTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ClansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ClansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ClansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> motif = const Value.absent(),
+                Value<String> colour = const Value.absent(),
+              }) => ClansCompanion(
+                id: id,
+                name: name,
+                motif: motif,
+                colour: colour,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required String motif,
+                required String colour,
+              }) => ClansCompanion.insert(
+                id: id,
+                name: name,
+                motif: motif,
+                colour: colour,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$ClansTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback: ({personsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (personsRefs) db.persons],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (personsRefs)
+                    await $_getPrefetchedData<ClanRow, $ClansTable, Person>(
+                      currentTable: table,
+                      referencedTable: $$ClansTableReferences._personsRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$ClansTableReferences(db, table, p0).personsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.clanId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ClansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$GrobingDatabase,
+      $ClansTable,
+      ClanRow,
+      $$ClansTableFilterComposer,
+      $$ClansTableOrderingComposer,
+      $$ClansTableAnnotationComposer,
+      $$ClansTableCreateCompanionBuilder,
+      $$ClansTableUpdateCompanionBuilder,
+      (ClanRow, $$ClansTableReferences),
+      ClanRow,
+      PrefetchHooks Function({bool personsRefs})
+    >;
 typedef $$PersonsTableCreateCompanionBuilder =
     PersonsCompanion Function({
       Value<int> id,
@@ -6997,6 +7666,8 @@ typedef $$PersonsTableCreateCompanionBuilder =
       Value<String?> bio,
       Value<String?> bioSource,
       Value<bool> isLiving,
+      Value<int?> clanId,
+      Value<bool> noWreath,
     });
 typedef $$PersonsTableUpdateCompanionBuilder =
     PersonsCompanion Function({
@@ -7008,11 +7679,30 @@ typedef $$PersonsTableUpdateCompanionBuilder =
       Value<String?> bio,
       Value<String?> bioSource,
       Value<bool> isLiving,
+      Value<int?> clanId,
+      Value<bool> noWreath,
     });
 
 final class $$PersonsTableReferences
     extends BaseReferences<_$GrobingDatabase, $PersonsTable, Person> {
   $$PersonsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ClansTable _clanIdTable(_$GrobingDatabase db) =>
+      db.clans.createAlias('persons__clan_id__clans__id');
+
+  $$ClansTableProcessedTableManager? get clanId {
+    final $_column = $_itemColumn<int>('clan_id');
+    if ($_column == null) return null;
+    final manager = $$ClansTableTableManager(
+      $_db,
+      $_db.clans,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_clanIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$FamilyPartnersTable, List<FamilyPartner>>
   _familyPartnersRefsTable(_$GrobingDatabase db) =>
@@ -7195,6 +7885,34 @@ class $$PersonsTableFilterComposer
     column: $table.isLiving,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get noWreath => $composableBuilder(
+    column: $table.noWreath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ClansTableFilterComposer get clanId {
+    final $$ClansTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.clanId,
+      referencedTable: $db.clans,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ClansTableFilterComposer(
+            $db: $db,
+            $table: $db.clans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> familyPartnersRefs(
     Expression<bool> Function($$FamilyPartnersTableFilterComposer f) f,
@@ -7420,6 +8138,34 @@ class $$PersonsTableOrderingComposer
     column: $table.isLiving,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get noWreath => $composableBuilder(
+    column: $table.noWreath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ClansTableOrderingComposer get clanId {
+    final $$ClansTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.clanId,
+      referencedTable: $db.clans,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ClansTableOrderingComposer(
+            $db: $db,
+            $table: $db.clans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$PersonsTableAnnotationComposer
@@ -7458,6 +8204,32 @@ class $$PersonsTableAnnotationComposer
 
   GeneratedColumn<bool> get isLiving =>
       $composableBuilder(column: $table.isLiving, builder: (column) => column);
+
+  GeneratedColumn<bool> get noWreath =>
+      $composableBuilder(column: $table.noWreath, builder: (column) => column);
+
+  $$ClansTableAnnotationComposer get clanId {
+    final $$ClansTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.clanId,
+      referencedTable: $db.clans,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ClansTableAnnotationComposer(
+            $db: $db,
+            $table: $db.clans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> familyPartnersRefs<T extends Object>(
     Expression<T> Function($$FamilyPartnersTableAnnotationComposer a) f,
@@ -7649,6 +8421,7 @@ class $$PersonsTableTableManager
           (Person, $$PersonsTableReferences),
           Person,
           PrefetchHooks Function({
+            bool clanId,
             bool familyPartnersRefs,
             bool familyChildrenRefs,
             bool eventsRefs,
@@ -7679,6 +8452,8 @@ class $$PersonsTableTableManager
                 Value<String?> bio = const Value.absent(),
                 Value<String?> bioSource = const Value.absent(),
                 Value<bool> isLiving = const Value.absent(),
+                Value<int?> clanId = const Value.absent(),
+                Value<bool> noWreath = const Value.absent(),
               }) => PersonsCompanion(
                 id: id,
                 givenNames: givenNames,
@@ -7688,6 +8463,8 @@ class $$PersonsTableTableManager
                 bio: bio,
                 bioSource: bioSource,
                 isLiving: isLiving,
+                clanId: clanId,
+                noWreath: noWreath,
               ),
           createCompanionCallback:
               ({
@@ -7699,6 +8476,8 @@ class $$PersonsTableTableManager
                 Value<String?> bio = const Value.absent(),
                 Value<String?> bioSource = const Value.absent(),
                 Value<bool> isLiving = const Value.absent(),
+                Value<int?> clanId = const Value.absent(),
+                Value<bool> noWreath = const Value.absent(),
               }) => PersonsCompanion.insert(
                 id: id,
                 givenNames: givenNames,
@@ -7708,6 +8487,8 @@ class $$PersonsTableTableManager
                 bio: bio,
                 bioSource: bioSource,
                 isLiving: isLiving,
+                clanId: clanId,
+                noWreath: noWreath,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -7719,6 +8500,7 @@ class $$PersonsTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
+                clanId = false,
                 familyPartnersRefs = false,
                 familyChildrenRefs = false,
                 eventsRefs = false,
@@ -7738,7 +8520,38 @@ class $$PersonsTableTableManager
                     if (settingsRefs) db.settings,
                     if (residencesRefs) db.residences,
                   ],
-                  addJoins: null,
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (clanId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.clanId,
+                                    referencedTable: $$PersonsTableReferences
+                                        ._clanIdTable(db),
+                                    referencedColumn: $$PersonsTableReferences
+                                        ._clanIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (familyPartnersRefs)
@@ -7905,6 +8718,7 @@ typedef $$PersonsTableProcessedTableManager =
       (Person, $$PersonsTableReferences),
       Person,
       PrefetchHooks Function({
+        bool clanId,
         bool familyPartnersRefs,
         bool familyChildrenRefs,
         bool eventsRefs,
@@ -14917,6 +15731,8 @@ typedef $$ResidencesTableProcessedTableManager =
 class $GrobingDatabaseManager {
   final _$GrobingDatabase _db;
   $GrobingDatabaseManager(this._db);
+  $$ClansTableTableManager get clans =>
+      $$ClansTableTableManager(_db, _db.clans);
   $$PersonsTableTableManager get persons =>
       $$PersonsTableTableManager(_db, _db.persons);
   $$FamiliesTableTableManager get families =>

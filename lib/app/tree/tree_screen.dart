@@ -7,6 +7,7 @@ import 'package:flutter/semantics.dart' show SemanticsService;
 import '../../data/database.dart';
 import '../../data/family_tree.dart';
 import '../../data/kinship.dart';
+import '../../data/wreaths.dart';
 import '../dates.dart';
 import '../external_link.dart' show openCastSettings, recommendedTimeout;
 import '../family/union_wizard.dart' show shortPersonName;
@@ -22,6 +23,7 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/wreath.dart';
 import 'connect_dialog.dart';
 import 'presentation_mode.dart';
 import 'tree_labels.dart';
@@ -249,7 +251,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     if (scaler != _scaler) {
       _scaler = scaler;
       _nameWidths.clear();
-      _metrics = _metricsFor(scaler);
+      _metrics = _metricsFor(scaler, wreaths: _metrics.wreaths);
       _relayout(keep: _focus);
     }
   }
@@ -277,15 +279,18 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   }
 
   /// A person's place grows with the system text, up to twice (80 → 160 dp, as the mini tree — osoba.md
-  /// v2.2), and so does the row under the name (AC-7, D20).
-  static TreeMetrics _metricsFor(TextScaler scaler) {
+  /// v2.2), and so does the row under the name (AC-7, D20). With wreaths it is at least 96 dp (drzewo.md
+  /// v1.18) — for the whole family, not for the people shown: the place must not change when the middle
+  /// moves.
+  static TreeMetrics _metricsFor(TextScaler scaler, {bool wreaths = false}) {
     final double factor = (scaler.scale(13) / 13).clamp(1.0, 2.0);
     final double labelBottom =
         TreeMetrics.node + 4 + scaler.scale(13) * 1.3 + 4;
     return TreeMetrics(
-      slot: 80 * factor,
+      slot: wreaths ? math.max(96, 80 * factor) : 80 * factor,
       rowHeight: labelBottom + 36,
       labelBottom: labelBottom,
+      wreaths: wreaths,
     );
   }
 
@@ -296,6 +301,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _error = null;
       _family = data;
       _graph = TreeGraph(data);
+      final bool wreaths = data.people.keys.any(
+        (id) => !data.wreaths.of(id).isEmpty,
+      );
+      if (wreaths != _metrics.wreaths) {
+        _metrics = _metricsFor(_scaler, wreaths: wreaths);
+      }
       final TreeTime time = TreeTime(data, now: DateTime.now().year);
       _time = time;
       if (_year case final int y? when y < time.start) _year = time.start;
@@ -1782,6 +1793,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       isMe: person == _family?.meId,
       inYear: _inYear(person),
       photos: widget.photos,
+      wreath: _family?.wreaths.of(person) ?? PersonWreath.empty,
       slot: _metrics.slot,
       labelHeight: _scaler.scale(13) * 1.3,
       tapPad: _tapPad,
@@ -1829,6 +1841,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       isMe: n == family.meId,
       inYear: inYear,
       photos: widget.photos,
+      // The middle before their birth is an empty ring: no wreath either (wieniec.md D4 in Elements D).
+      wreath: ring ? PersonWreath.empty : family.wreaths.of(n),
       slot: _metrics.slot,
       labelHeight: _scaler.scale(13) * 1.3,
       tapPad: _tapPad,
@@ -1997,10 +2011,15 @@ class _TreeNode extends StatelessWidget {
     required this.semanticsLabel,
     required this.hint,
     required this.onTap,
+    this.wreath = PersonWreath.empty,
   });
 
   final TreePerson person;
   final bool isFocus;
+
+  /// The wreath of the person's line, under the circle and the name (drzewo.md v1.18; wieniec.md D1) — in
+  /// the node, so it fades and dims with the person's group, not on a layer of its own.
+  final PersonWreath wreath;
 
   /// Reached by the line of a lit path (element 8): the ring and the glow of the middle (style-b.md rule 2).
   final bool lit;
@@ -2022,6 +2041,8 @@ class _TreeNode extends StatelessWidget {
   /// What a touch does, for a screen reader: "w środek", "otwórz" — none in the middle of a presentation.
   final String? hint;
   final VoidCallback? onTap;
+
+  static final double _wreathBox = WreathFrame.box(TreeMetrics.node);
 
   /// The name under a node: 13 sp, semi-bold (D10).
   static const TextStyle nameStyle = TextStyle(
@@ -2167,6 +2188,23 @@ class _TreeNode extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
+              // Under the name's plate and the circle with its candle (wieniec.md D1); not touchable.
+              if (!wreath.isEmpty)
+                Positioned(
+                  left: (slot - _wreathBox) / 2,
+                  top:
+                      tapPad +
+                      TreeMetrics.node / 2 -
+                      _wreathBox * WreathFrame.centreY,
+                  width: _wreathBox,
+                  height: _wreathBox,
+                  // Sharper than the box: the tree zooms in to 1.3 and the presentation fills a television.
+                  child: WreathView(
+                    wreath: wreath,
+                    side: _wreathBox,
+                    oversample: 1.5,
+                  ),
+                ),
               Positioned(
                 left: 0,
                 right: 0,

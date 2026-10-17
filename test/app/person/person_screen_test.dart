@@ -11,7 +11,9 @@ import 'package:grobing/app/photo/person_photos_screen.dart';
 import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/wreath.dart';
 import 'package:grobing/data/cemeteries.dart';
+import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/families.dart';
 import 'package:grobing/data/graves.dart';
@@ -594,6 +596,75 @@ void main() {
       );
       // The same form, with what was typed in it.
       expect(find.text('Maria Józefa'), findsOneWidget);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-044 AC-1, AC-4 — the wreath of the line under the portrait (osoba.md 3, 4a): the father\'s line on his '
+    'son with "Ród: …"; a married woman half and half, "Ród: X · po mężu Y" with hard spaces; the name 8 dp '
+    'under the knot; a person without a wreath has no line in words',
+    (tester) async {
+      await withFamily(tester);
+      await tester.runAsync(() async {
+        final int jozef =
+            (await (db.select(db.persons)
+                      ..where((p) => p.givenNames.equals('Józef'))
+                      ..where((p) => p.surname.equals('Testowy')))
+                    .getSingle())
+                .id;
+        await createClan(
+          db,
+          name: 'Testowscy',
+          motif: WreathMotif.laur,
+          colour: ClanColour.patyna,
+          forPerson: jozef,
+        );
+        await createClan(
+          db,
+          name: 'Wymyślscy',
+          motif: WreathMotif.dab,
+          colour: ClanColour.stareZloto,
+          forPerson: jan,
+        );
+      });
+      final String nb = String.fromCharCode(0xA0);
+
+      await pumpView(tester, maria);
+      expect(
+        find.text('Ród: Testowscy ·${nb}po${nb}mężu Wymyślscy'),
+        findsOneWidget,
+      );
+      expect(find.byType(WreathView), findsOneWidget);
+      final Rect wreath = tester.getRect(find.byType(WreathView));
+      expect(wreath.width, 208);
+      final Rect name = tester.getRect(
+        find.text('Maria Wymyślona z d. Testowa'),
+      );
+      // C3: 8 dp under the knot, which ends at 0.91 of the box.
+      expect(name.top, closeTo(wreath.top + 208 * 0.91 + 8, 1));
+      // The wreath is outside the reader: the line in words carries it.
+      expect(
+        find.descendant(
+          of: find.byType(WreathView),
+          matching: find.byType(Semantics),
+        ),
+        findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+
+      await pumpView(tester, anna); // Jan's daughter: his line after him
+      expect(find.text('Ród: Wymyślscy'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+
+      await pumpView(
+        tester,
+        ewa,
+      ); // only a mother in the tree: no father, no wreath
+      expect(find.byType(WreathView), findsNothing);
+      expect(find.textContaining('Ród:'), findsNothing);
       await cleanUp(tester);
     },
   );

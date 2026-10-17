@@ -171,6 +171,11 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
   tekst, żeby przypomnienie mogło później wyliczyć najbliższy termin. Pole w oknie „Popraw grób” przyjmuje lata do bieżącego + 50,
   a daty osoby dalej nie przyjmują przyszłości (`lib/app/dates.dart` → `readPaidUntil`). Zapis: `setGraveDetails` razem z nazwą i
   adresem, w jednej transakcji. Migracja v13→v14 to trzy kolumny — kopia v13 odtwarza się z grobami bez daty opłaty.
+- **Rody i wieńce (schemat v15, ISSUE-044, ADR-021).** Tabela `clans` (nazwa, klucz wzoru, klucz koloru) i przy osobie tylko
+  **wybór**: `persons.clan_id` (ród wybrany u szczytu linii albo wyjątek) i `persons.no_wreath` („bez wieńca”). Wieniec każdej osoby
+  liczy się przy odczycie z drzewa (`lib/data/wreaths.dart`): po ojcu, a kobieta po ślubie ma pół wieńca rodu męża z ostatniego
+  małżeństwa. Nazwa rodu jest unikalna bez wielkości liter i polskich znaków (`lib/data/clans.dart`, przez `fold`). Wybór i ród
+  zapisują się od razu, jak „Rodzina”. Migracja v14→v15 to nowa tabela i dwie kolumny — kopia v14 odtwarza się bez rodów.
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
@@ -331,6 +336,26 @@ i ok. 188 tys. miejscowości. Działa bez sieci.
 
   potem `dart run tool/places/build_places.dart <katalog>` (ok. 25 s). Obecny plik: zrzut GeoNames z 2026-10-16, Natural Earth
   pobrany tego samego dnia (tabela `meta` w pliku). Nowy zrzut oznacza nową wersję aplikacji.
+
+## Wieńce
+
+Wieniec rodu przy portrecie i na drzewie (ISSUE-044; vault: `05_DESIGN/wieniec.md`) to jeden z 19 wzorów w
+`assets/wreaths/wieniec-<klucz>.png`, w kolorze rodu z palety 12 kolorów (`GrobingColors.clan`).
+
+- **Pliki są w repo** (decyzja autora R na stopie #1): jedyny katalog obrazów poza `android/app/src/main/res/`. `.gitignore`
+  wpuszcza tylko `wieniec-*.png`, a strażnik danych rodziny w `grobing-agents` dodatkowo tylko **szary PNG z przezroczystością,
+  640 × 640** — zdjęcie nie jest ani jednym, ani drugim.
+- **Co jest w pliku:** przezroczystość to kształt liści; szarość to cieniowanie C3 jako mnożnik koloru rodu (128 = sam kolor):
+  jaśniej u końców gałązek, ciemniej przy węźle, liście tłoczone światłem z lewej u góry, nigdy ciemniej niż 80% koloru (każdy kolor
+  palety zostaje ≥ 3:1 na tle). Aplikacja raz na wzór, kolor i rozmiar nakłada kolor, dodaje obwódkę w kolorze tła i trzyma gotowy
+  obraz (`lib/app/widgets/wreath.dart`): w klatce drzewa nic się nie rozmywa.
+- **Wspólny kadr:** portret ma średnicę połowy płótna i środek w (0,5; 0,434) płótna. Liście, które wchodzą pod portret, chowają
+  się za nim.
+- **Skąd obrazy:** autor wygenerował je w ChatGPT (DALL-E) z promptów w `05_DESIGN/wieniec.md` → *Prompts*: biały wieniec na
+  czarnym tle, 2026-10-17. Nie ma maku (11). Oryginały są u autora, poza repo.
+- **Przebudowa** (np. nowy wzór): zapisz oryginały jako `<klucz>.png` w jednym katalogu poza repo i uruchom
+  `python tool/wreaths/build_wreaths.py <katalog>` (Python 3, Pillow, numpy). Nowy wzór to też nowa wartość `WreathMotif` w
+  `lib/data/clans.dart` — bez zmiany schematu.
 
 ## Zdjęcia
 

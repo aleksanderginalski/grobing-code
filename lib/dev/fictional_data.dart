@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import '../data/cemeteries.dart';
 import '../data/cemetery_plans.dart';
 import '../data/claims.dart';
+import '../data/clans.dart';
 import '../data/database.dart';
 import '../data/families.dart';
 import '../data/graves.dart';
@@ -157,6 +158,29 @@ Future<void> addFictionalData(GrobingDatabase db, Directory mediaDir) async {
       ),
     );
     final FamilyDetail secondFamily = (await loadFamily(db, second))!;
+
+    // Family lines (ISSUE-044, wieniec.md): the father at the top of his line, so his children carry it;
+    // the mother at the top of hers — married to him, she wears half of each (Ś3); the partner without a
+    // line takes her husband's whole (B5); the second union's child "bez wieńca" — an exception (E1a).
+    await createClan(
+      db,
+      name: 'Wymyślscy $batch',
+      motif: WreathMotif.dab,
+      colour: ClanColour.stareZloto,
+      forPerson: father,
+    );
+    await createClan(
+      db,
+      name: 'Zmyśleńscy $batch',
+      motif: WreathMotif.laur,
+      colour: ClanColour.patyna,
+      forPerson: mother,
+    );
+    await setWreathChoice(
+      db,
+      secondFamily.children.single.id,
+      const WreathChoice.none(),
+    );
 
     // A made-up dispute (US-004 AC-1): the notes and the grandmother give the father different birth
     // years. Both claims stay, both contradicted; the notes' row, written first, is the one shown.

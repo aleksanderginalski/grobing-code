@@ -73,3 +73,7 @@ flutter:
     # source shown under the results) and Natural Earth. NOT in git (*.db, the family-data block): build it
     # with tool/places/build_places.dart before the first build of a clean clone (README → Lista miejsc).
     - assets/places/places.db
+    # The wreath motifs of family lines (ISSUE-044): grey PNGs with alpha, 640 x 640 — the shape of the
+    # leaves and the C3 shading — built by tool/wreaths/build_wreaths.py from the author's images
+    # (README → Wieńce). In git by the author's decision (R): the one folder of images outside res/.
+    - assets/wreaths/

@@ -1,9 +1,11 @@
 import 'package:drift/drift.dart';
 
+import 'clans.dart';
 import 'database.dart';
 import 'graves.dart' show QualifiedDate, watchTables;
 import 'kinship.dart';
 import 'photos.dart' show ProfilePhoto, profilePhotos;
+import 'wreaths.dart';
 
 // The whole family at once, for the Drzewo tab (05_DESIGN/drzewo.md v1.6, ISSUE-033): everyone, every union
 // and who "ja" is, read in a handful of queries rather than a person at a time — the tree moves its middle
@@ -80,15 +82,38 @@ class TreeUnion {
 
 /// The family as the tree reads it.
 class FamilyTreeData {
-  FamilyTreeData({required this.people, required this.unions, this.meId})
-    : kin = KinGraph.of(
-        partners: {for (final TreeUnion u in unions) u.familyId: u.partners},
-        children: {for (final TreeUnion u in unions) u.familyId: u.children},
-        married: {
-          for (final TreeUnion u in unions)
-            if (u.married) u.familyId,
-        },
-      );
+  FamilyTreeData({
+    required this.people,
+    required this.unions,
+    this.meId,
+    Map<int, WreathChoice> choices = const {},
+    Map<int, Clan> clans = const {},
+  }) : kin = KinGraph.of(
+         partners: {for (final TreeUnion u in unions) u.familyId: u.partners},
+         children: {for (final TreeUnion u in unions) u.familyId: u.children},
+         married: {
+           for (final TreeUnion u in unions)
+             if (u.married) u.familyId,
+         },
+       ),
+       wreaths = WreathGraph.of(
+         sex: {for (final TreePerson p in people.values) p.id: p.sex},
+         choices: choices,
+         unions: [
+           for (final TreeUnion u in unions)
+             WreathUnion(
+               familyId: u.familyId,
+               partners: u.partners,
+               children: u.children,
+               married: u.married,
+               startKey: u.startKey,
+             ),
+         ],
+         clans: clans,
+       );
+
+  /// Everyone's wreath of their family line (ISSUE-044, 05_DESIGN/wieniec.md B1–B7).
+  final WreathGraph wreaths;
 
   final Map<int, TreePerson> people;
   final List<TreeUnion> unions;
@@ -112,6 +137,7 @@ Stream<FamilyTreeData> watchFamilyTree(GrobingDatabase db) =>
       db.personMedia,
       db.media,
       db.settings,
+      db.clans,
     }, () => loadFamilyTree(db));
 
 Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
@@ -230,6 +256,14 @@ Future<FamilyTreeData> loadFamilyTree(GrobingDatabase db) async {
     people: people,
     unions: unions,
     meId: me != null && people.containsKey(me) ? me : null,
+    choices: {
+      for (final Person p in persons)
+        if (p.clanId != null)
+          p.id: WreathChoice.clan(p.clanId!)
+        else if (p.noWreath)
+          p.id: const WreathChoice.none(),
+    },
+    clans: {for (final Clan c in await loadClans(db)) c.id: c},
   );
 }
 

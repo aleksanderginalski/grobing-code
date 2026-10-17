@@ -602,7 +602,22 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       await openCorrection(tester);
+      // The wreath's row (ISSUE-044) first, whole: at the end of the form its button stood 2 dp under the top
+      // edge, and a target cut by the edge is under 48 dp for the guideline. Then the section, if it is not
+      // on the screen already.
       await tester.ensureVisible(find.text('Dodaj miejsce'));
+      await _settle(tester);
+      // At the end of the form the wreath's button stands 2 dp past the top edge; 6 dp back down shows it whole,
+      // and the section stays on the screen above the list's bottom padding.
+      await tester.drag(
+        find
+            .ancestor(
+              of: find.text('Dodaj miejsce'),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+        const Offset(0, 6),
+      );
       await _settle(tester);
       await check();
       await tapScrolled(tester, find.byTooltip('Popraw miejsce'));

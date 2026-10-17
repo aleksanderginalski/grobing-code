@@ -36,13 +36,17 @@
 /backups/
 /family-data/
 /real-data/
-# The only exception in this repo: UI images in Android resources (launcher icons). One line per
+# Two exceptions in this repo. The first: UI images in Android resources (launcher icons). One line per
 # image type, never the whole folder -- `!/android/app/src/main/res/**` would re-include *.db there.
 !/android/app/src/main/res/**/*.png
 !/android/app/src/main/res/**/*.jpg
 !/android/app/src/main/res/**/*.jpeg
 !/android/app/src/main/res/**/*.gif
 !/android/app/src/main/res/**/*.webp
+# The second (ISSUE-044, the author's decision R): the wreath motifs, built from the author's images by
+# tool/wreaths/. One name in one folder; the guard in grobing-agents also lets in only a grey PNG with
+# alpha, 640 x 640 -- a photo is neither.
+!/assets/wreaths/wieniec-*.png
 
 # --- Secrets: never in the repo (hard floor, PROJECT_BRIEF §Security) ---
 *.jks

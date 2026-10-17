@@ -61,6 +61,8 @@ class _DataStateScreenState extends State<DataStateScreen> {
     'assertions': 'Twierdzenia (źródła)',
     'media': 'Zdjęcia (wpisy)',
     'person_media': 'Zdjęcia osób (łącza)',
+    'residences': 'Miejsca zamieszkania',
+    'clans': 'Rody',
     'settings': 'Ustawienia',
   };
 

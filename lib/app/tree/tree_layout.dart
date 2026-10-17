@@ -16,6 +16,10 @@ import 'tree_time.dart';
 class TreeGraph {
   TreeGraph(FamilyTreeData data)
     : _sex = {for (final TreePerson p in data.people.values) p.id: p.sex},
+      _wreathed = {
+        for (final TreePerson p in data.people.values)
+          if (!data.wreaths.of(p.id).isEmpty) p.id,
+      },
       _birthYear = {
         for (final TreePerson p in data.people.values)
           if (p.birth != null) p.id: p.birth!.from.year,
@@ -45,6 +49,11 @@ class TreeGraph {
   }
 
   final Map<int, Sex?> _sex;
+
+  /// The people with a wreath of a line (ISSUE-044).
+  final Set<int> _wreathed;
+
+  bool hasWreath(int person) => _wreathed.contains(person);
   final Map<int, int> _birthYear;
   final Map<int, List<_Union>> _unionsOf = {};
   final Map<int, _Union> _parentUnion = {};
@@ -134,16 +143,25 @@ class TreeMetrics {
     this.slot = 80,
     this.rowHeight = 104,
     this.labelBottom = 68,
+    this.wreaths = false,
   });
 
-  /// A person's place: 80 dp × the text scale, at most 160 dp.
+  /// A person's place: 80 dp × the text scale, at most 160 dp; with wreaths at least 96 dp (drzewo.md v1.18,
+  /// wieniec.md D17 — at 80 dp a pair's wreaths overlapped and hid the pair's line).
   final double slot;
   final double rowHeight;
 
   /// From a node's top to under its name — where a lone parent's line to the children starts.
   final double labelBottom;
 
+  /// Someone in the family has a wreath of a line (ISSUE-044).
+  final bool wreaths;
+
   static const double node = 44;
+
+  /// Half the wreath's width around a node: the box is twice the node (wieniec.md A2), the leaves reach
+  /// about 0.97 of it.
+  static const double wreathHalf = 43;
   static const double padX = 48;
   static const double padY = 28;
 }
@@ -859,9 +877,14 @@ List<TreeLines> _traces(
       return away(x) && union != null && pairOf(union) != null;
     })) {
       final double side = p.dx < middle ? -1 : 1;
+      // Past the wreath of a person who has one — under the leaves it would not be seen; at the circle of
+      // one who has none (wieniec.md D3; ui review of ISSUE-044).
+      final double from = graph.hasWreath(e.key)
+          ? TreeMetrics.wreathHalf
+          : _half;
       pt.addAll([
-        Offset(p.dx + side * _half, p.dy + _half),
-        Offset(p.dx + side * (_half + 14), p.dy + _half),
+        Offset(p.dx + side * from, p.dy + _half),
+        Offset(p.dx + side * (from + 14), p.dy + _half),
       ]);
     }
   }

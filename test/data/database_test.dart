@@ -12,11 +12,13 @@ import 'package:grobing/data/database.dart';
 // cemetery; v8 (ISSUE-024) — a photo link got its
 // background mark; v7 (ISSUE-025) — persons got a sex; v6 (ISSUE-019) gave family_children an id and let
 // assertions cite a family or a child's link (ADR-011).
-const List<String> _v13Tables = [
+// v15 (ISSUE-044, ADR-021) adds clans and a person's choice of one.
+const List<String> _v15Tables = [
   'assertions',
   'burials',
   'cemeteries',
   'cemetery_plans',
+  'clans',
   'events',
   'families',
   'family_children',
@@ -44,16 +46,16 @@ void main() {
 
   group('AC-2 — a fresh database is at the current schema', () {
     test(
-      'user_version 14, integrity ok, exactly the v13 tables (v12 added a column, v13 residences, v14 three columns), foreign keys '
+      'user_version 15, integrity ok, exactly the v15 tables (v12 added a column, v13 residences, v14 three columns, v15 clans), foreign keys '
       'on, the crop and the background on the photo link, claims on families and on children\'s links, a person\'s sex, a '
-      'photo\'s cemetery, a pin with its date, the grave fee "paid until"',
+      'photo\'s cemetery, a pin with its date, the grave fee "paid until", a person\'s family line',
       () async {
         final GrobingDatabase db = GrobingDatabase(
           NativeDatabase(File('${tmp.path}/grobing.db')),
         );
         addTearDown(db.close);
 
-        expect(await _single(db, 'PRAGMA user_version'), 14);
+        expect(await _single(db, 'PRAGMA user_version'), 15);
         expect(await _single(db, 'PRAGMA integrity_check'), 'ok');
         expect(await _single(db, 'PRAGMA foreign_keys'), 1);
 
@@ -66,7 +68,7 @@ void main() {
                     .get())
                 .map((r) => r.read<String>('name'))
                 .toList();
-        expect(tables, _v13Tables);
+        expect(tables, _v15Tables);
         final List<String> linkColumns =
             (await db.customSelect('PRAGMA table_info(person_media)').get())
                 .map((r) => r.read<String>('name'))
@@ -95,6 +97,12 @@ void main() {
           containsAll(['family_id', 'family_child_id']),
         );
         expect(await columns('persons'), contains('sex'));
+        // ISSUE-044 (ADR-021): the line chosen at a person, or "bez wieńca"; a line's name, motif and colour.
+        expect(await columns('persons'), containsAll(['clan_id', 'no_wreath']));
+        expect(
+          await columns('clans'),
+          containsAll(['id', 'name', 'motif', 'colour']),
+        );
         expect(
           await columns('media'),
           containsAll(['grave_id', 'cemetery_id']),

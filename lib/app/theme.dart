@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/clans.dart' show ClanColour;
+
 /// Style B (PROJECT_BRIEF §6a): near-black background, soft grey text, one accent colour — warm
 /// amber like candlelight. The one home of the colour values; roles, rules and contrast measurements
 /// live in grobing-vault/05_DESIGN/brand/style-b.md.
@@ -46,6 +48,25 @@ abstract final class GrobingColors {
   /// (SC 1.4.11). The dot, its accuracy circle, the "gdzie jestem" button while it is on and the icon of the
   /// location's state (element 10a) — never the accent's roles, never a warning.
   static const Color here = Color(0xFF5EA2E6);
+
+  /// The twelve colours of a family line (style-b.md v1.33 → kolory rodu; 05_DESIGN/wieniec.md D6, D15):
+  /// only the wreath and the colour's own dot where it is chosen — never actions, text, choice or focus.
+  /// Flat 4.46–12.16:1 on the background; after the C3 shading the darkest 5% of the leaves keep ≥ 3.10:1
+  /// (brąz), and the halo in the background's colour keeps the background next to every leaf (SC 1.4.11).
+  static Color clan(ClanColour colour) => switch (colour) {
+    ClanColour.stareZloto => const Color(0xFFA88B57),
+    ClanColour.braz => const Color(0xFFA0714F),
+    ClanColour.miedz => const Color(0xFFC07A55),
+    ClanColour.srebro => const Color(0xFFA9ACAF),
+    ClanColour.koscSloniowa => const Color(0xFFD8CFB8),
+    ClanColour.grafit => const Color(0xFF8E8A84),
+    ClanColour.patyna => const Color(0xFF6FA08C),
+    ClanColour.oliwka => const Color(0xFF8E9A5A),
+    ClanColour.blekit => const Color(0xFF7FA3C7),
+    ClanColour.lawenda => const Color(0xFFA08CC0),
+    ClanColour.wrzos => const Color(0xFFC28BA0),
+    ClanColour.rubin => const Color(0xFFC0707A),
+  };
 }
 
 abstract final class GrobingTheme {

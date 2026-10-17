@@ -9,12 +9,13 @@ import 'database.steps.dart';
 
 part 'database.g.dart';
 
-// Schema v14 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
+// Schema v15 — grobing-vault/04_ARCHITECTURE/data-model.md: v1 (ISSUE-007), Assertion (ISSUE-011,
 // ADR-006), the grave's name (ISSUE-012), people's photos as links (ISSUE-017), their crop (ISSUE-018),
 // claims on families and children's links (ISSUE-019), a person's sex with the start of a union
 // (ISSUE-025), a person's background photo (ISSUE-024), a cemetery's photo (ISSUE-023) and its plan
 // (ISSUE-027, ADR-015), sectors as records the graves point at (ISSUE-028, ADR-016), the pin's date
-// (ISSUE-029), places of residence (ISSUE-042, ADR-020), the grave fee "paid until" (ISSUE-043, S4). Enums are
+// (ISSUE-029), places of residence (ISSUE-042, ADR-020), the grave fee "paid until" (ISSUE-043, S4), family
+// lines and the choice of one at a person (ISSUE-044, ADR-021). Enums are
 // stored by name, not index: data lives
 // for decades and a reordered enum must not silently change meaning. Renaming an enum value is a schema
 // change and needs a migration; a new value at the end is not.
@@ -69,6 +70,31 @@ class Persons extends Table {
   TextColumn get bio => text().nullable()();
   TextColumn get bioSource => text().nullable()();
   BoolColumn get isLiving => boolean().withDefault(const Constant(false))();
+
+  /// The family line chosen at this person (ISSUE-044, ADR-021): at the top of a line, or an exception
+  /// to the father's. Null: the wreath comes from the father (`wreaths.dart`). Only the choice is
+  /// stored; every wreath is worked out from the tree when it is read.
+  IntColumn get clanId => integer().nullable().references(Clans, #id)();
+
+  /// "Bez wieńca" chosen at this person, although the father has a line. Never together with [clanId]
+  /// (`clans.dart` writes one and clears the other).
+  BoolColumn get noWreath => boolean().withDefault(const Constant(false))();
+}
+
+/// A family line — "ród" (ISSUE-044, ADR-021): its name and its wreath, one of the motifs drawn for the
+/// app (`assets/wreaths/`) in one of the twelve colours of `theme.dart`. Keys, not values: a new shade
+/// of a colour changes no row. The name is unique without case and Polish letters — kept where clans are
+/// written (`clans.dart`), because SQLite's `NOCASE` knows no Polish letters.
+@DataClassName('ClanRow')
+class Clans extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+
+  /// `laur`, `dab`, … — `WreathMotif` in `clans.dart`.
+  TextColumn get motif => text()();
+
+  /// `stare_zloto`, `braz`, … — `ClanColour` in `clans.dart`.
+  TextColumn get colour => text()();
 }
 
 /// FR-002: a family is a record of 1-2 partners and children — a union, married or not, with its own
@@ -424,6 +450,7 @@ class DataLocation {
     CemeteryPlans,
     Sectors,
     Residences,
+    Clans,
   ],
 )
 class GrobingDatabase extends _$GrobingDatabase {
@@ -435,7 +462,7 @@ class GrobingDatabase extends _$GrobingDatabase {
 
   /// Stored in `PRAGMA user_version`. Every bump ships with a migration step below, tested from the
   /// previous version (NFR-003), and a new schema export (README → Baza danych).
-  static const int currentSchemaVersion = 14;
+  static const int currentSchemaVersion = 15;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -469,6 +496,7 @@ class GrobingDatabase extends _$GrobingDatabase {
             from11To12: _from11To12,
             from12To13: _from12To13,
             from13To14: _from13To14,
+            from14To15: _from14To15,
           ),
         );
         await customStatement('PRAGMA user_version = $to');
@@ -675,6 +703,14 @@ class GrobingDatabase extends _$GrobingDatabase {
     await m.addColumn(schema.graves, schema.graves.paidUntilYear);
     await m.addColumn(schema.graves, schema.graves.paidUntilMonth);
     await m.addColumn(schema.graves, schema.graves.paidUntilDay);
+  }
+
+  /// ISSUE-044 (ADR-021): family lines and the choice at a person. A new table and two columns: no row
+  /// changes, nothing dropped — a v14 backup comes back with no lines and every wreath empty.
+  Future<void> _from14To15(Migrator m, Schema15 schema) async {
+    await m.createTable(schema.clans);
+    await m.addColumn(schema.persons, schema.persons.clanId);
+    await m.addColumn(schema.persons, schema.persons.noWreath);
   }
 }
 

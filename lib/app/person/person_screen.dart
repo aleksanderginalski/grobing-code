@@ -23,6 +23,7 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/wreath.dart';
 import 'kinship_names.dart';
 import 'mini_tree.dart';
 import 'residence_screen.dart' show residenceLabel, residenceLines;
@@ -284,6 +285,22 @@ class _PersonScreenState extends State<PersonScreen> {
     final String? background = photos == null ? null : v.backgroundPath;
     final bool hasRelatives =
         v.relations.parents.isNotEmpty || v.relations.unions.isNotEmpty;
+    // Element 3 (v2.6, wieniec.md C1): the wreath of the line under the portrait, its box twice the portrait;
+    // the name then starts 8 dp under the knot (C3), not 12 dp under the portrait.
+    final bool wreathed = !v.wreath.isEmpty;
+    const double portrait = 104;
+    final double side = WreathFrame.box(portrait);
+    final double wreathTop = 140 - side * WreathFrame.centreY;
+    final Widget? wreath = wreathed
+        ? Positioned(
+            left: 0,
+            right: 0,
+            top: wreathTop,
+            child: Center(
+              child: WreathView(wreath: v.wreath, side: side),
+            ),
+          )
+        : null;
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -291,7 +308,8 @@ class _PersonScreenState extends State<PersonScreen> {
         // half over its lower edge. Without photos at all (only in tests of other features), under the bar.
         if (photos != null)
           SizedBox(
-            height: 140 + 52,
+            height:
+                140 + (wreathed ? WreathFrame.below(portrait) : portrait / 2),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -305,6 +323,8 @@ class _PersonScreenState extends State<PersonScreen> {
                     onTap: () => _chooseBackground(v),
                   ),
                 ),
+                // Over the band, under the portrait; touches go through to the band (IgnorePointer).
+                ?wreath,
                 Positioned(
                   left: 0,
                   right: 0,
@@ -317,11 +337,35 @@ class _PersonScreenState extends State<PersonScreen> {
         else
           Padding(
             padding: const EdgeInsets.only(top: 16),
-            child: Center(child: _portrait(v)),
+            child: wreathed
+                ? SizedBox(
+                    height:
+                        side * WreathFrame.centreY +
+                        WreathFrame.below(portrait),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          child: Center(
+                            child: WreathView(wreath: v.wreath, side: side),
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: side * WreathFrame.centreY - portrait / 2,
+                          child: Center(child: _portrait(v)),
+                        ),
+                      ],
+                    ),
+                  )
+                : Center(child: _portrait(v)),
           ),
         _padded(
           Padding(
-            padding: const EdgeInsets.only(top: 12),
+            padding: EdgeInsets.only(top: wreathed ? 8 : 12),
             child: Semantics(
               header: true,
               child: Text(
@@ -346,6 +390,22 @@ class _PersonScreenState extends State<PersonScreen> {
                 style: const TextStyle(
                   color: GrobingColors.textMuted,
                   fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        // Element 4a (v2.6, wieniec.md C2, D11): the line in words — what the wreath says, for the screen
+        // reader too (SC 1.4.1).
+        if (clanLine(v.wreath) case final String line?)
+          _padded(
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                line,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: GrobingColors.textMuted,
+                  fontSize: 14,
                 ),
               ),
             ),

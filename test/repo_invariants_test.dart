@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/data/clans.dart';
 
 // ISSUE-002 AC-1..4, AC-7: invariants of the repo that are expensive to break by accident.
 void main() {
@@ -175,6 +176,68 @@ void main() {
         File('tool/cemeteries/extract_cemeteries.dart').existsSync(),
         isTrue,
       );
+    },
+  );
+
+  // ISSUE-044 (the author's decision R, family-data.md): the second exception of the family-data block — the
+  // wreath motifs, one name in one folder, each a grey PNG with alpha, 640 × 640, as the guard in
+  // grobing-agents checks it. A photo dropped there under that name fails here too.
+  test(
+    'the wreath motifs: one exception line in the family-data block, and in assets/wreaths only the motifs '
+    'of WreathMotif, each a grey PNG with alpha, 640 × 640 (ISSUE-044)',
+    () {
+      final String gitignore = File(
+        '.gitignore',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      final int flutterDefaults = gitignore.indexOf('# --- Flutter defaults');
+      final List<String> exceptions = [
+        for (final String line in gitignore.split('\n'))
+          if (line.startsWith('!') &&
+              !line.startsWith('!/android/app/src/main/res/'))
+            line,
+      ];
+      expect(exceptions, ['!/assets/wreaths/wieniec-*.png']);
+      expect(
+        gitignore.indexOf('\n!/assets/wreaths/wieniec-*.png\n'),
+        lessThan(flutterDefaults),
+      );
+
+      final List<String> files = [
+        for (final FileSystemEntity f in Directory('assets/wreaths').listSync())
+          f.uri.pathSegments.last,
+      ]..sort();
+      expect(
+        files,
+        [for (final WreathMotif m in WreathMotif.values) 'wieniec-${m.key}.png']
+          ..sort(),
+      );
+      for (final String name in files) {
+        final List<int> head = File(
+          'assets/wreaths/$name',
+        ).readAsBytesSync().sublist(0, 26);
+        int be32(int at) =>
+            head[at] << 24 |
+            head[at + 1] << 16 |
+            head[at + 2] << 8 |
+            head[at + 3];
+        expect(head.sublist(0, 8), [
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
+        ], reason: name);
+        expect(
+          String.fromCharCodes(head.sublist(12, 16)),
+          'IHDR',
+          reason: name,
+        );
+        expect((be32(16), be32(20)), (640, 640), reason: name);
+        expect(head[25], 4, reason: '$name: colour type 4 — grey with alpha');
+      }
     },
   );
 }

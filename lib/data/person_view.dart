@@ -3,10 +3,12 @@ import 'package:drift/drift.dart';
 import 'claims.dart';
 import 'database.dart';
 import 'families.dart';
+import 'family_tree.dart' show loadFamilyTree;
 import 'graves.dart';
 import 'kinship.dart';
 import 'photos.dart';
 import 'residences.dart';
+import 'wreaths.dart';
 
 /// Where the person lies, as the "Pochówek" row shows it (05_DESIGN/osoba.md element 9): their first
 /// burial (ADR-006 D3) — the grave and its cemetery.
@@ -69,7 +71,11 @@ class PersonView {
     required this.relativeProfiles,
     this.meId,
     this.chain,
+    this.wreath = PersonWreath.empty,
   });
+
+  /// The wreath of the person's family line around the portrait (element 3, 4a — ISSUE-044).
+  final PersonWreath wreath;
 
   final int id;
   final String? givenNames;
@@ -131,6 +137,7 @@ Stream<PersonView?> watchPersonView(GrobingDatabase db, int personId) =>
       db.personMedia,
       db.settings,
       db.residences,
+      db.clans,
     }, () => loadPersonView(db, personId));
 
 Future<PersonView?> loadPersonView(GrobingDatabase db, int personId) async {
@@ -192,6 +199,8 @@ Future<PersonView?> loadPersonView(GrobingDatabase db, int personId) async {
     relations: relations,
     relativeProfiles: profiles,
     meId: meId,
+    // The wreath needs the fathers and husbands of the whole tree (B2, B4), as the tree reads it.
+    wreath: (await loadFamilyTree(db)).wreaths.of(personId),
     chain: steps == null
         ? null
         : [

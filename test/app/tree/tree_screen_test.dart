@@ -10,6 +10,8 @@ import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/tree/tree_screen.dart';
+import 'package:grobing/app/widgets/wreath.dart';
+import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
@@ -746,6 +748,46 @@ void main() {
       expect(find.text('Drzewo'), findsNothing);
       expect(_opacityOf(tester, _hint), 1);
       expect(tester.takeException(), isNull);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-044 AC-5 — with a line in the family a person\'s place is 96 dp, not 80; the wreath lies under the '
+    'node and its circle; the reader hears the node as before',
+    (tester) async {
+      await tester.runAsync(() => addFictionalFamily(db));
+      final int marek = await personNamed(tester, 'Marek', 'Wymyślony');
+      await tester.runAsync(
+        () => createClan(
+          db,
+          name: 'Wymyślscy',
+          motif: WreathMotif.dab,
+          colour: ClanColour.stareZloto,
+          forPerson: marek,
+        ),
+      );
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(find.text('Kasia')));
+      await _afterMove(tester);
+
+      final Finder kasia = find.ancestor(
+        of: find.text('Kasia'),
+        matching: _people(),
+      );
+      expect(tester.getSize(kasia).width, 96);
+      // Marek's line: on him, his sons, "Ja" and Kasia (his wife, without a line of her own — B5).
+      final Finder wreaths = find.descendant(
+        of: kasia,
+        matching: find.byType(WreathView),
+      );
+      expect(wreaths, findsOneWidget);
+      // The wreath first in the node: under the name's plate and the circle.
+      final Stack node = tester.widget<Stack>(
+        find.ancestor(of: wreaths, matching: find.byType(Stack)).first,
+      );
+      expect((node.children.first as Positioned).child, isA<WreathView>());
+      expect(tester.getSize(wreaths).width, 88);
       await cleanUp(tester);
     },
   );

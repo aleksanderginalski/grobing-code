@@ -5,6 +5,7 @@ import '../../data/graves.dart';
 import '../../data/places.dart' show PlaceList;
 import '../../data/residences.dart';
 import '../family/family_section.dart';
+import '../person/clan_screen.dart';
 import '../person/residence_screen.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
@@ -754,6 +755,12 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             labelText: 'Nazwisko rodowe (z domu)',
           ),
         ),
+        // Element 4b (v5.10, ISSUE-044): the wreath of the family line — in a correction only, outside the
+        // `next` order; a choice saves at once, like "Rodzina" (wieniec.md D16).
+        if (widget.mode case Correction(:final BuriedPerson person)) ...[
+          const SizedBox(height: 16),
+          WreathFormRow(database: widget.database, personId: person.id),
+        ],
         // Elements 5–7.
         for (final DateInput d in _dates) ...[
           const SizedBox(height: 16),

@@ -26,13 +26,15 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  test('empty database: schema 14, zero rows in every table, no photos', () async {
+  test('empty database: schema 15, zero rows in every table, no photos', () async {
     final DataState state = await readDataState(db, mediaDir: media);
 
-    expect(state.schemaVersion, 14);
+    expect(state.schemaVersion, 15);
     // v4 (ISSUE-017): person_media joins the 11 tables of v3, v10 (ISSUE-027) cemetery_plans, v11
-    // (ISSUE-028) sectors, v13 (ISSUE-042) residences — and the fingerprint finds each by itself.
-    expect(state.rowCounts, hasLength(15));
+    // (ISSUE-028) sectors, v13 (ISSUE-042) residences, v15 (ISSUE-044) clans — and the fingerprint finds each
+    // by itself.
+    expect(state.rowCounts, hasLength(16));
+    expect(state.rowCounts, contains('clans'));
     expect(state.rowCounts, contains('residences'));
     expect(state.rowCounts, contains('cemetery_plans'));
     expect(state.rowCounts, contains('sectors'));
