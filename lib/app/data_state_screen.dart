@@ -9,6 +9,7 @@ import '../data/data_state.dart';
 import '../data/database.dart';
 import '../dev/fictional_data.dart';
 import '../dev/fictional_family.dart';
+import '../dev/fictional_residences.dart';
 import 'backup_setup_screen.dart';
 import 'restore_screen.dart';
 import 'theme.dart';
@@ -137,6 +138,13 @@ class _DataStateScreenState extends State<DataStateScreen> {
     _refresh();
   }
 
+  /// Residences for the made-up family, for the migration map (ISSUE-045).
+  Future<void> _addFictionalResidences() async {
+    await addFictionalResidences(widget.database);
+    await addFictionalPortraits(widget.database, widget.location.mediaDir);
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -225,6 +233,15 @@ class _DataStateScreenState extends State<DataStateScreen> {
                 OutlinedButton(
                   onPressed: _addFictionalFamily,
                   child: const Text('Wymyślona rodzina do drzewa'),
+                ),
+                const SizedBox(height: 12),
+                // People who moved, for the migration map (ISSUE-045) — after the family above; a few of them with a
+                // drawn portrait, so the map shows photos as well as initials.
+                OutlinedButton(
+                  onPressed: _addFictionalResidences,
+                  child: const Text(
+                    'Wymyślone miejsca zamieszkania i portrety',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 // Until US-008 the only way to see the candles of a cemetery's map (ISSUE-027).

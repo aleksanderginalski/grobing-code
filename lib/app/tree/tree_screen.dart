@@ -7,10 +7,12 @@ import 'package:flutter/semantics.dart' show SemanticsService;
 import '../../data/database.dart';
 import '../../data/family_tree.dart';
 import '../../data/kinship.dart';
+import '../../data/residences.dart' show Residence, watchAllResidences;
 import '../../data/wreaths.dart';
 import '../dates.dart';
 import '../external_link.dart' show openCastSettings, recommendedTimeout;
 import '../family/union_wizard.dart' show shortPersonName;
+import '../map/world_map_data.dart';
 import '../people/me_picker_screen.dart';
 import '../people/people_list.dart'
     show InitialsCircle, chooseMeLine, initialsOf;
@@ -25,6 +27,8 @@ import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
 import '../widgets/wreath.dart';
 import 'connect_dialog.dart';
+import 'migration_map.dart';
+import 'migration_year.dart';
 import 'presentation_mode.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
@@ -62,28 +66,48 @@ const double _middleHeight = 0.42;
 /// is to "ja" (AC-5). "Pokaż w drzewie" opens it with a given person in the middle ([focusPersonId], AC-6).
 /// The TV icon turns it into presentation mode (element 11, AC-8; ISSUE-034): landscape, full screen, level 2
 /// fitted to the screen, no buttons. "Połącz dwie osoby" lights the path between two people on the same tree
-/// (elements 7–10; US-011, ISSUE-039).
+/// (elements 7–10; US-011, ISSUE-039). Since ISSUE-045 the tab has two parts, "Drzewo" and "Mapa" (drzewo.md v1.20,
+/// W2): the migration map (05_DESIGN/mapa-migracji.md) shares the person in the middle, the card, the year, the
+/// tempo, ▶ and presentation mode.
 class TreeScreen extends StatefulWidget {
   const TreeScreen({
     super.key,
     required this.database,
     this.photos,
     this.focusPersonId,
+    this.showMap = false,
   });
 
   final GrobingDatabase database;
   final Photos? photos;
   final int? focusPersonId;
 
+  /// Open on the part "Mapa" — "Pokaż na mapie" in a person's view (osoba.md 9a, v2.7).
+  final bool showMap;
+
   @override
   State<TreeScreen> createState() => _TreeScreenState();
 }
+
+/// The tab's two parts (drzewo.md element 1, v1.20).
+enum _Part { tree, map }
 
 class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   StreamSubscription<FamilyTreeData>? _subscription;
   Object? _error;
   FamilyTreeData? _family;
   TreeGraph? _graph;
+
+  /// The part shown; the map's data comes when it is first shown (mapa-migracji.md).
+  late _Part _part = widget.showMap ? _Part.map : _Part.tree;
+  StreamSubscription<Map<int, List<Residence>>>? _residenceSubscription;
+  Map<int, List<Residence>>? _residences;
+  WorldMapData? _worldMap;
+  Object? _worldError;
+  MigrationYear? _migration;
+
+  /// What everyone is to "ja", for the map's reader — the tree's [_kin] covers only the people laid out.
+  Map<int, String?>? _kinAll;
 
   /// The person in the middle; null without "ja" and without a person given.
   int? _focus;
@@ -219,6 +243,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       ..addStatusListener(_onPathRunStatus);
     _view.addListener(_onView);
     _listen();
+    if (_part == _Part.map) _openMap();
   }
 
   void _listen() {
@@ -229,6 +254,84 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         if (mounted) setState(() => _error = e);
       },
     );
+  }
+
+  /// The map's data, once it is first shown: everyone's residences, kept fresh, and the world (mapa-migracji.md
+  /// element 2) — read once while the app runs.
+  void _openMap() {
+    _residenceSubscription ??= watchAllResidences(widget.database).listen(
+      (residences) {
+        if (!mounted) return;
+        setState(() {
+          _residences = residences;
+          _migration = _migrationOf(_family, _time);
+        });
+      },
+      onError: (Object e) {
+        if (mounted) setState(() => _worldError = e);
+      },
+    );
+    if (_worldMap != null) return;
+    WorldMapData.load().then(
+      (world) {
+        if (mounted) setState(() => _worldMap = world);
+      },
+      onError: (Object e) {
+        if (mounted) setState(() => _worldError = e);
+      },
+    );
+  }
+
+  MigrationYear? _migrationOf(FamilyTreeData? family, TreeTime? time) {
+    final Map<int, List<Residence>>? residences = _residences;
+    if (family == null || time == null || residences == null) return null;
+    return MigrationYear(
+      time: time,
+      residences: residences,
+      people: family.people.keys,
+    );
+  }
+
+  /// "Drzewo" · "Mapa" (element 1, v1.20): the person in the middle, the year, the tempo and ▶ stay; a lit path
+  /// belongs to the tree and ends (D49).
+  void _setPart(_Part part) {
+    if (part == _part) return;
+    _endPath();
+    setState(() => _part = part);
+    if (part == _Part.map) _openMap();
+    _armControls();
+  }
+
+  /// A person touched on the map (mapa-migracji.md element 4): the one in the middle opens their view, as on the
+  /// tree — not in presentation (D5) — another goes to the middle, the tree too.
+  void _mapTap(int person) {
+    if (person == _focus) {
+      if (!_presenting) _open(person);
+      return;
+    }
+    setState(() {
+      _focus = person;
+      // The tree follows, at once and centred, for the way back to it.
+      _relayout(keep: person, centre: true);
+    });
+  }
+
+  /// [_kinAll], worked out once a family.
+  Map<int, String?> _kinOfAll(FamilyTreeData family) {
+    final Map<int, String?>? known = _kinAll;
+    if (known != null) return known;
+    final int? me = family.meId;
+    Sex? sexOf(int id) => family.people[id]?.sex;
+    return _kinAll = {
+      if (me != null)
+        for (final int n in family.people.keys)
+          n: n == me
+              ? 'to ja'
+              : switch (family.kin.path(me, n)) {
+                  final List<KinStep> steps? => kinshipName(steps, sexOf),
+                  null => 'nie wiadomo jeszcze, kim jest dla mnie',
+                },
+    };
   }
 
   @override
@@ -259,6 +362,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _subscription?.cancel();
+    _residenceSubscription?.cancel();
     _pillTimer?.cancel();
     _controlsTimer?.cancel();
     _todayTimer?.cancel();
@@ -309,6 +413,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       }
       final TreeTime time = TreeTime(data, now: DateTime.now().year);
       _time = time;
+      _migration = _migrationOf(data, time);
+      _kinAll = null;
       if (_year case final int y? when y < time.start) _year = time.start;
       // The family changed under a lit path: its people may be gone, so the light goes (element 8), as at its end
       // — the level from the scale, at least 0.4 (D46; ui review of ISSUE-039).
@@ -1085,7 +1191,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         _flash(
           // The function, not a tile's name: "Przesyłanie" on a Pixel, "Smart View" on a Samsung (drzewo.md D26);
           // a hard space after the one-letter word (style-b.md rule 6).
-          'Obraz na telewizor: przesyłanie ekranu w szybkich ustawieniach telefonu',
+          'Obraz na telewizor: przesyłanie ekranu w\u00A0szybkich ustawieniach telefonu',
           const Duration(seconds: 4),
         );
       }
@@ -1338,20 +1444,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
       child: Row(
         children: [
+          // Since v1.20 the switch "Drzewo" · "Mapa" stands where the title was (W2; R3's segmented toggle).
           Expanded(
-            child: Semantics(
-              header: true,
-              child: const Text(
-                'Drzewo',
-                style: TextStyle(
-                  color: GrobingColors.text,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _PartSwitch(
+                part: _part,
+                onChanged: _setPart,
+                linkInTree: _treeShown && _family?.meId != null,
               ),
             ),
           ),
-          if (_treeShown && _family?.meId != null)
+          // "Połącz dwie osoby" belongs to the tree: the map has no family lines to light (mapa-migracji.md D11).
+          if (_treeShown && _family?.meId != null && _part == _Part.tree)
             IconButton(
               icon: const Icon(Icons.link_outlined),
               color: GrobingColors.amber,
@@ -1384,7 +1489,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     if (_error != null) return _readError();
     if (family == null) return const Center(child: CircularProgressIndicator());
     if (family.people.isEmpty) {
-      return _message('Tu pojawi się drzewo — osoby z grobów i ich rodziny.');
+      return _message(
+        _part == _Part.map
+            // mapa-migracji.md → States: "pusta mapa" — nobody, so no residence either.
+            ? 'Tu pojawią się miejsca, w\u00A0których mieszkała rodzina. Dodasz je w\u00A0widoku osoby.'
+            : 'Tu pojawi się drzewo — osoby z grobów i ich rodziny.',
+      );
     }
     final int? focus = _focus;
     final TreeLayout? layout = _layout;
@@ -1412,6 +1522,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               isMe: focus == family.meId,
               kin: family.meId == null ? null : _kin[focus],
               photos: widget.photos,
+              // The map's part: where the person in the middle is in the year (mapa-migracji.md element 12).
+              where: switch ((_part, _migration)) {
+                (_Part.map, final MigrationYear m?) => mapWhereLine(
+                  m.person(focus, _year),
+                  _year,
+                ),
+                _ => null,
+              },
               onShow: () => _open(focus),
               time: switch (_time) {
                 final TreeTime time? => TreeTimeBar(
@@ -1476,9 +1594,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   Widget _treeArea(FamilyTreeData family, TreeLayout layout) => LayoutBuilder(
     builder: (context, constraints) {
       final Size size = constraints.biggest;
+      final bool map = _part == _Part.map;
       // The first frame on Android can be nearly zero in size: the middle waits for the real one
-      // (SPIKE-002, Dev report, error b).
-      if (size.width > 1 && size.height > 1) {
+      // (SPIKE-002, Dev report, error b). The map's part leaves the tree's view as it is, for the way back.
+      if (!map && size.width > 1 && size.height > 1) {
         // A new size before anyone touched the tree — a keyboard closing after the choice of "ja", a turn
         // of the phone — puts the middle in the middle again.
         if (_viewport != null && _viewport != size && !_touched) {
@@ -1502,40 +1621,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           });
         }
       }
-      final Set<int> named = _visibleNames(family, layout);
-      // The people of a lit path the line has reached: the ring, as the middle's (element 8).
-      final Set<int> lit = {...?_path?.people.take(_reached)};
-      // In the slider's year only those on the tree, the middle (its empty ring before birth) and those
-      // fading out (element 6, AC-1).
-      final Map<int, Widget> nodes = {
-        for (final int n in layout.positions.keys)
-          if (_isOn(n) || n == layout.focus || _fadingOut.contains(n))
-            n: _node(family, layout, n, named.contains(n), lit.contains(n)),
-      };
       return Stack(
         children: [
           Positioned.fill(
-            child: Listener(
-              onPointerDown: _pointerDown,
-              onPointerUp: _pointerUp,
-              onPointerCancel: _pointerCancel,
-              child: InteractiveViewer(
-                transformationController: _view,
-                constrained: false,
-                boundaryMargin: const EdgeInsets.all(double.infinity),
-                minScale: treeMinScale,
-                maxScale: treeMaxScale,
-                // In presentation dragging moves, but the level stays: no pinch (D16).
-                scaleEnabled: !_presenting,
-                // Two fingers end a lit path (D49); one drags it into view and keeps it.
-                onInteractionUpdate: (details) {
-                  if (details.pointerCount > 1 && _path != null) _endPath();
-                },
-                child: _world(layout, nodes),
-              ),
-            ),
+            child: map ? _mapView(family) : _treeView(family, layout),
           ),
-          if (!_presenting)
+          if (!_presenting && !map)
             Positioned(right: 12, bottom: 12, child: _zoomButtons()),
           // In immersive sticky mode the system's swipe from the edge, which shows the bars for a moment,
           // reaches the app too: it dragged the tree away (found on the emulator) — from the top and the
@@ -1569,9 +1660,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 child: RepaintBoundary(child: PresentationYear(year: _year)),
               ),
             ),
-          Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
-          // Elements 9 and 10: where the pill stands, which does not show with them (D49).
-          Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
+          if (!map) ...[
+            Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
+            // Elements 9 and 10: where the pill stands, which does not show with them (D49).
+            Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
+          ],
           // B2 (D40): the bar at the bottom — the card's time row in one row — and the way out.
           if (_presenting && _controlsShown) ...[
             if (_time case final TreeTime time?)
@@ -1602,16 +1695,100 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+            // "Drzewo" · "Mapa" in the controls, at the top (drzewo.md element 11, v1.20; mapa-migracji.md element 13):
+            // from the tree to the map in one touch, the same year, without casting again. In the middle of the room
+            // between the year and "Zakończ prezentację", not of the screen: at 200 % on a phone held sideways the
+            // three do not fit around the middle (qa, ISSUE-045 — 56 dp under the exit at 914 dp); where the words do
+            // not fit, the icons alone.
             Positioned(
               top: 12,
+              left: 0,
               right: 12,
-              child: PresentationExit(onPressed: _leave),
+              height: _ControlsTop.height,
+              child: CustomMultiChildLayout(
+                delegate: _ControlsTop(
+                  left: PresentationYear.right(context) + 12,
+                ),
+                children: [
+                  LayoutId(
+                    id: _ControlsTop.exit,
+                    child: PresentationExit(onPressed: _leave),
+                  ),
+                  LayoutId(
+                    id: _ControlsTop.parts,
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: _PartSwitch(
+                        part: _part,
+                        onChanged: _setPart,
+                        filled: true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
       );
     },
   );
+
+  /// The map's part (mapa-migracji.md): the world, once it is read; until then the map's empty frame.
+  Widget _mapView(FamilyTreeData family) {
+    final WorldMapData? world = _worldMap;
+    final MigrationYear? migration = _migration;
+    if (_worldError != null) return _readError();
+    if (world == null || migration == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return MigrationMap(
+      world: world,
+      family: family,
+      migration: migration,
+      year: _year,
+      focus: _focus,
+      kin: _kinOfAll(family),
+      photos: widget.photos,
+      presenting: _presenting,
+      playing: _playing,
+      onTap: _mapTap,
+      onEmptyTap: _presenting ? _toggleControls : null,
+    );
+  }
+
+  /// The tree's own area (element 4): the people of the slider's year, pinch and drag, the double tap.
+  Widget _treeView(FamilyTreeData family, TreeLayout layout) {
+    final Set<int> named = _visibleNames(family, layout);
+    // The people of a lit path the line has reached: the ring, as the middle's (element 8).
+    final Set<int> lit = {...?_path?.people.take(_reached)};
+    // In the slider's year only those on the tree, the middle (its empty ring before birth) and those
+    // fading out (element 6, AC-1).
+    final Map<int, Widget> nodes = {
+      for (final int n in layout.positions.keys)
+        if (_isOn(n) || n == layout.focus || _fadingOut.contains(n))
+          n: _node(family, layout, n, named.contains(n), lit.contains(n)),
+    };
+    return Listener(
+      onPointerDown: _pointerDown,
+      onPointerUp: _pointerUp,
+      onPointerCancel: _pointerCancel,
+      child: InteractiveViewer(
+        transformationController: _view,
+        constrained: false,
+        boundaryMargin: const EdgeInsets.all(double.infinity),
+        minScale: treeMinScale,
+        maxScale: treeMaxScale,
+        // In presentation dragging moves, but the level stays: no pinch (D16).
+        scaleEnabled: !_presenting,
+        // Two fingers end a lit path (D49); one drags it into view and keeps it.
+        onInteractionUpdate: (details) {
+          if (details.pointerCount > 1 && _path != null) _endPath();
+        },
+        child: _world(layout, nodes),
+      ),
+    );
+  }
 
   /// The tree's own plane: the lines under the people. During a move the people slide and the lines wait,
   /// then fade in — no line is measured anew in each frame (SPIKE-002 M3).
@@ -2324,6 +2501,7 @@ class _TreeCard extends StatelessWidget {
     required this.kin,
     required this.photos,
     required this.onShow,
+    this.where,
     this.time,
   });
 
@@ -2332,6 +2510,9 @@ class _TreeCard extends StatelessWidget {
   final String? kin;
   final Photos? photos;
   final VoidCallback onShow;
+
+  /// Only in the map's part: "W 1930: Zmyślin, Polska · dziś Ukraina" (mapa-migracji.md element 12).
+  final String? where;
   final Widget? time;
 
   @override
@@ -2383,6 +2564,13 @@ class _TreeCard extends StatelessWidget {
           kin == null ? years : '$years · $kin',
           style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
         ),
+        if (where case final String line) ...[
+          const SizedBox(height: 2),
+          Text(
+            line,
+            style: const TextStyle(color: GrobingColors.text, fontSize: 14),
+          ),
+        ],
       ],
     );
     final Widget show = TextButton(
@@ -2430,6 +2618,205 @@ class _TreeCard extends StatelessWidget {
               ),
             ?time,
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The top of presentation's controls (drzewo.md element 11; mapa-migracji.md element 13): "Zakończ prezentację" at the
+/// right in its own width, and the "Drzewo" · "Mapa" switch in the middle of the room between the year and it — given
+/// that room, so it shows its icons alone where its words do not fit (qa, ISSUE-045: at 200 % the switch in the middle
+/// of the screen ran under the exit). Never less room than the icons: past that, as before, the two may overlap.
+class _ControlsTop extends MultiChildLayoutDelegate {
+  _ControlsTop({required this.left});
+
+  static const Object exit = 'exit';
+  static const Object parts = 'parts';
+
+  /// Above the tallest exit at large text; the empty part takes no touch.
+  static const double height = 96;
+  static const double _gap = 12;
+
+  /// Where the room starts: past the year in the corner.
+  final double left;
+
+  @override
+  void performLayout(Size size) {
+    final Size out = layoutChild(
+      exit,
+      BoxConstraints.loose(Size(double.infinity, size.height)),
+    );
+    final double outLeft = size.width - out.width;
+    positionChild(exit, Offset(outLeft, 0));
+    final double room = outLeft - _gap - left;
+    final Size switcher = layoutChild(
+      parts,
+      BoxConstraints(
+        maxWidth: math.max(room, _PartSwitch.iconsWidth),
+        maxHeight: size.height,
+      ),
+    );
+    positionChild(
+      parts,
+      Offset(
+        left + (room - switcher.width) / 2,
+        (out.height - switcher.height) / 2,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_ControlsTop old) => old.left != left;
+}
+
+/// Element 1 since v1.20 (W2; mapa-migracji.md element 1): the tab's two parts as a segmented toggle, as in R3 — the
+/// active one with a 2 dp outline and its icon in the accent. 40 dp high in a 48 dp target. When the words do not fit
+/// the room left by the bar's icons (large system text), the icons alone, each with its tooltip.
+class _PartSwitch extends StatelessWidget {
+  const _PartSwitch({
+    required this.part,
+    required this.onChanged,
+    this.linkInTree = false,
+    this.filled = false,
+  });
+
+  final _Part part;
+  final ValueChanged<_Part> onChanged;
+
+  /// Presentation's controls: the capsule on the surface, in its own outline — one edge over the map, as "Zakończ
+  /// prezentację" (second ui review of ISSUE-045: a 48 dp surface under the 40 dp outline drew two).
+  final bool filled;
+
+  /// The tree's part shows "Połącz dwie osoby" — the switch keeps the room it takes there in both parts.
+  final bool linkInTree;
+
+  static const TextStyle _style = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+  );
+
+  static const List<(_Part, IconData, String)> _parts = [
+    (_Part.tree, Icons.account_tree_outlined, 'Drzewo'),
+    (_Part.map, Icons.public_outlined, 'Mapa'),
+  ];
+
+  /// A segment with its words: 14 dp, the icon 20 dp, 6 dp, the words, 14 dp.
+  static double _withWords(double words) => 14 + 20 + 6 + words + 14;
+
+  /// A segment of the icon alone.
+  static const double _iconOnly = 56;
+
+  /// Both segments as icons alone: the least room the switch takes.
+  static const double iconsWidth = 2 * _iconOnly;
+
+  static const BoxDecoration _capsule = BoxDecoration(
+    border: Border.fromBorderSide(BorderSide(color: GrobingColors.outline)),
+    borderRadius: BorderRadius.all(Radius.circular(20)),
+  );
+
+  /// The bar's "Połącz dwie osoby", which only the tree's part has.
+  static const double _linkIcon = 48;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final TextScaler scaler = MediaQuery.textScalerOf(context);
+      double needed = 0;
+      for (final (_, _, String label) in _parts) {
+        final TextPainter painter = TextPainter(
+          text: TextSpan(text: label, style: _style),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+          maxLines: 1,
+        )..layout();
+        needed += _withWords(painter.width);
+        painter.dispose();
+      }
+      // Measured against the tree's room — with "Połącz dwie osoby" beside it — in both parts: the switch must not
+      // change its shape under the finger that has just changed the part (seen at 200% on 360 dp: words on the map,
+      // icons on the tree).
+      final double room =
+          constraints.maxWidth -
+          (part == _Part.map && linkInTree ? _linkIcon : 0);
+      final bool words = needed <= room;
+      return Stack(
+        children: [
+          // The capsule around both parts: 40 dp in the middle of the 48 dp row. Filled, it is Ink on the transparent
+          // Material just above, so a touch's splash shows over the surface.
+          Positioned.fill(
+            top: 4,
+            bottom: 4,
+            child: filled
+                ? Ink(
+                    decoration: _capsule.copyWith(color: GrobingColors.surface),
+                  )
+                : const DecoratedBox(decoration: _capsule),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (_Part p, IconData icon, String label) in _parts)
+                _segment(p, icon, label, words),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _segment(_Part p, IconData icon, String label, bool words) {
+    final bool on = p == part;
+    return Semantics(
+      button: true,
+      selected: on,
+      inMutuallyExclusiveGroup: true,
+      label: label,
+      excludeSemantics: true,
+      onTap: () => onChanged(p),
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => onChanged(p),
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              child: Container(
+                height: 40,
+                constraints: const BoxConstraints(minWidth: _iconOnly),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: on
+                    ? BoxDecoration(
+                        border: Border.all(
+                          color: GrobingColors.amber,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      )
+                    : null,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: on ? GrobingColors.amber : GrobingColors.textMuted,
+                    ),
+                    if (words) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        style: _style.copyWith(color: GrobingColors.text),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

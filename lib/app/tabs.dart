@@ -28,12 +28,14 @@ enum AppTab {
 ///
 /// The tree starts from "ja" (drzewo.md D15, US-009 AC-1); [treeFocus] — "Pokaż w drzewie" in a person's view
 /// (osoba.md element 6, AC-6) — opens it afresh with that person in the middle, even from inside its own stack.
+/// [treeMap] — "Pokaż na mapie" (osoba.md 9a, v2.7) — opens the tab's part "Mapa" (drzewo.md v1.20, W2).
 void openTab(
   BuildContext context,
   AppTab tab, {
   required GrobingDatabase database,
   Photos? photos,
   int? treeFocus,
+  bool treeMap = false,
 }) {
   final NavigatorState navigator = Navigator.of(context);
   final bool fresh = tab == AppTab.tree && treeFocus != null;
@@ -56,6 +58,7 @@ void openTab(
           database: database,
           photos: photos,
           focusPersonId: treeFocus,
+          showMap: treeMap,
         ),
         AppTab.map => throw StateError('The map is the first route'),
       },

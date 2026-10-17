@@ -153,7 +153,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     await _afterMove(tester);
-    expect(find.text('Drzewo'), findsNothing);
+    // The bar and the tab bar are gone. Not "Drzewo": since drzewo.md v1.20 it stands in the controls' switch
+    // "Drzewo · Mapa" (ISSUE-045), which a reader has from the start.
+    expect(find.byType(GrobingTabBar), findsNothing);
+    expect(find.byTooltip('Połącz dwie osoby'), findsNothing);
   }
 
   testWidgets(

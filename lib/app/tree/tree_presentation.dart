@@ -22,6 +22,36 @@ class PresentationYear extends StatelessWidget {
   static const double top = 24;
   static const double fontSize = 36;
   static const double maxTextScale = 1.3;
+  static const double _padding = 6;
+
+  static const TextStyle _style = TextStyle(
+    color: GrobingColors.amber,
+    fontSize: fontSize,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  static TextScaler _scaler(BuildContext context) =>
+      MediaQuery.textScalerOf(context).clamp(maxScaleFactor: maxTextScale);
+
+  /// The year's right edge at its widest — "dziś" or four digits at this text size — for what stands beside it at
+  /// the top: the "Drzewo" · "Mapa" switch (ISSUE-045, qa: at 200 % the switch in the middle ran under
+  /// "Zakończ prezentację").
+  static double right(BuildContext context) {
+    double widest = 0;
+    for (final String text in const ['dziś', '0000']) {
+      final TextPainter painter = TextPainter(
+        text: TextSpan(text: text, style: _style),
+        textDirection: TextDirection.ltr,
+        textScaler: _scaler(context),
+        maxLines: 1,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    return left + _padding + widest + _padding;
+  }
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -33,19 +63,11 @@ class PresentationYear extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: _padding),
         child: Text(
           year == null ? 'dziś' : '$year',
-          textScaler: MediaQuery.textScalerOf(
-            context,
-          ).clamp(maxScaleFactor: maxTextScale),
-          style: const TextStyle(
-            color: GrobingColors.amber,
-            fontSize: fontSize,
-            fontWeight: FontWeight.w600,
-            height: 1.2,
-            fontFeatures: [FontFeature.tabularFigures()],
-          ),
+          textScaler: _scaler(context),
+          style: _style,
         ),
       ),
     ),

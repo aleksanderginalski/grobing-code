@@ -220,6 +220,31 @@ Ekran główny to mapa Polski (ISSUE-014, ADR-007 w vaulcie), od ISSUE-023 jak R
 - **Znicze, które nachodzą na siebie** (cel dotyku 48 dp), łączą się w jeden znicz z liczbą
   (`lib/app/home/pin_groups.dart`). Ikona znicza jest jedna na całą aplikację: `lib/app/widgets/candle.dart`.
 
+### Mapa świata (mapa migracji)
+
+Część „Mapa” zakładki Drzewo (ISSUE-045, `05_DESIGN/mapa-migracji.md` w vaulcie): kto gdzie mieszkał w roku z suwaka
+drzewa. **Też bez kafelków i bez sieci:** kraje świata są w `assets/map/world.json` (ok. 510 KB, 182 kraje, ok. 35 tys.
+punktów).
+- **Źródło:** ten sam plik Natural Earth 1:10m co mapa Polski i lista miejsc — `ne_10m_admin_0_countries.geojson`. Plik
+  odtwarza `dart run tool/map/extract_world.dart <katalog z plikiem>`: Douglas–Peucker 0,06° (ok. 6,7 km), wyspy od 0,15
+  stopnia kwadratowego, bez Antarktydy, współrzędne do 3 miejsc. Przy każdym kraju kod (`ISO_A2_EH` — w `ISO_A2` Francja i
+  Norwegia mają `-99`), polska nazwa i punkt nazwy — ten sam, który lista miejsc daje zamieszkaniu „cały kraj”.
+- **Przybliżenie najwyżej do poziomu regionu** (zoom 7): bliżej uproszczona linia robi się kanciasta.
+- **Kadr wybiera użytkownik** (R4): zmieniają go tylko palce i + / −; trzymany w pamięci, dopóki aplikacja działa
+  (`migrationArea` w `lib/app/tree/migration_map.dart`), a nie w bazie.
+- **Kto gdzie w roku** liczy czysta funkcja `lib/app/tree/migration_year.dart` — okna dat z drzewa (`TreeTime`) i koniec
+  pobytu z następnego miejsca (`impliedEnds`, jak w widoku osoby).
+- **Miejsca bliżej niż 44 dp na ekranie łączą się w jedno skupienie** (jak `Leaflet.markercluster`): do 3 twarzy, „+N” i podpis
+  „5 miejsc”; dotknięcie przybliża do jego miejsc, a przy największym przybliżeniu rozsuwa. Podpisy nie nachodzą na siebie ani na
+  okręgi — nazwy krajów ustępują pierwsze.
+- **Pułapka wydajności:** przy ▶ ludzie ruszają się w każdej klatce, a nowy renderer nie trzyma pamięci podręcznej rastra, więc
+  35 tys. punktów lądu było rysowanych od nowa w każdej klatce (22–26% wolnych klatek na emulatorze). Ląd jest dlatego **rysowany
+  raz do obrazu**, gdy kamera stoi (`_LandLayer` w `migration_map.dart`), a z wektorów tylko w ruchu kamery. Z `FRAME_LOG` w logu
+  widać `GROBING_MEASURE map land image`, gdy obraz powstał. `MapOptions` mapy powstają raz — nowe w każdym budowaniu ekranu drzewa
+  kazały mapie budować warstwy od nowa.
+- **Dane do sprawdzenia:** w „Stanie danych” (debug i profile) przycisk „Wymyślone miejsca zamieszkania” dokłada zamieszkania
+  wymyślonej rodzinie z „Wymyślona rodzina do drzewa” (`lib/dev/fictional_residences.dart`).
+
 ## Mapa cmentarza i sieć
 
 Od ISSUE-027 (ADR-003 w vaulcie) aplikacja ma uprawnienie `INTERNET` — **wyłącznie** do dwóch rzeczy:

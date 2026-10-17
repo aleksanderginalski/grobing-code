@@ -737,6 +737,24 @@ class _PersonScreenState extends State<PersonScreen> {
           if (i > 0) const Divider(height: 1, color: GrobingColors.outline),
           _ResidenceRow(r, impliedTo: ends[i]),
         ],
+        // "Pokaż na mapie" (osoba.md v2.7, 9a, D22; zamieszkanie.md 4a): the Drzewo tab's part "Mapa" with this person in
+        // the middle — as "Pokaż w drzewie" under the mini tree, a change of tab (mapa-migracji.md → Navigation).
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: GrobingColors.amber),
+            onPressed: () => openTab(
+              context,
+              AppTab.tree,
+              database: widget.database,
+              photos: widget.photos,
+              treeFocus: v.id,
+              treeMap: true,
+            ),
+            icon: const Icon(Icons.public_outlined),
+            label: const Text('Pokaż na mapie'),
+          ),
+        ),
       ],
     );
   }

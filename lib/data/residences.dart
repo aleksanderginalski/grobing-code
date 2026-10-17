@@ -2,7 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'cemeteries.dart' show GeoPoint;
 import 'database.dart';
-import 'graves.dart' show PartialDate, QualifiedDate;
+import 'graves.dart' show PartialDate, QualifiedDate, watchTables;
 
 // Where and when a person lived (ISSUE-042, ADR-020; 05_DESIGN/zamieszkanie.md): read in the order of the
 // years (D4), written with the person's entry — in its transaction, at "Zapisz" (D5).
@@ -167,6 +167,25 @@ Future<List<Residence>> residencesOf(GrobingDatabase db, int personId) async =>
               .get())
         _residence(r),
     ]);
+
+/// Everyone's residences, each person's in the order of the years (D4) — the migration map (ISSUE-045,
+/// 05_DESIGN/mapa-migracji.md): who lived where in a year. A person without residences is not in it.
+Future<Map<int, List<Residence>>> allResidences(GrobingDatabase db) async {
+  final Map<int, List<Residence>> byPerson = {};
+  for (final ResidenceRow r in await (db.select(
+    db.residences,
+  )..orderBy([(r) => OrderingTerm.asc(r.id)])).get()) {
+    (byPerson[r.personId] ??= []).add(_residence(r));
+  }
+  return {
+    for (final MapEntry<int, List<Residence>> e in byPerson.entries)
+      e.key: inStayOrder(e.value),
+  };
+}
+
+/// [allResidences] anew after every write to the residences (`watchTables` in graves.dart).
+Stream<Map<int, List<Residence>>> watchAllResidences(GrobingDatabase db) =>
+    watchTables(db, 'all_residences', {db.residences}, () => allResidences(db));
 
 /// Up to [limit] different places of the residences written, the newest first — "Ostatnio wybrane" of the
 /// choice of a place (D6): a family lived in a few of the same places.
