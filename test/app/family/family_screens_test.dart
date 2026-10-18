@@ -1132,19 +1132,10 @@ void main() {
   testWidgets('a new person has no "Rodzina" yet (rodzina.md D2)', (
     tester,
   ) async {
-    final int cemetery = await data(
-      tester,
-      () => addCemetery(db, name: 'Cmentarz Wymyślony'),
-    );
+    // ISSUE-047: the form of a new grave is gone; a new person buried nowhere is the same form.
     await pumpScreen(
       tester,
-      PersonFormScreen(
-        database: db,
-        mode: NewGrave(
-          cemeteryId: cemetery,
-          cemeteryName: 'Cmentarz Wymyślony',
-        ),
-      ),
+      PersonFormScreen(database: db, mode: const NewPerson()),
     );
     await tester.pumpAndSettle();
     expect(find.text('Rodzina'), findsNothing);

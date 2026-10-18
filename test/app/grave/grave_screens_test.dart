@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/dates.dart' show badDateMessage;
 import 'package:grobing/app/grave/cemetery_screen.dart';
+import 'package:grobing/app/grave/grave_person_choice_screen.dart';
 import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
@@ -209,10 +210,11 @@ void main() {
   );
 
   testWidgets(
-    'AC-1, AC-2, AC-3, AC-4 — "Dodaj grób" → the first person with "około" and a full date → the grave '
-    'replaces the form; "Dodaj osobę" → the surname suggested and selected, "między" with its second '
-    'field and preview, a wrong year refused, then saved: both people in the grave, every fact with '
-    'its claim from the notes',
+    'AC-1, AC-2, AC-3, AC-4 — "Dodaj grób" → "Nowy grób" → the grave, empty → "Dodaj osobę" → "Nowa osoba: '
+    '„Jan”" → the first person with "około" and a full date → the grave replaces the form; "Dodaj osobę" → '
+    '„Anna” → the surname suggested and selected, "między" with its second field and preview, a wrong year '
+    'refused, then saved: both people in the grave, every fact with its claim from the notes (ISSUE-047: '
+    'the grave first, then its people)',
     (tester) async {
       await withCemetery(tester);
       await pumpScreen(
@@ -227,14 +229,40 @@ void main() {
             .evaluate()
             .isNotEmpty,
       );
+      // ISSUE-047 (cmentarz.md D38, grob.md D22): the grave on its own, then its first person from it.
       await tester.tap(find.widgetWithText(FilledButton, 'Dodaj grób'));
       await tester.pumpAndSettle();
-      expect(find.text('Osoba w grobie'), findsOneWidget);
-      expect(find.text('Cmentarz Wymyślony · nowy grób'), findsOneWidget);
-      // Focus and the keyboard in "Imiona" at once.
-      expect(tester.widget<TextField>(_field(0)).focusNode!.hasFocus, isTrue);
-
+      expect(find.text('Nowy grób'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
+      await _pumpUntil(
+        tester,
+        () => find
+            .text('W tym grobie nie ma jeszcze wpisanych osób.')
+            .evaluate()
+            .isNotEmpty,
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Dodaj osobę'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kto leży w tym grobie?'), findsOneWidget);
       await tester.enterText(_field(0), 'Jan');
+      await _pumpUntil(
+        tester,
+        () => find.text('Nowa osoba: „Jan”').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('Nowa osoba: „Jan”'));
+      await tester.pumpAndSettle();
+      expect(find.text('Osoba w grobie'), findsOneWidget);
+      // An empty grave: its title alone, no count (wpis-osoby.md v6).
+      expect(
+        find.descendant(
+          of: find.byType(PersonFormScreen),
+          matching: find.text('Cmentarz Wymyślony'),
+        ),
+        findsOneWidget,
+      );
+      // The name typed in the search, with focus and the keyboard in "Imiona" at once.
+      expect(tester.widget<TextField>(_field(0)).controller!.text, 'Jan');
+      expect(tester.widget<TextField>(_field(0)).focusNode!.hasFocus, isTrue);
       await tester.pump();
       // ISSUE-025 AC-1: the sex is suggested from the given name — ♂ checked, ♀ not.
       _expectSex(tester, 'Mężczyzna', checked: true);
@@ -280,14 +308,21 @@ void main() {
         findsOneWidget,
       );
 
-      // The next person.
+      // The next person: typed in the search, then "Nowa osoba".
       await tester.tap(find.widgetWithText(OutlinedButton, 'Dodaj osobę'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_field(0), 'Anna');
+      await _pumpUntil(
+        tester,
+        () => find.text('Nowa osoba: „Anna”').evaluate().isNotEmpty,
+      );
+      await tester.tap(find.text('Nowa osoba: „Anna”'));
       await tester.pumpAndSettle();
       expect(
         find.text('Cmentarz Wymyślony · w grobie: 1 osoba'),
         findsOneWidget,
       );
-      await tester.enterText(_field(0), 'Anna');
+      expect(tester.widget<TextField>(_field(0)).controller!.text, 'Anna');
       await tester.pump();
       _expectSex(tester, 'Kobieta', checked: true); // AC-1: "Anna" → ♀
       await tester.testTextInput.receiveAction(TextInputAction.next);
@@ -335,6 +370,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.byType(CemeteryScreen), findsOneWidget);
       expect(find.byType(PersonFormScreen), findsNothing);
+      expect(find.byType(GravePersonChoiceScreen), findsNothing);
 
       await leaveScreen(tester);
       await tester.runAsync(() async {
@@ -355,13 +391,9 @@ void main() {
   testWidgets(
     '`next` goes field by field to "Kim była" past the qualifiers — also when it is off the screen',
     (tester) async {
-      await withCemetery(tester);
       await pumpScreen(
         tester,
-        PersonFormScreen(
-          database: db,
-          mode: NewGrave(cemeteryId: cemetery, cemeteryName: 'Cmentarz'),
-        ),
+        PersonFormScreen(database: db, mode: const NewPerson()),
       );
       await tester.pumpAndSettle();
       for (int i = 0; i < 5; i++) {
@@ -397,13 +429,8 @@ void main() {
               child: TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => PersonFormScreen(
-                      database: db,
-                      mode: NewGrave(
-                        cemeteryId: cemetery,
-                        cemeteryName: 'Cmentarz Wymyślony',
-                      ),
-                    ),
+                    builder: (_) =>
+                        PersonFormScreen(database: db, mode: const NewPerson()),
                   ),
                 ),
                 child: const Text('otwórz'),

@@ -574,4 +574,48 @@ void main() {
       await cleanUp(tester);
     },
   );
+
+  testWidgets(
+    'ISSUE-047 — a grave added on its own and pinned before its people: its candle and sheet say "Grób bez '
+    'wpisanych osób" and "bez wpisanych osób", never an empty title or "0 osób" (ui review, MAJOR)',
+    (tester) async {
+      late int id;
+      await tester.runAsync(() async {
+        id = await addCemetery(
+          db,
+          name: 'Cmentarz Wymyślony',
+          locality: 'Wymyślin',
+          point: _point,
+        );
+        await savePlan(
+          db,
+          id,
+          forPoint: _point,
+          areas: _areas,
+          paths: _paths,
+          server: 'overpass.example',
+        );
+        final int grave = await addGrave(db, id);
+        await (db.update(db.graves)..where((g) => g.id.equals(grave))).write(
+          const GravesCompanion(
+            lat: Value(51.4995),
+            lon: Value(19.4995),
+            positionSource: Value(PositionSource.satellite),
+          ),
+        );
+      });
+      await pumpScreen(tester, CemeteryScreen(database: db, cemeteryId: id));
+      await _pumpUntil(
+        tester,
+        () => _shown(find.bySemanticsLabel('Grób: Grób bez wpisanych osób')),
+      );
+      await tester.tap(find.bySemanticsLabel('Grób: Grób bez wpisanych osób'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(FilledButton, 'Pokaż grób'), findsOneWidget);
+      expect(find.text('Grób bez wpisanych osób'), findsOneWidget);
+      expect(find.text('bez wpisanych osób'), findsOneWidget);
+      expect(find.text('0 osób'), findsNothing);
+      await cleanUp(tester);
+    },
+  );
 }

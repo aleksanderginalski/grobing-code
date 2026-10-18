@@ -567,9 +567,52 @@ Future<int> addPersonToGrave(
   return person;
 });
 
+/// "Dodaj osobę" in Osoby (05_DESIGN/osoby.md v3, element 8; wpis-osoby.md v6, "nowa osoba"): [entry] as a
+/// person buried nowhere — a living relative, or someone whose grave comes later. Returns the person's id;
+/// all or nothing, as [addPersonToGrave].
+Future<int> addPersonWithoutGrave(
+  GrobingDatabase db, {
+  required PersonEntry entry,
+  DateTime Function()? clock,
+  AlsoWrite? alsoWrite,
+}) => db.transaction(() async {
+  final int person = await _addPerson(db, null, entry, clock);
+  await alsoWrite?.call(person);
+  return person;
+});
+
+/// "Dodaj osobę" in a grave → someone already in the app and buried nowhere (05_DESIGN/grob.md v9, element 11;
+/// D22): their burial in [graveId], with its claim from the notes like every burial; nothing else of them
+/// changes. Someone with a burial already is refused here as on the screen (D23) — a burial cannot be taken
+/// back in the app, so a wrong tap would leave them in two graves for good.
+Future<void> addExistingPersonToGrave(
+  GrobingDatabase db, {
+  required int graveId,
+  required int personId,
+  DateTime Function()? clock,
+}) => db.transaction(() async {
+  final Person? person = await (db.select(
+    db.persons,
+  )..where((p) => p.id.equals(personId))).getSingleOrNull();
+  if (person == null) throw StateError('No person with id $personId');
+  final Burial? buried =
+      await (db.select(db.burials)
+            ..where((b) => b.personId.equals(personId))
+            ..limit(1))
+          .getSingleOrNull();
+  if (buried != null) throw StateError('Person $personId has a grave already');
+  await addBurialWithClaim(
+    db,
+    personId: personId,
+    graveId: graveId,
+    clock: clock,
+  );
+});
+
+/// The person of [entry] with their dates, buried in [graveId] — or nowhere when it is null.
 Future<int> _addPerson(
   GrobingDatabase db,
-  int graveId,
+  int? graveId,
   PersonEntry entry,
   DateTime Function()? clock,
 ) async {
@@ -588,12 +631,14 @@ Future<int> _addPerson(
       );
   // Nested transactions on NativeDatabase (drift ≥ 2.0): the claim helpers' own transactions commit
   // only with this one.
-  await addBurialWithClaim(
-    db,
-    personId: person,
-    graveId: graveId,
-    clock: clock,
-  );
+  if (graveId != null) {
+    await addBurialWithClaim(
+      db,
+      personId: person,
+      graveId: graveId,
+      clock: clock,
+    );
+  }
   for (final (EventType type, QualifiedDate? date) in _dates(entry)) {
     if (date != null) {
       await addEventWithClaim(db, _event(type, person, date), clock: clock);
@@ -762,8 +807,59 @@ Future<void> setGraveDetails(
     db.graves,
   )..where((g) => g.id.equals(graveId))).getSingleOrNull();
   if (grave == null) throw StateError('No grave with id $graveId');
+  await _writeGraveDetails(
+    db,
+    grave,
+    name: name,
+    sector: sector,
+    row: row,
+    plot: plot,
+    paidUntil: paidUntil,
+  );
+});
+
+/// "Nowy grób" (05_DESIGN/cmentarz.md v8, element 9a; D38): a grave on [cemeteryId] without people yet, with
+/// what the same window writes when it corrects one — [setGraveDetails] — in one transaction. Returns the
+/// grave's id; its people come from the grave view, one by one (grob.md v9).
+Future<int> addGrave(
+  GrobingDatabase db,
+  int cemeteryId, {
+  String? name,
+  String? sector,
+  String? row,
+  String? plot,
+  PartialDate? paidUntil,
+}) => db.transaction(() async {
+  final int id = await db
+      .into(db.graves)
+      .insert(GravesCompanion.insert(cemeteryId: cemeteryId));
+  final Grave grave = await (db.select(
+    db.graves,
+  )..where((g) => g.id.equals(id))).getSingle();
+  await _writeGraveDetails(
+    db,
+    grave,
+    name: name,
+    sector: sector,
+    row: row,
+    plot: plot,
+    paidUntil: paidUntil,
+  );
+  return id;
+});
+
+/// The window's part of [grave], shared by the new grave and its correction so the two never drift apart.
+Future<void> _writeGraveDetails(
+  GrobingDatabase db,
+  Grave grave, {
+  String? name,
+  String? sector,
+  String? row,
+  String? plot,
+  PartialDate? paidUntil,
+}) async {
   final int? sectorId = await sectorForAddress(db, grave.cemeteryId, sector);
-  await (db.update(db.graves)..where((g) => g.id.equals(graveId))).write(
+  await (db.update(db.graves)..where((g) => g.id.equals(grave.id))).write(
     GravesCompanion(
       name: Value(blankToNull(name)),
       sectorId: Value(sectorId),
@@ -777,7 +873,7 @@ Future<void> setGraveDetails(
   if (grave.sectorId case final int before? when before != sectorId) {
     await dropSectorIfUnused(db, before);
   }
-});
+}
 
 /// Saves the grave's pin (ISSUE-029; 05_DESIGN/cmentarz.md 12a, 14): the point, where it came from, and
 /// the date from [clock]. The phone's accuracy is kept for a GPS pin only — a pin placed by hand on the

@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +10,12 @@ void expectEveryButtonTappable(WidgetTester tester) {
   final List<String> without = [];
   void visit(SemanticsNode node) {
     final SemanticsData data = node.getSemanticsData();
-    if (data.flagsCollection.isButton && !data.hasAction(SemanticsAction.tap)) {
+    // A button said to be off ("niedostępne" — e.g. someone with a grave in "Kto leży w tym grobie?",
+    // grob.md D23) rightly has no tap; every button that is on must have one.
+    final bool off = data.flagsCollection.isEnabled == Tristate.isFalse;
+    if (data.flagsCollection.isButton &&
+        !off &&
+        !data.hasAction(SemanticsAction.tap)) {
       without.add(data.label.isEmpty ? data.tooltip : data.label);
     }
     node.visitChildren((child) {

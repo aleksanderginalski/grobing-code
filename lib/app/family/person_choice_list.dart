@@ -41,10 +41,16 @@ class PersonChoiceList extends StatefulWidget {
     this.graveId,
     this.forChild = false,
     this.familyId,
+    this.forGrave = false,
   });
 
   final GrobingDatabase database;
   final ValueChanged<PickedMember> onPicked;
+
+  /// "Kto leży w tym grobie?" (05_DESIGN/grob.md v9, elements 8–12): "Bez grobu" and "W grobach" in place of
+  /// "W tym grobie" and "Inne osoby" — [graveId] is the grave being filled. Everyone with a grave stays in
+  /// sight but cannot be chosen, and says where they lie (D23); only the people buried nowhere can (D22).
+  final bool forGrave;
 
   /// Who cannot be chosen here, and why — "ta osoba", "już partner tej osoby", "już w tej rodzinie".
   final Map<int, String> unavailable;
@@ -132,10 +138,12 @@ class _PersonChoiceListState extends State<PersonChoiceList> {
         child: FutureBuilder(
           future: _choices,
           builder: (context, snapshot) {
+            // "Nie udało się odczytać osób." under "Nowa osoba", which still works (grob.md v9 → Stany wyboru).
+            if (snapshot.hasError) return _unreadable();
             // B — wczytywanie: the background only, the read takes a moment.
             final data = snapshot.data;
             if (data == null) return const SizedBox.shrink();
-            return _list(data);
+            return widget.forGrave ? _graveList(data) : _list(data);
           },
         ),
       ),
@@ -191,6 +199,64 @@ class _PersonChoiceListState extends State<PersonChoiceList> {
       ],
     );
   }
+
+  /// grob.md v9, 10–12: "Nowa osoba", then the people buried nowhere — the only ones to choose — then everyone
+  /// with a grave, greyed, with where they lie in place of the years.
+  Widget _graveList(
+    ({List<PersonChoice> all, List<int> inGrave, Set<int> withParents}) data,
+  ) {
+    final String typed = _filter.text.trim();
+    final List<PersonChoice> matching = [
+      for (final PersonChoice c in data.all)
+        if (_matches(c)) c,
+    ]..sort(_compare);
+    // A person with a burial has their first grave's cemetery (loadPersonChoices); buried nowhere — none.
+    final List<PersonChoice> free = [
+      for (final PersonChoice c in matching)
+        if (c.cemeteryName == null) c,
+    ];
+    final List<PersonChoice> buried = [
+      for (final PersonChoice c in matching)
+        if (c.cemeteryName != null) c,
+    ];
+    String where(PersonChoice c) => data.inGrave.contains(c.id)
+        ? 'już w tym grobie'
+        : 'w grobie: ${c.graveName ?? c.cemeteryName}';
+    return ListView(
+      // Scrolling puts the keyboard away: about a hundred people are below it (grob.md 9; ui review).
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
+      children: [
+        _NewRow(typed: typed, onTap: () => widget.onPicked(PickedNew(typed))),
+        if (free.isNotEmpty) ...[
+          const PeopleSectionHeader('Bez grobu'),
+          for (final PersonChoice c in free) _row(c, null),
+        ],
+        if (buried.isNotEmpty) ...[
+          const PeopleSectionHeader('W grobach'),
+          for (final PersonChoice c in buried) _row(c, where(c)),
+        ],
+      ],
+    );
+  }
+
+  Widget _unreadable() => ListView(
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    padding: const EdgeInsets.only(top: 8, bottom: 16),
+    children: [
+      _NewRow(
+        typed: _filter.text.trim(),
+        onTap: () => widget.onPicked(PickedNew(_filter.text.trim())),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: Text(
+          'Nie udało się odczytać osób.',
+          style: TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+        ),
+      ),
+    ],
+  );
 
   /// B4–B5: a person; [withPlace] adds where they lie, so two of the same name differ (zdjecie.md D5).
   /// With a [reason] the row cannot be chosen and says why in place of the years.

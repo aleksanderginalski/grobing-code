@@ -228,6 +228,86 @@ void main() {
     },
   );
 
+  test(
+    'ISSUE-047 AC-5 — a grave without people, a person buried nowhere and a burial from "Kto leży w tym '
+    'grobie?" come back from the backup as they were',
+    () async {
+      final int cemetery = await addCemetery(db, name: 'Cmentarz Wymyślony');
+      final int empty = await addGrave(
+        db,
+        cemetery,
+        name: 'Grób rodzinny Wymyślonych',
+        sector: 'B',
+        paidUntil: const PartialDate(2031),
+      );
+      final int filled = await addGrave(db, cemetery);
+      final int jan = await addPersonWithoutGrave(
+        db,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      await addExistingPersonToGrave(db, graveId: filled, personId: jan);
+      final int ksenia = await addPersonWithoutGrave(
+        db,
+        entry: const PersonEntry(givenNames: 'Ksenia', surname: 'Zmyślona'),
+      );
+      final DataState liveState = await readDataState(
+        db,
+        mediaDir: live.mediaDir,
+      );
+
+      final File snapshot = File('${tmp.path}/work/grobing.db');
+      snapshot.parent.createSync();
+      await db.customStatement('VACUUM INTO ?', [snapshot.path]);
+      final X25519Identity identity = X25519Identity.generate();
+      final File output = File('${tmp.path}/kopia.age');
+      await writeEncryptedBackup(
+        snapshot: snapshot,
+        mediaDir: live.mediaDir,
+        recipient: identity.recipient,
+        output: output,
+        createdAt: DateTime.utc(2026, 10, 18, 12),
+      );
+      final BytesBuilder tar = BytesBuilder();
+      await for (final List<int> c in ageDecrypt(output.openRead(), [
+        identity,
+      ])) {
+        tar.add(c);
+      }
+      final List<_Entry> entries = _readTar(tar.takeBytes());
+
+      final File restored = File('${tmp.path}/restored/grobing.db');
+      restored.parent.createSync();
+      restored.writeAsBytesSync(entries.first.data);
+      final GrobingDatabase opened = GrobingDatabase(
+        NativeDatabase.opened(
+          sqlite3.open(restored.path, mode: OpenMode.readOnly),
+        ),
+      );
+      try {
+        expect(
+          (await readDataState(opened, mediaDir: live.mediaDir)).fingerprint,
+          liveState.fingerprint,
+        );
+        final GraveDetail emptyBack = (await loadGrave(opened, empty))!;
+        expect(emptyBack.name, 'Grób rodzinny Wymyślonych');
+        expect(emptyBack.sector, 'B');
+        expect(emptyBack.paidUntil, const PartialDate(2031));
+        expect(emptyBack.people, isEmpty);
+        expect((await loadGrave(opened, filled))!.people.map((p) => p.id), [
+          jan,
+        ]);
+        final ({List<PersonChoice> all, List<int> inGrave}) choices =
+            await loadPersonChoices(opened);
+        final PersonChoice kseniaBack = choices.all.firstWhere(
+          (c) => c.id == ksenia,
+        );
+        expect((kseniaBack.graveName, kseniaBack.cemeteryName), (null, null));
+      } finally {
+        await opened.close();
+      }
+    },
+  );
+
   test('an empty database backs up too (no photos)', () async {
     final File snapshot = File('${tmp.path}/grobing.db');
     await db.customStatement('VACUUM INTO ?', [snapshot.path]);

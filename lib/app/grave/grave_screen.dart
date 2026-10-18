@@ -24,7 +24,7 @@ import '../widgets/date_block.dart' show ErrorLine;
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart' show MapLayer;
-import 'person_form_screen.dart';
+import 'grave_person_choice_screen.dart';
 import 'pin_screen.dart';
 
 /// One grave and everyone buried in it (ISSUE-012; 05_DESIGN/grob.md v3): R4 with the gravestone photo
@@ -66,15 +66,16 @@ class _GraveScreenState extends State<GraveScreen> {
 
   Stream<GraveDetail?> _watch() => watchGrave(widget.database, widget.graveId);
 
-  /// The title the person form shows below its own: the grave's name, or its cemetery's.
-  String _graveTitle(GraveDetail g) => g.name ?? g.cemeteryName;
-
-  Future<void> _addPerson(GraveDetail g) => _openForm(
-    NextPerson(
-      graveId: g.id,
-      graveTitle: _graveTitle(g),
-      peopleCount: g.people.length,
-      suggestedSurname: g.people.isEmpty ? null : g.people.last.surname,
+  /// "Dodaj osobę" (element 6, grob.md v9): "Kto leży w tym grobie?" — someone in the app buried nowhere joins
+  /// the grave at once; "Nowa osoba" opens the form with what was typed (D22). The view follows the database.
+  Future<void> _addPerson(GraveDetail g) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => GravePersonChoiceScreen(
+        database: widget.database,
+        grave: g,
+        photos: widget.photos,
+        tab: widget.tab,
+      ),
     ),
   );
 
@@ -85,17 +86,6 @@ class _GraveScreenState extends State<GraveScreen> {
     person.id,
     photos: widget.photos,
     tab: widget.tab,
-  );
-
-  Future<void> _openForm(PersonFormMode mode) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => PersonFormScreen(
-        database: widget.database,
-        mode: mode,
-        photos: widget.photos,
-        tab: widget.tab,
-      ),
-    ),
   );
 
   /// The source sheet, then the system picker or camera; null when the user cancels either.
@@ -788,6 +778,9 @@ enum GraveField { name, sector, paidUntil }
 /// from the sticker or the receipt, all optional. The sector is one of the cemetery's sectors: its chips fill
 /// the field, and a name no sector has becomes a new one without a zone (ADR-016). It saves itself, all or
 /// nothing: a date it cannot read saves nothing, and a failed save keeps it open with the message.
+///
+/// Without a [grave] it is "Nowy grób" (cmentarz.md v8, element 9a; D38): the same window, empty, and its
+/// [save] writes the new grave.
 class GraveDialog extends StatefulWidget {
   const GraveDialog({
     super.key,
@@ -797,7 +790,8 @@ class GraveDialog extends StatefulWidget {
     this.focus = GraveField.name,
   });
 
-  final GraveDetail grave;
+  /// The grave corrected; null for a new one.
+  final GraveDetail? grave;
 
   /// The cemetery's sectors, for the chips.
   final List<Sector> sectors;
@@ -818,12 +812,12 @@ class GraveDialog extends StatefulWidget {
 }
 
 class _GraveDialogState extends State<GraveDialog> {
-  late final TextEditingController _name = _field(widget.grave.name);
-  late final TextEditingController _sector = _field(widget.grave.sector);
-  late final TextEditingController _row = _field(widget.grave.row);
-  late final TextEditingController _plot = _field(widget.grave.plot);
+  late final TextEditingController _name = _field(widget.grave?.name);
+  late final TextEditingController _sector = _field(widget.grave?.sector);
+  late final TextEditingController _row = _field(widget.grave?.row);
+  late final TextEditingController _plot = _field(widget.grave?.plot);
   late final TextEditingController _paidUntil = _field(
-    switch (widget.grave.paidUntil) {
+    switch (widget.grave?.paidUntil) {
       final PartialDate d => formatPartialDate(d),
       null => null,
     },
@@ -975,9 +969,9 @@ class _GraveDialogState extends State<GraveDialog> {
           backgroundColor: GrobingColors.surface,
           surfaceTintColor: Colors.transparent,
           scrollable: true,
-          title: const Text(
-            'Popraw grób',
-            style: TextStyle(
+          title: Text(
+            widget.grave == null ? 'Nowy grób' : 'Popraw grób',
+            style: const TextStyle(
               color: GrobingColors.text,
               fontSize: 22,
               fontWeight: FontWeight.w600,

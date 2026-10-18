@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../../data/people.dart';
+import '../grave/person_form_screen.dart';
 import '../person/person_screen.dart';
 import '../photo/photos.dart';
 import '../polish.dart';
@@ -68,6 +69,38 @@ class _PeopleScreenState extends State<PeopleScreen> {
     );
   }
 
+  /// "Dodaj osobę" (element 8, osoby.md v3; D10) → the form of someone buried nowhere, with the name typed in
+  /// the search — the list above has just shown whether they are here already. "Zapisz" opens their view.
+  Future<void> _add() {
+    final String typed = _query.text.trim();
+    FocusManager.instance.primaryFocus?.unfocus();
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PersonFormScreen(
+          database: widget.database,
+          mode: NewPerson(givenNames: typed),
+          photos: widget.photos,
+          tab: AppTab.people,
+        ),
+      ),
+    );
+  }
+
+  /// The main action of the list (style-b.md rule 1): with a search typed, it says whom it adds.
+  Widget _addButton() {
+    final String typed = _query.text.trim();
+    return FilledButton.icon(
+      style: primaryButtonStyle,
+      onPressed: _add,
+      icon: const GrobingIcon(Glyphs.personAddAlt),
+      label: Text(
+        typed.isEmpty ? 'Dodaj osobę' : 'Dodaj osobę: „$typed”',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     bottomNavigationBar: GrobingTabBar(
@@ -92,6 +125,11 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     : !people.hasData
                     ? const Center(child: CircularProgressIndicator())
                     : _list(people.data!, me.data),
+              ),
+              // Element 8 (v3): pinned under the list, as "Dodaj grób" under the graves (cmentarz.md 9).
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: _addButton(),
               ),
             ],
           ),

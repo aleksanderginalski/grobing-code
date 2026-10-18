@@ -6,6 +6,7 @@ import '../../data/places.dart' show PlaceList;
 import '../../data/residences.dart';
 import '../family/family_section.dart';
 import '../person/clan_screen.dart';
+import '../person/person_screen.dart';
 import '../person/residence_screen.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
@@ -20,28 +21,21 @@ import '../widgets/date_block.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import '../widgets/sex_toggle.dart';
-import 'grave_screen.dart';
 
 /// Where the form was opened from, and so what it writes (05_DESIGN/wpis-osoby.md → Navigation).
 sealed class PersonFormMode {
   const PersonFormMode();
 }
 
-/// "Dodaj grób": the first person of a new grave — the grave is written with them.
-class NewGrave extends PersonFormMode {
-  const NewGrave({required this.cemeteryId, required this.cemeteryName});
-
-  final int cemeteryId;
-  final String cemeteryName;
-}
-
-/// "Dodaj osobę": one more person in a grave.
+/// "Dodaj osobę" → "Nowa osoba": one more person in a grave — the first one too, since a grave is added on
+/// its own now (wpis-osoby.md v6; cmentarz.md D38).
 class NextPerson extends PersonFormMode {
   const NextPerson({
     required this.graveId,
     required this.graveTitle,
     required this.peopleCount,
     this.suggestedSurname,
+    this.givenNames,
   });
 
   final int graveId;
@@ -52,6 +46,18 @@ class NextPerson extends PersonFormMode {
 
   /// The surname of the last person entered in this grave: in a family grave it usually repeats.
   final String? suggestedSurname;
+
+  /// What was typed in the search of "Kto leży w tym grobie?" (grob.md v9, element 10).
+  final String? givenNames;
+}
+
+/// "Dodaj osobę" in Osoby (osoby.md v3, element 8; wpis-osoby.md v6, "nowa osoba"): someone buried nowhere —
+/// a living relative, or a person whose grave comes later. "Zapisz" opens their view.
+class NewPerson extends PersonFormMode {
+  const NewPerson({this.givenNames});
+
+  /// What was typed in the search of Osoby.
+  final String? givenNames;
 }
 
 /// A person tapped in the grave view: the entry corrected in place (ISSUE-012 D1).
@@ -177,16 +183,24 @@ class PersonFormScreen extends StatefulWidget {
 
 class _PersonFormScreenState extends State<PersonFormScreen> {
   late final PersonEntry _initial = switch (widget.mode) {
-    NewGrave() => const PersonEntry(),
-    NextPerson(:final String? suggestedSurname) => PersonEntry(
-      surname: suggestedSurname,
+    NextPerson(:final String? suggestedSurname, :final String? givenNames) =>
+      PersonEntry(givenNames: _typed(givenNames), surname: suggestedSurname),
+    NewPerson(:final String? givenNames) => PersonEntry(
+      givenNames: _typed(givenNames),
     ),
     Correction(:final BuriedPerson person) => person.entry,
   };
 
-  late final TextEditingController _given = TextEditingController(
-    text: _initial.givenNames,
-  );
+  /// What was typed in a search, without the spaces at its edges; nothing for nothing.
+  static String? _typed(String? text) =>
+      (text == null || text.trim().isEmpty) ? null : text.trim();
+
+  /// The cursor after the names brought from the search, so typing goes on from them (wpis-osoby.md v6).
+  late final TextEditingController _given =
+      TextEditingController(text: _initial.givenNames)
+        ..selection = TextSelection.collapsed(
+          offset: (_initial.givenNames ?? '').length,
+        );
   late final TextEditingController _surname = TextEditingController(
     text: _initial.surname,
   );
@@ -243,8 +257,8 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         _ => null,
       },
       graveId: switch (widget.mode) {
-        NewGrave() => null,
         NextPerson(:final int graveId) => graveId,
+        NewPerson() => null,
         Correction(:final int? graveId) => graveId,
       },
     ),
@@ -422,17 +436,19 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
 
   String get _title => switch (widget.mode) {
     Correction() => 'Poprawa wpisu',
-    _ => 'Osoba w grobie',
+    NewPerson() => 'Nowa osoba',
+    NextPerson() => 'Osoba w grobie',
   };
 
   String get _subtitle => switch (widget.mode) {
-    NewGrave(:final String cemeteryName) => '$cemeteryName · nowy grób',
+    // An empty grave has no count to give (wpis-osoby.md v6).
+    NextPerson(:final String graveTitle, peopleCount: 0) => graveTitle,
     NextPerson(:final String graveTitle, :final int peopleCount) ||
     Correction(
       graveTitle: final String graveTitle,
       :final int peopleCount,
     ) => '$graveTitle · w grobie: ${peopleLabel(peopleCount)}',
-    Correction(graveTitle: null) => 'bez grobu w aplikacji',
+    Correction(graveTitle: null) || NewPerson() => 'bez grobu w aplikacji',
   };
 
   /// Checks every field and marks what is wrong; the first such field gets the focus, which also
@@ -506,22 +522,22 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     try {
       final PersonEntry entry = _entry();
       switch (widget.mode) {
-        case NewGrave(:final int cemeteryId):
-          final int grave = await write(
-            (alsoWrite) => addPersonToNewGrave(
+        case NewPerson():
+          final int person = await write(
+            (alsoWrite) => addPersonWithoutGrave(
               widget.database,
-              cemeteryId: cemeteryId,
               entry: entry,
               alsoWrite: alsoWrite,
             ),
           );
           _done = true;
-          // The grave replaces the form: back from it returns to the cemetery (style-b.md rule 10).
+          // Their view replaces the form — there is no grave to go back to; back from it returns to Osoby,
+          // where they are on the list now (style-b.md rule 10).
           await navigator.pushReplacement(
             MaterialPageRoute<void>(
-              builder: (_) => GraveScreen(
+              builder: (_) => PersonScreen(
                 database: widget.database,
-                graveId: grave,
+                personId: person,
                 photos: widget.photos,
                 tab: widget.tab,
               ),

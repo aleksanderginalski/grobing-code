@@ -27,7 +27,6 @@ import 'cemetery_plan_map.dart';
 import 'grave_screen.dart';
 import 'here_location.dart';
 import 'map_chrome.dart';
-import 'person_form_screen.dart';
 import 'pin_screen.dart';
 import 'plan_placeholder.dart';
 import 'sectors_screen.dart';
@@ -390,18 +389,36 @@ class _CemeteryScreenState extends State<CemeteryScreen>
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(text), action: action));
 
-  /// "Dodaj grób" opens the form of the grave's first person at once: the grave is written with them
-  /// (05_DESIGN/cmentarz.md → Navigation).
-  Future<void> _addGrave(CemeteryGraves cemetery) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => PersonFormScreen(
-        database: widget.database,
-        mode: NewGrave(cemeteryId: cemetery.id, cemeteryName: cemetery.name),
-        photos: widget.photos,
-        tab: widget.tab,
+  /// "Dodaj grób" (elements 6 and 9) → the window "Nowy grób" (9a, v8; D38): the window "Popraw grób", empty,
+  /// with this cemetery's sectors. "Zapisz" writes the grave alone and opens it, empty — its people come from
+  /// there, one by one (grob.md v9). "Anuluj" leaves no grave.
+  Future<void> _addGrave(CemeteryGraves cemetery) async {
+    final List<Sector> sectors = await watchSectors(
+      widget.database,
+      cemetery.id,
+    ).first;
+    if (!mounted) return;
+    int? added;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => GraveDialog(
+        grave: null,
+        sectors: sectors,
+        save: ({name, sector, row, plot, paidUntil}) async {
+          added = await addGrave(
+            widget.database,
+            cemetery.id,
+            name: name,
+            sector: sector,
+            row: row,
+            plot: plot,
+            paidUntil: paidUntil,
+          );
+        },
       ),
-    ),
-  );
+    );
+    if (added case final int id? when mounted) await _openGrave(id);
+  }
 
   /// "Kwatery" (element 15) → the sectors' mode (16–19), on the layer the map has now (ISSUE-028).
   Future<void> _openSectors() => Navigator.of(context).push(
@@ -1094,6 +1111,13 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                       overflow: TextOverflow.ellipsis,
                       style: _GraveCard._title,
                     )
+                  // A grave added on its own and pinned before its people (cmentarz.md v8 → States; ui
+                  // review ISSUE-047): titled as its card, never an empty line.
+                  else if (g.people.isEmpty)
+                    const Text(
+                      'Grób bez wpisanych osób',
+                      style: _GraveCard._muted,
+                    )
                   else
                     NamesText(
                       names: [
@@ -1120,7 +1144,12 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                       ),
                       const SizedBox(width: 6),
                       Flexible(
-                        child: Text(peopleLabel(g.people.length), style: line),
+                        child: Text(
+                          g.people.isEmpty
+                              ? 'bez wpisanych osób'
+                              : peopleLabel(g.people.length),
+                          style: line,
+                        ),
                       ),
                     ],
                   ),
@@ -1358,6 +1387,11 @@ class _GraveCard extends StatelessWidget {
                           if (grave.name != null && people.isNotEmpty) ...[
                             const SizedBox(height: 3),
                             NamesText(names: people, style: _muted),
+                          ] else if (grave.name != null) ...[
+                            // A grave added on its own (cmentarz.md v8 → States): its name, and that no
+                            // one is entered yet.
+                            const SizedBox(height: 3),
+                            const Text('bez wpisanych osób', style: _muted),
                           ],
                           const SizedBox(height: 3),
                           // W2: the address is read at the cemetery (NFR-004; element 8 (c)).
