@@ -9,6 +9,8 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart' show ErrorLine;
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/title_bar.dart';
 import '../widgets/wreath.dart';
 
@@ -198,7 +200,7 @@ class WreathFormRow extends StatelessWidget {
                         ),
                         onPressed: () =>
                             showWreathSheet(context, database, personId),
-                        icon: const Icon(Icons.add),
+                        icon: const GrobingIcon(Glyphs.add),
                         label: const Text('Wybierz ród'),
                       ),
                     ],
@@ -247,7 +249,7 @@ class WreathFormRow extends StatelessWidget {
                   if (context.mounted) _sayFailed(context);
                 }
               },
-              icon: const Icon(Icons.undo, size: 20),
+              icon: const GrobingIcon(Glyphs.undo, size: 20),
               label: const Text('Wróć do wieńca po ojcu'),
             ),
           ),
@@ -368,7 +370,7 @@ class _WreathSheet extends StatelessWidget {
             ),
           ),
         _ActionRow(
-          icon: const Icon(Icons.add, color: GrobingColors.amber),
+          icon: const GrobingIcon(Glyphs.add, color: GrobingColors.amber),
           label: 'Nowy ród',
           onTap: () async {
             final bool? saved = await Navigator.of(context).push<bool>(
@@ -385,7 +387,10 @@ class _WreathSheet extends StatelessWidget {
         ),
         if (offerNone)
           _ActionRow(
-            icon: const Icon(Icons.block, color: GrobingColors.textMuted),
+            icon: const GrobingIcon(
+              Glyphs.block,
+              color: GrobingColors.textMuted,
+            ),
             label: 'Bez wieńca',
             selected: w.origin == WreathOrigin.noneHere,
             onTap: () => _choose(context, const WreathChoice.none()),
@@ -458,12 +463,16 @@ class _ClanRow extends StatelessWidget {
                 if (selected)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(Icons.check, color: GrobingColors.amber),
+                    child: GrobingIcon(
+                      Glyphs.check,
+                      color: GrobingColors.amber,
+                    ),
                   ),
                 IconButton(
-                  icon: const Icon(
-                    Icons.edit_outlined,
+                  icon: const GrobingIcon(
+                    Glyphs.inkPen,
                     color: GrobingColors.amber,
+                    applyTextScaling: false,
                   ),
                   tooltip: 'Popraw ród',
                   onPressed: onEdit,
@@ -512,7 +521,8 @@ class _ActionRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (selected) const Icon(Icons.check, color: GrobingColors.amber),
+              if (selected)
+                const GrobingIcon(Glyphs.check, color: GrobingColors.amber),
             ],
           ),
         ),
@@ -794,10 +804,11 @@ class _ColourDot extends StatelessWidget {
                 color: GrobingColors.clan(colour),
               ),
               child: selected
-                  ? const Icon(
-                      Icons.check,
+                  ? const GrobingIcon(
+                      Glyphs.check,
                       size: 20,
                       color: GrobingColors.background,
+                      applyTextScaling: false,
                     )
                   : null,
             ),
@@ -889,7 +900,12 @@ class _MotifTile extends StatelessWidget {
               const Positioned(
                 top: 4,
                 right: 4,
-                child: Icon(Icons.check, size: 18, color: GrobingColors.amber),
+                child: GrobingIcon(
+                  Glyphs.check,
+                  size: 18,
+                  color: GrobingColors.amber,
+                  applyTextScaling: false,
+                ),
               ),
           ],
         ),

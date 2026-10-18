@@ -6,6 +6,8 @@ import '../../data/graves.dart';
 import '../dates.dart';
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'photo_viewer_screen.dart';
 
 /// "Kto jest na zdjęciu?" (05_DESIGN/zdjecie.md, D): everyone in the app to tick, this grave's people
@@ -126,8 +128,8 @@ class _PhotoPeopleScreenState extends State<PhotoPeopleScreen> {
                       ),
                       decoration: const InputDecoration(
                         hintText: 'Szukaj osoby',
-                        prefixIcon: Icon(
-                          Icons.search,
+                        prefixIcon: GrobingIcon(
+                          Glyphs.search,
                           color: GrobingColors.textMuted,
                         ),
                       ),

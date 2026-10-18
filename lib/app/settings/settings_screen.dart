@@ -14,6 +14,8 @@ import '../people/people_list.dart';
 import '../photo/photos.dart';
 import '../restore_screen.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/title_bar.dart';
 import 'hand_over_note_screen.dart';
 
@@ -159,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const _Section('Kopia'),
                 ..._backupRows(),
                 _SettingRow(
-                  leading: const _ActionIcon(Icons.settings_backup_restore),
+                  leading: const _ActionIcon(Glyphs.settingsBackupRestore),
                   title: 'Odtwórz z kopii',
                   subtitle: 'Nowy telefon albo utracone dane',
                   onTap: _backingUp ? null : _openRestore,
@@ -169,7 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // No export row: the backup is the export (ADR-018; 05_DESIGN/ustawienia.md v3, D10).
                 const _Section('Dla rodziny'),
                 _SettingRow(
-                  leading: const _ActionIcon(Icons.description_outlined),
+                  leading: const _ActionIcon(Glyphs.description),
                   title: 'Notka przekazania',
                   subtitle:
                       'Gdzie jest kopia i jak ją otworzyć — na papierze, u rodziny',
@@ -178,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const _Section('Techniczne'),
                 _SettingRow(
-                  leading: const _InfoIcon(Icons.storage_outlined),
+                  leading: const _InfoIcon(Glyphs.database),
                   title: 'Stan danych',
                   subtitle: 'Wersja bazy, odcisk danych, liczby',
                   onTap: _backingUp ? null : _openDataState,
@@ -187,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const _Section('O aplikacji'),
                 const _SettingRow(
-                  leading: _InfoIcon(Icons.info_outline),
+                  leading: _InfoIcon(Glyphs.info),
                   title: 'Grobing $appVersion',
                   subtitle:
                       'Mapy: © autorzy OpenStreetMap (ODbL) · Natural Earth',
@@ -241,7 +243,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
         if (snapshot.hasError) {
           return const _SettingRow(
-            leading: _ErrorIcon(Icons.error_outline),
+            leading: _ErrorIcon(Glyphs.error),
             title: 'Nie udało się odczytać ustawień kopii',
           );
         }
@@ -250,13 +252,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Column(
             children: [
               const _SettingRow(
-                leading: _InfoIcon(Icons.cloud_off_outlined),
+                leading: _InfoIcon(Glyphs.cloudOff),
                 title: 'Kopia nie jest skonfigurowana',
                 subtitle:
                     'Do jej otwarcia będą potrzebne: plik kopii, plik klucza i hasło',
               ),
               _SettingRow(
-                leading: const _ActionIcon(Icons.backup_outlined),
+                leading: const _ActionIcon(Glyphs.backup),
                 title: 'Skonfiguruj kopię',
                 onTap: _setUpBackup,
                 leadsOn: true,
@@ -277,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             if (backup.lastAttemptFailed)
               _SettingRow(
-                leading: const _ErrorIcon(Icons.sync_problem),
+                leading: const _ErrorIcon(Glyphs.syncProblem),
                 title: 'Ostatnia kopia się nie udała',
                 liveRegion: true,
                 subtitle:
@@ -287,9 +289,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             else
               _SettingRow(
                 leading: backup.lastSuccessAt == null
-                    ? const _InfoIcon(Icons.cloud_queue)
-                    : const Icon(
-                        Icons.cloud_done_outlined,
+                    ? const _InfoIcon(Glyphs.cloudQueue)
+                    : const GrobingIcon(
+                        Glyphs.cloudDone,
                         color: GrobingColors.stateOk,
                       ),
                 title: 'Ostatnia udana kopia',
@@ -306,7 +308,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : const _ActionIcon(Icons.backup_outlined),
+                  : const _ActionIcon(Glyphs.backup),
               title: _backingUp ? 'Robię kopię…' : 'Zrób kopię teraz',
               onTap: _backingUp ? null : _backUpNow,
               liveRegion: true,
@@ -341,31 +343,33 @@ class _Section extends StatelessWidget {
 class _ActionIcon extends StatelessWidget {
   const _ActionIcon(this.icon);
 
-  final IconData icon;
+  final Glyph icon;
 
   @override
-  Widget build(BuildContext context) => Icon(icon, color: GrobingColors.amber);
+  Widget build(BuildContext context) =>
+      GrobingIcon(icon, color: GrobingColors.amber);
 }
 
 /// An information's icon — muted text (rule 3).
 class _InfoIcon extends StatelessWidget {
   const _InfoIcon(this.icon);
 
-  final IconData icon;
+  final Glyph icon;
 
   @override
   Widget build(BuildContext context) =>
-      Icon(icon, color: GrobingColors.textMuted);
+      GrobingIcon(icon, color: GrobingColors.textMuted);
 }
 
 /// A failure's icon — the error colour, always next to words (SC 1.4.1).
 class _ErrorIcon extends StatelessWidget {
   const _ErrorIcon(this.icon);
 
-  final IconData icon;
+  final Glyph icon;
 
   @override
-  Widget build(BuildContext context) => Icon(icon, color: GrobingColors.error);
+  Widget build(BuildContext context) =>
+      GrobingIcon(icon, color: GrobingColors.error);
 }
 
 /// One row of the list: ≥ 56 dp, the icon on the left, the title (16 sp, semibold), the description
@@ -440,8 +444,8 @@ class _SettingRow extends StatelessWidget {
                     ),
                   ),
                   if (leadsOn)
-                    const Icon(
-                      Icons.chevron_right,
+                    const GrobingIcon(
+                      Glyphs.chevronRight,
                       color: GrobingColors.textMuted,
                     ),
                 ],

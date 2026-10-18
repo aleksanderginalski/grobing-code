@@ -20,6 +20,8 @@ import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/tree/tree_screen.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
+import 'package:grobing/app/widgets/grobing_icon.dart';
 import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
@@ -27,6 +29,7 @@ import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/people.dart';
 
 import '../support/backup_fakes.dart';
+import '../support/glyphs.dart';
 
 // ISSUE-022 — the app's skeleton, happy path per AC (05_DESIGN/osoby.md, ustawienia.md, cmentarze.md
 // element 18): AC-1 the bottom bar on the viewing screens and not in a form, the tabs' stacks · AC-2 the
@@ -435,7 +438,7 @@ void main() {
         expect(find.textContaining('(w tle) · Dysk Google'), findsOneWidget);
         expect(find.text('Zrób kopię teraz'), findsOneWidget);
         expect(
-          tester.widget<Icon>(find.byIcon(Icons.cloud_done_outlined)).color,
+          tester.widget<GrobingIcon>(findGlyph(Glyphs.cloudDone)).color,
           GrobingColors.stateOk,
         );
         expect(find.text('Kopia nie jest skonfigurowana'), findsNothing);
@@ -472,7 +475,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          tester.widget<Icon>(find.byIcon(Icons.sync_problem)).color,
+          tester.widget<GrobingIcon>(findGlyph(Glyphs.syncProblem)).color,
           GrobingColors.error,
         );
         await cleanUp(tester);
@@ -517,11 +520,11 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(MePickerScreen),
-            matching: find.byIcon(Icons.chevron_right),
+            matching: findGlyph(Glyphs.chevronRight),
           ),
           findsNothing,
         );
-        expect(find.byIcon(Icons.check), findsOneWidget);
+        expect(findGlyph(Glyphs.check), findsOneWidget);
         expect(
           tester
               .widgetList<PersonListCard>(find.byType(PersonListCard))

@@ -13,6 +13,8 @@ import '../dev/fictional_residences.dart';
 import 'backup_setup_screen.dart';
 import 'restore_screen.dart';
 import 'theme.dart';
+import 'widgets/glyphs.dart';
+import 'widgets/grobing_icon.dart';
 
 /// "Stan danych" (ISSUE-007): schema version, row counts and the data fingerprint — the measure that
 /// backup and restore are checked against — the backup (ISSUE-008) and restore (ISSUE-009). A
@@ -154,7 +156,7 @@ class _DataStateScreenState extends State<DataStateScreen> {
         actions: [
           IconButton(
             tooltip: 'Odśwież',
-            icon: const Icon(Icons.refresh),
+            icon: const GrobingIcon(Glyphs.refresh, applyTextScaling: false),
             onPressed: _refresh,
           ),
         ],

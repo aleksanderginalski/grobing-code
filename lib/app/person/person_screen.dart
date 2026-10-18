@@ -23,6 +23,8 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/wreath.dart';
 import 'kinship_names.dart';
 import 'mini_tree.dart';
@@ -252,7 +254,11 @@ class _PersonScreenState extends State<PersonScreen> {
         const BackButton(color: GrobingColors.text),
         const Spacer(),
         IconButton(
-          icon: const Icon(Icons.edit_outlined, color: GrobingColors.amber),
+          icon: const GrobingIcon(
+            Glyphs.inkPen,
+            color: GrobingColors.amber,
+            applyTextScaling: false,
+          ),
           tooltip: 'Popraw wpis',
           onPressed: v == null ? null : _correct,
         ),
@@ -427,9 +433,7 @@ class _PersonScreenState extends State<PersonScreen> {
             ),
           ),
         // Element 6: the family as a mini tree, to the screen's edges — it scrolls sideways when wider.
-        _padded(
-          const _SectionHeader(icon: Icons.people_outline, text: 'Rodzina'),
-        ),
+        _padded(const _SectionHeader(icon: Glyphs.group, text: 'Rodzina')),
         if (hasRelatives) ...[
           MiniTree(
             person: FamilyMember(
@@ -463,7 +467,7 @@ class _PersonScreenState extends State<PersonScreen> {
                   photos: photos,
                   treeFocus: v.id,
                 ),
-                icon: const Icon(Icons.account_tree_outlined),
+                icon: const GrobingIcon(Glyphs.nature),
                 label: const Text('Pokaż w drzewie'),
               ),
             ),
@@ -479,7 +483,7 @@ class _PersonScreenState extends State<PersonScreen> {
         if (v.meId != v.id) ...[
           _padded(
             const _SectionHeader(
-              icon: Icons.link,
+              icon: Glyphs.link,
               text: 'Jak łączy się ze mną',
             ),
           ),
@@ -487,23 +491,18 @@ class _PersonScreenState extends State<PersonScreen> {
         ],
         // Elements 8–9.
         if (v.birth != null || v.death != null || v.burial != null) ...[
-          _padded(
-            const _SectionHeader(icon: Icons.event_note_outlined, text: 'Daty'),
-          ),
+          _padded(const _SectionHeader(icon: Glyphs.eventNote, text: 'Daty')),
           _padded(_dates(v)),
         ],
         // Element 9a (v2.5): the residences — also without any, as the place to add them (zamieszkanie.md D1).
         _padded(
-          const _SectionHeader(
-            icon: Icons.home_outlined,
-            text: 'Miejsca zamieszkania',
-          ),
+          const _SectionHeader(icon: Glyphs.home, text: 'Miejsca zamieszkania'),
         ),
         _padded(_residences(v)),
         // Element 10: the photos — also without any (D20), as the place to add them.
         _padded(
           _SectionHeader(
-            icon: Icons.photo_library_outlined,
+            icon: Glyphs.photoLibrary,
             text: v.photoCount == 0 ? 'Zdjęcia' : 'Zdjęcia · ${v.photoCount}',
           ),
         ),
@@ -723,7 +722,7 @@ class _PersonScreenState extends State<PersonScreen> {
               minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
             ),
             onPressed: () => _correct(addResidence: true),
-            icon: const Icon(Icons.add_home_outlined),
+            icon: const GrobingIcon(Glyphs.addHome),
             label: const Text('Dodaj miejsce'),
           ),
         ],
@@ -751,7 +750,7 @@ class _PersonScreenState extends State<PersonScreen> {
               treeFocus: v.id,
               treeMap: true,
             ),
-            icon: const Icon(Icons.public_outlined),
+            icon: const GrobingIcon(Glyphs.language),
             label: const Text('Pokaż na mapie'),
           ),
         ),
@@ -778,7 +777,7 @@ class _PersonScreenState extends State<PersonScreen> {
               minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
             ),
             onPressed: photos == null ? null : () => _correct(pickPhotos: true),
-            icon: const Icon(Icons.add_a_photo_outlined),
+            icon: const GrobingIcon(Glyphs.addPhotoAlternate),
             label: const Text('Dodaj zdjęcie'),
           ),
         ],
@@ -814,7 +813,10 @@ class _PersonScreenState extends State<PersonScreen> {
                 const SizedBox(width: 8),
               ],
               const Spacer(),
-              const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+              const GrobingIcon(
+                Glyphs.chevronRight,
+                color: GrobingColors.textMuted,
+              ),
             ],
           ),
         ),
@@ -827,7 +829,7 @@ class _PersonScreenState extends State<PersonScreen> {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.icon, required this.text});
 
-  final IconData icon;
+  final Glyph icon;
   final String text;
 
   @override
@@ -837,7 +839,7 @@ class _SectionHeader extends StatelessWidget {
       header: true,
       child: Row(
         children: [
-          Icon(icon, size: 22, color: GrobingColors.amber),
+          GrobingIcon(icon, size: 22, color: GrobingColors.amber),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -888,9 +890,10 @@ class _Background extends StatelessWidget {
                     alignment: Alignment.bottomRight,
                     child: Padding(
                       padding: EdgeInsets.all(12),
-                      child: Icon(
-                        Icons.add_photo_alternate_outlined,
+                      child: GrobingIcon(
+                        Glyphs.addPhotoAlternate,
                         color: GrobingColors.amber,
+                        applyTextScaling: false,
                       ),
                     ),
                   ),
@@ -906,9 +909,10 @@ class _Background extends StatelessWidget {
                 errorBuilder: (_, _, _) => const ColoredBox(
                   color: GrobingColors.surface,
                   child: Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
+                    child: GrobingIcon(
+                      Glyphs.brokenImage,
                       color: GrobingColors.textMuted,
+                      applyTextScaling: false,
                     ),
                   ),
                 ),
@@ -929,10 +933,11 @@ class _Unreadable extends StatelessWidget {
     height: size,
     color: GrobingColors.background,
     alignment: Alignment.center,
-    child: const Icon(
-      Icons.broken_image_outlined,
+    child: const GrobingIcon(
+      Glyphs.brokenImage,
       size: 20,
       color: GrobingColors.textMuted,
+      applyTextScaling: false,
     ),
   );
 }
@@ -1190,7 +1195,7 @@ class _BurialRow extends StatelessWidget {
     );
     const Widget chevron = Padding(
       padding: EdgeInsets.only(top: 8),
-      child: Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+      child: GrobingIcon(Glyphs.chevronRight, color: GrobingColors.textMuted),
     );
     return Semantics(
       container: true,

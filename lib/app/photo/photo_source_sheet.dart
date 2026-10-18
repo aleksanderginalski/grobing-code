@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'photo_picker.dart';
 
 /// The source sheet (05_DESIGN/zdjecie.md, A): the gallery first, then the camera (D1). Null when the
@@ -33,12 +35,12 @@ Future<PhotoSource?> showPhotoSourceSheet(
           ),
         ),
         const _SourceRow(
-          icon: Icons.photo_library_outlined,
+          icon: Glyphs.photoLibrary,
           label: 'Wybierz z galerii',
           source: PhotoSource.gallery,
         ),
         const _SourceRow(
-          icon: Icons.photo_camera_outlined,
+          icon: Glyphs.photoCamera,
           label: 'Zrób zdjęcie',
           source: PhotoSource.camera,
         ),
@@ -56,7 +58,7 @@ class _SourceRow extends StatelessWidget {
     required this.source,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String label;
   final PhotoSource source;
 
@@ -69,7 +71,7 @@ class _SourceRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, color: GrobingColors.amber),
+            GrobingIcon(icon, color: GrobingColors.amber),
             const SizedBox(width: 16),
             Expanded(
               child: Text(

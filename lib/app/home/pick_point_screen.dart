@@ -5,6 +5,8 @@ import 'package:latlong2/latlong.dart';
 import '../../data/cemeteries.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'poland_map.dart';
 import 'poland_map_data.dart';
 
@@ -79,7 +81,7 @@ class _PickPointScreenState extends State<PickPointScreen> {
       backgroundColor: GrobingColors.background,
       surfaceTintColor: Colors.transparent,
       leading: IconButton(
-        icon: const Icon(Icons.close),
+        icon: const GrobingIcon(Glyphs.close, applyTextScaling: false),
         tooltip: 'Wróć do okna',
         onPressed: () => Navigator.of(context).pop(),
       ),
@@ -137,8 +139,8 @@ class _PickPointScreenState extends State<PickPointScreen> {
                   padding: EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.error_outline,
+                      GrobingIcon(
+                        Glyphs.error,
                         size: 18,
                         color: GrobingColors.error,
                       ),

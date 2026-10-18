@@ -21,6 +21,8 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart';
 import 'grave_screen.dart';
 import 'here_location.dart';
@@ -799,7 +801,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
           ),
         ),
         IconButton(
-          icon: const Icon(Icons.edit_outlined),
+          icon: const GrobingIcon(Glyphs.inkPen, applyTextScaling: false),
           color: GrobingColors.amber,
           tooltip: 'Popraw cmentarz',
           onPressed: cemetery == null ? null : () => _editCemetery(cemetery),
@@ -940,7 +942,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
             left: 12,
             bottom: _barHeight + 8,
             child: MapPill(
-              icon: Icons.pentagon_outlined,
+              icon: Glyphs.pentagon,
               label: 'Kwatery',
               onTap: _openSectors,
             ),
@@ -955,7 +957,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
             left: 12,
             bottom: _panelHeight + 8,
             child: MapPill(
-              icon: Icons.edit_location_alt_outlined,
+              icon: Glyphs.editLocationAlt,
               label: 'Popraw pinezkę',
               onTap: () => _openPin(grave.id),
             ),
@@ -1111,8 +1113,8 @@ class _CemeteryScreenState extends State<CemeteryScreen>
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.group_outlined,
+                      const GrobingIcon(
+                        Glyphs.group,
                         size: 18,
                         color: GrobingColors.text,
                       ),
@@ -1132,7 +1134,11 @@ class _CemeteryScreenState extends State<CemeteryScreen>
         FilledButton.icon(
           style: primaryButtonStyle,
           onPressed: () => _openGrave(g.id),
-          icon: const CandleIcon(size: 22, color: GrobingColors.background),
+          icon: const CandleIcon(
+            size: 22,
+            color: GrobingColors.background,
+            applyTextScaling: true,
+          ),
           label: const Text('Pokaż grób'),
         ),
       ],
@@ -1246,7 +1252,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
   Widget _addButton(CemeteryGraves? cemetery) => FilledButton.icon(
     style: primaryButtonStyle,
     onPressed: cemetery == null ? null : () => _addGrave(cemetery),
-    icon: const Icon(Icons.add),
+    icon: const GrobingIcon(Glyphs.add),
     label: const Text('Dodaj grób'),
   );
 }
@@ -1368,8 +1374,8 @@ class _GraveCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const Icon(
-                      Icons.chevron_right,
+                    const GrobingIcon(
+                      Glyphs.chevronRight,
                       color: GrobingColors.textMuted,
                     ),
                   ],

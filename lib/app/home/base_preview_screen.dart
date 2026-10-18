@@ -6,6 +6,8 @@ import '../external_link.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_base.dart';
 import 'cemetery_form.dart';
 import 'poland_map.dart';
@@ -182,8 +184,8 @@ class _BasePreviewScreenState extends State<BasePreviewScreen> {
                 padding: EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
+                    GrobingIcon(
+                      Glyphs.error,
                       size: 18,
                       color: GrobingColors.error,
                     ),
@@ -204,7 +206,7 @@ class _BasePreviewScreenState extends State<BasePreviewScreen> {
             FilledButton.icon(
               style: primaryButtonStyle,
               onPressed: _add,
-              icon: const Icon(Icons.add_location_alt_outlined),
+              icon: const GrobingIcon(Glyphs.addLocationAlt),
               label: const Text('Dodaj ten cmentarz'),
             ),
           ],
@@ -228,10 +230,10 @@ class _BasePreviewScreenState extends State<BasePreviewScreen> {
       child: Container(
         constraints: const BoxConstraints(minHeight: 48),
         alignment: Alignment.centerLeft,
-        child: Row(
+        child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Flexible(
+            Flexible(
               child: Text(
                 'Zobacz zdjęcie satelitarne',
                 style: TextStyle(
@@ -242,12 +244,9 @@ class _BasePreviewScreenState extends State<BasePreviewScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.north_east,
-              size: MediaQuery.textScalerOf(context).scale(16),
-              color: GrobingColors.amber,
-            ),
+            SizedBox(width: 4),
+            // Grows with the text by itself (GrobingIcon, style-b.md rule 1 → link).
+            GrobingIcon(Glyphs.northEast, size: 16, color: GrobingColors.amber),
           ],
         ),
       ),

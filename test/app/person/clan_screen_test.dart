@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/person/clan_screen.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/app/widgets/wreath.dart';
 import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/families.dart';
 
 import '../../support/a11y.dart';
+import '../../support/glyphs.dart';
 
 // ISSUE-044 — the wreath of a family line in a person's correction (lib/app/person/clan_screen.dart;
 // 05_DESIGN/wieniec.md E1, E1a, E2, F; wpis-osoby.md 4b): the row in each state, the sheet of lines, the
@@ -308,7 +310,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(findGlyph(Glyphs.check), findsOneWidget);
       expect(find.text('Bez wieńca'), findsOneWidget);
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

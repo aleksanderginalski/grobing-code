@@ -10,6 +10,8 @@ import '../photo/photos.dart';
 import '../photo/profile_circle.dart';
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// Element 7 (05_DESIGN/drzewo.md v1.16; US-011 AC-1, ISSUE-039): the window "Połącz dwie osoby" with the tiles
 /// "Od" — "Ja" at each opening — and "Do", empty. A tile opens the list of people; choosing "Od" comes back
@@ -88,10 +90,11 @@ class _ConnectDialogState extends State<_ConnectDialog> {
     final Widget arrow = ExcludeSemantics(
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Icon(
-          large ? Icons.arrow_downward : Icons.arrow_forward,
+        child: GrobingIcon(
+          large ? Glyphs.arrowDownward : Glyphs.arrowForward,
           color: GrobingColors.textMuted,
           size: 20,
+          applyTextScaling: false,
         ),
       ),
     );
@@ -286,7 +289,12 @@ class _EmptyCircle extends StatelessWidget {
     dimension: 40,
     child: CustomPaint(
       painter: _DashedCircle(),
-      child: Icon(Icons.add, color: GrobingColors.amber, size: 22),
+      child: GrobingIcon(
+        Glyphs.add,
+        color: GrobingColors.amber,
+        size: 22,
+        applyTextScaling: false,
+      ),
     ),
   );
 }

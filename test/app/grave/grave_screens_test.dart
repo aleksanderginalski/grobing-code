@@ -8,6 +8,7 @@ import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/claims.dart';
 import 'package:grobing/data/database.dart';
@@ -15,6 +16,7 @@ import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/sectors.dart';
 
 import '../../support/a11y.dart';
+import '../../support/glyphs.dart';
 
 // ISSUE-012 — the transcription screens (05_DESIGN/cmentarz.md, grob.md, wpis-osoby.md v2), happy path
 // per AC: US-002 AC-1 a grave shows everyone in it · AC-2 names, birth surname, "kim była" · AC-3 the
@@ -245,11 +247,11 @@ void main() {
       expect(
         find.descendant(
           of: find.widgetWithText(MenuItemButton, 'około'),
-          matching: find.byIcon(Icons.check),
+          matching: findGlyph(Glyphs.check),
         ),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(findGlyph(Glyphs.check), findsOneWidget);
       await tester.tap(find.byType(MenuAnchor).at(0));
       await tester.pumpAndSettle();
       await tester.enterText(_field(3), '1890');
@@ -316,7 +318,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(findGlyph(Glyphs.error), findsOneWidget);
       expect(find.byType(PersonFormScreen), findsOneWidget);
 
       await tester.enterText(_field(5), '1960');
@@ -880,7 +882,7 @@ void main() {
           find.text('Tak odległa data to raczej pomyłka — sprawdź rok.'),
           findsOneWidget,
         );
-        expect(find.byIcon(Icons.error_outline), findsOneWidget);
+        expect(findGlyph(Glyphs.error), findsOneWidget);
         expect(feeFocused(tester), isTrue);
 
         await tester.enterText(feeField(), '13.2031');

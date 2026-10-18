@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// What the cemetery window returns.
 typedef CemeteryFormValues = ({String name, String? locality});
@@ -112,8 +114,8 @@ class _CemeteryFormState extends State<_CemeteryForm> {
               error: _nameMissing
                   ? const Row(
                       children: [
-                        Icon(
-                          Icons.error_outline,
+                        GrobingIcon(
+                          Glyphs.error,
                           size: 16,
                           color: GrobingColors.error,
                         ),

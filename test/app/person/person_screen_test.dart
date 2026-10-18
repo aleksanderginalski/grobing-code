@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show FlutterExceptionHandler;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/grave/cemetery_screen.dart';
@@ -11,6 +12,7 @@ import 'package:grobing/app/photo/person_photos_screen.dart';
 import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/app/widgets/wreath.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/clans.dart';
@@ -21,6 +23,8 @@ import 'package:grobing/data/people.dart';
 import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 
+import '../../support/a11y.dart';
+import '../../support/glyphs.dart';
 import '../../support/photo_fakes.dart';
 import '../../support/style_checks.dart';
 
@@ -666,6 +670,62 @@ void main() {
       expect(find.byType(WreathView), findsNothing);
       expect(find.textContaining('Ród:'), findsNothing);
       await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-046 AC-2 — 200% text on 360 dp: icons next to words grow with them (a section header 22 → 44 dp), '
+    'the app bar\'s pen and back stay 24 dp; every button has a tap action and a target of 48 dp',
+    (tester) async {
+      // The test font draws every letter as a square, wider than Roboto: the bottom bar (lib/app/tabs.dart, its
+      // icons fixed at 24 dp) overflows in it at 200 % and not on a phone — as in the tree's test of 200 %. Only
+      // that overflow is let through; the bar in Roboto is the emulator's (Dev report → Emulator pass, 200 %).
+      final FlutterExceptionHandler? previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final String error = details.toString();
+        if (error.contains('overflowed') &&
+            error.contains('lib/app/tabs.dart')) {
+          return;
+        }
+        previous?.call(details);
+      };
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await withFamily(tester);
+      // pumpView waits for "Rodzina", which at 200% is below the first screen and not built yet.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: GrobingTheme.dark,
+          home: PersonScreen(database: db, personId: maria, photos: photos),
+        ),
+      );
+      await _pumpUntil(tester, () => _shown(findGlyph(Glyphs.inkPen)));
+      await _settle(tester);
+
+      expect(tester.getSize(findGlyph(Glyphs.inkPen)), const Size(24, 24));
+      expect(tester.getSize(findGlyph(Glyphs.arrowBack)), const Size(24, 24));
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      await scrollTo(tester, find.text('Rodzina'));
+      // The section header's icon (the tab "Osoby" has the same glyph and stays 24 dp).
+      final Finder header = find.descendant(
+        of: find
+            .ancestor(of: find.text('Rodzina'), matching: find.byType(Row))
+            .first,
+        matching: findGlyph(Glyphs.group),
+      );
+      expect(tester.getSize(header), const Size(44, 44)); // 22 dp × 2
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+      await cleanUp(tester);
+      FlutterError.onError = previous;
     },
   );
 }

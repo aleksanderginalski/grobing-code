@@ -15,6 +15,8 @@ import '../photo/photo_viewer_screen.dart' show PhotoErrorLine;
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart';
 import 'map_chrome.dart';
 import 'sector_geometry.dart';
@@ -511,7 +513,7 @@ class _SectorsScreenState extends State<SectorsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: const GrobingIcon(Glyphs.close, applyTextScaling: false),
             color: GrobingColors.text,
             tooltip: drawing ? 'Zamknij zaznaczanie' : 'Zamknij kwatery',
             onPressed: drawing
@@ -767,7 +769,7 @@ class _SectorsScreenState extends State<SectorsScreen>
         FilledButton.icon(
           style: primaryButtonStyle,
           onPressed: failed || !read ? null : () => _newSector(sectors),
-          icon: const Icon(Icons.add),
+          icon: const GrobingIcon(Glyphs.add),
           label: const Text('Zaznacz kwaterę'),
         ),
       ],
@@ -802,7 +804,10 @@ class _SectorsScreenState extends State<SectorsScreen>
       Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left),
+            icon: const GrobingIcon(
+              Glyphs.chevronLeft,
+              applyTextScaling: false,
+            ),
             color: GrobingColors.text,
             tooltip: 'Wszystkie kwatery',
             onPressed: () => setState(() {
@@ -821,7 +826,7 @@ class _SectorsScreenState extends State<SectorsScreen>
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined),
+            icon: const GrobingIcon(Glyphs.inkPen, applyTextScaling: false),
             color: GrobingColors.amber,
             tooltip: 'Zmień nazwę kwatery',
             onPressed: () => _rename(s, sectors),
@@ -843,7 +848,7 @@ class _SectorsScreenState extends State<SectorsScreen>
           OutlinedButton.icon(
             style: _rowButton,
             onPressed: () => _startDrawing(name: s.name, redraw: s.id),
-            icon: const Icon(Icons.pentagon_outlined),
+            icon: const GrobingIcon(Glyphs.pentagon),
             label: Text(
               s.zone == null ? 'Narysuj strefę' : 'Narysuj strefę od nowa',
             ),
@@ -859,7 +864,7 @@ class _SectorsScreenState extends State<SectorsScreen>
                 ),
               ),
               onPressed: () => _removeZone(s),
-              icon: const Icon(Icons.delete_outline),
+              icon: const GrobingIcon(Glyphs.delete),
               label: const Text('Usuń z planu'),
             ),
         ],
@@ -874,13 +879,13 @@ class _SectorsScreenState extends State<SectorsScreen>
     final Widget undo = OutlinedButton.icon(
       style: _rowButton,
       onPressed: n == 0 ? null : _undo,
-      icon: const Icon(Icons.undo),
+      icon: const GrobingIcon(Glyphs.undo),
       label: const Text('Cofnij'),
     );
     final Widget add = OutlinedButton.icon(
       style: _rowButton,
       onPressed: _addCorner,
-      icon: const Icon(Icons.add_circle_outline),
+      icon: const GrobingIcon(Glyphs.addCircle),
       label: const Text('Dodaj róg'),
     );
     // At a large system text "Cofnij" is its icon alone, beside "Dodaj róg": two rows of buttons left no room
@@ -917,7 +922,10 @@ class _SectorsScreenState extends State<SectorsScreen>
                     minimumSize: const WidgetStatePropertyAll(Size(52, 52)),
                   ),
                   onPressed: n == 0 ? null : _undo,
-                  child: const Icon(Icons.undo),
+                  child: const GrobingIcon(
+                    Glyphs.undo,
+                    applyTextScaling: false,
+                  ),
                 ),
               )
             else
@@ -1006,7 +1014,10 @@ class _SectorCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+                const GrobingIcon(
+                  Glyphs.chevronRight,
+                  color: GrobingColors.textMuted,
+                ),
               ],
             ),
           ),
@@ -1057,8 +1068,8 @@ class _InstructionState extends State<_Instruction> {
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.pentagon_outlined,
+              GrobingIcon(
+                Glyphs.pentagon,
                 size: 18,
                 color: GrobingColors.amber,
               ),
@@ -1254,8 +1265,8 @@ class _SectorNameDialogState extends State<SectorNameDialog> {
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.error_outline,
+                        const GrobingIcon(
+                          Glyphs.error,
                           size: 16,
                           color: GrobingColors.error,
                         ),

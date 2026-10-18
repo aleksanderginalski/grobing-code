@@ -80,3 +80,12 @@ flutter:
     # leaves and the C3 shading — built by tool/wreaths/build_wreaths.py from the author's images
     # (README → Wieńce). In git by the author's decision (R): the one folder of images outside res/.
     - assets/wreaths/
+    # The licence of the icon font below (Apache-2.0), shipped with it and listed in the app's licences (main.dart).
+    - assets/fonts/LICENSE-material-symbols.txt
+  fonts:
+    # The app's icons (ISSUE-046, style-b.md rule 3): Material Symbols Rounded cut down to tool/icons/glyphs.txt
+    # by tool/icons/build_symbols.py (README → Ikony), with its FILL, GRAD, opsz and wght axes. Drawn as text by
+    # GrobingIcon, never through IconData, so Flutter's icon tree shaker does not cut it again.
+    - family: GrobingSymbols
+      fonts:
+        - asset: assets/fonts/grobing-symbols.ttf

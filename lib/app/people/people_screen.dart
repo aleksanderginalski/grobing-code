@@ -8,6 +8,8 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'me_picker_screen.dart';
 import 'people_list.dart';
 
@@ -246,7 +248,10 @@ class _MeCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+                const GrobingIcon(
+                  Glyphs.chevronRight,
+                  color: GrobingColors.textMuted,
+                ),
               ],
             ),
           ),

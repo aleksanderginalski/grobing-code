@@ -20,6 +20,8 @@ import '../photo/photos.dart';
 import '../photo/profile_circle.dart';
 import '../polish.dart' show peopleLabel, personName;
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'migration_year.dart';
 
 // The migration map (05_DESIGN/mapa-migracji.md v1.1; ISSUE-045): the part "Mapa" of the Drzewo tab (W2). The world
@@ -468,13 +470,13 @@ class _MigrationMapState extends State<MigrationMap>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _ZoomButton(
-                      icon: Icons.add,
+                      icon: Glyphs.add,
                       tooltip: 'Przybliż mapę',
                       onPressed: () => _zoomBy(_zoomStep),
                     ),
                     const SizedBox(height: 8),
                     _ZoomButton(
-                      icon: Icons.remove,
+                      icon: Glyphs.remove,
                       tooltip: 'Oddal mapę',
                       onPressed: () => _zoomBy(-_zoomStep),
                     ),
@@ -1229,7 +1231,7 @@ class _ZoomButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String tooltip;
   final VoidCallback onPressed;
 
@@ -1244,7 +1246,11 @@ class _ZoomButton extends StatelessWidget {
         onTap: onPressed,
         child: SizedBox.square(
           dimension: 48,
-          child: Icon(icon, color: GrobingColors.text),
+          child: GrobingIcon(
+            icon,
+            color: GrobingColors.text,
+            applyTextScaling: false,
+          ),
         ),
       ),
     ),

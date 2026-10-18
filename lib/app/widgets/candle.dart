@@ -1,78 +1,66 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'glyphs.dart';
+import 'grobing_icon.dart';
 
-/// The candle (znicz) — the app's sign (style-b.md rule 8): one silhouette, drawn here and nowhere
-/// else (05_DESIGN/cmentarze.md → Style B rules applied). A glass jar slightly narrower at the
-/// bottom, a collar on top and a drop-shaped flame, in a 24 × 24 grid like the `outlined` icons.
-Path _candlePath() {
-  final Path flame = Path()
-    ..moveTo(12, 2.6)
-    ..cubicTo(13.6, 4.5, 14.4, 5.9, 14.4, 7.2)
-    ..arcToPoint(const Offset(9.6, 7.2), radius: const Radius.circular(2.4))
-    ..cubicTo(9.6, 5.9, 10.4, 4.5, 12, 2.6)
-    ..close();
-  final Path collar = Path()
-    ..addRRect(
-      RRect.fromLTRBR(7.4, 10.2, 16.6, 12.4, const Radius.circular(0.6)),
-    );
-  final Path glass = Path()
-    ..moveTo(8.3, 12.4)
-    ..lineTo(15.7, 12.4)
-    ..lineTo(14.8, 21.5)
-    ..lineTo(9.2, 21.5)
-    ..close();
-  return Path()
-    ..addPath(flame, Offset.zero)
-    ..addPath(collar, Offset.zero)
-    ..addPath(glass, Offset.zero);
-}
-
-/// The candle as an icon: thin line (logo, button icons) or filled (inside a pin).
+/// The candle (znicz) — the app's sign (style-b.md rule 8): one drawing, the author's candle from DALL-E traced into
+/// the icon font (ISSUE-046; tool/icons/build_symbols.py) — in two tones ([Glyphs.candle]: the logo, the buttons)
+/// or solid with its details cut out ([Glyphs.candleSolid]: inside a pin, the mark of the dead in the tree).
+///
+/// Next to a button's words it grows with the system text size like the other icons ([applyTextScaling],
+/// style-b.md rule 3); the logo and the tree's mark stay.
 class CandleIcon extends StatelessWidget {
   const CandleIcon({
     super.key,
     this.size = 24,
     this.color = GrobingColors.amber,
     this.filled = false,
+    this.applyTextScaling = false,
   });
 
   final double size;
   final Color color;
   final bool filled;
+  final bool applyTextScaling;
 
   @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: CustomPaint(
-      painter: _CandlePainter(color: color, filled: filled),
-    ),
+  Widget build(BuildContext context) => GrobingIcon(
+    filled ? Glyphs.candleSolid : Glyphs.candle,
+    size: size,
+    color: color,
+    applyTextScaling: applyTextScaling,
   );
 }
 
-class _CandlePainter extends CustomPainter {
-  const _CandlePainter({required this.color, required this.filled});
-
-  final Color color;
-  final bool filled;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 24, size.height / 24);
-    canvas.drawPath(
-      _candlePath(),
-      Paint()
-        ..color = color
-        ..isAntiAlias = true
-        ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..strokeJoin = StrokeJoin.round,
-    );
+/// Paints [glyph] of the icon font with its em square at [origin], [em] wide — for icons inside a painter (the pin).
+/// A glyph with a fill paints it at 25% under its lines, as [GrobingIcon] does.
+void _paintGlyph(
+  Canvas canvas,
+  Glyph glyph,
+  Offset origin,
+  double em,
+  Color color,
+) {
+  void layer(int codePoint, Color c) {
+    (TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(codePoint),
+        style: TextStyle(
+          fontFamily: GrobingIcon.fontFamily,
+          fontSize: em,
+          height: 1,
+          color: c,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout()).paint(canvas, origin);
   }
 
-  @override
-  bool shouldRepaint(_CandlePainter old) =>
-      old.color != color || old.filled != filled;
+  if (glyph.fill case final int fill) {
+    layer(fill, color.withValues(alpha: color.a * GrobingIcon.fillOpacity));
+  }
+  layer(glyph.codePoint, color);
 }
 
 /// How a cemetery pin looks (05_DESIGN/cmentarze.md, element 4; style-b.md rule 13).
@@ -166,19 +154,15 @@ class _PinPainter extends CustomPainter {
           ..strokeWidth = 2,
       );
     }
-    // The candle inside, 0.78 of the 24-grid, centred in the round part of the pin.
-    canvas.save();
-    canvas.translate(6.6, 4.2);
-    canvas.scale(0.78);
-    canvas.drawPath(
-      _candlePath(),
-      Paint()
-        ..color = outlined ? GrobingColors.amber : GrobingColors.background
-        ..style = outlined ? PaintingStyle.stroke : PaintingStyle.fill
-        ..strokeWidth = 1.6
-        ..strokeJoin = StrokeJoin.round,
+    // The author's candle inside, an em of 18.7 (0.78 of a 24-grid icon) in the round part of the pin: solid in the
+    // background's colour on the amber pin, in two tones of amber on a pin not saved yet (the drawing of P-pinezka).
+    _paintGlyph(
+      canvas,
+      outlined ? Glyphs.candle : Glyphs.candleSolid,
+      const Offset(6.64, 4.8),
+      18.72,
+      outlined ? GrobingColors.amber : GrobingColors.background,
     );
-    canvas.restore();
     if (count > 1) {
       const Offset c = Offset(26.5, 6.5);
       const double r = 8.5;

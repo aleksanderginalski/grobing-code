@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/photos.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'crop_geometry.dart';
 import 'photo_viewer_screen.dart' show PhotoViewerBar;
 import 'profile_circle.dart' show imageSizeOf;
@@ -340,10 +342,11 @@ class _Unreadable extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.broken_image_outlined,
+        GrobingIcon(
+          Glyphs.brokenImage,
           size: 40,
           color: GrobingColors.textMuted,
+          applyTextScaling: false,
         ),
         SizedBox(height: 12),
         Text(

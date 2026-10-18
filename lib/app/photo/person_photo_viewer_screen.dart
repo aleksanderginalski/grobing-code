@@ -4,6 +4,8 @@ import '../../data/graves.dart';
 import '../../data/photos.dart' show PhotoCrop;
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'person_photos_draft.dart';
 import 'photo_people_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -278,7 +280,7 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         tooltip: 'Poprzednie zdjęcie',
         color: GrobingColors.text,
         onPressed: _index > 0 ? () => _turnTo(_index - 1) : null,
-        icon: const Icon(Icons.chevron_left),
+        icon: const GrobingIcon(Glyphs.chevronLeft, applyTextScaling: false),
       ),
       const SizedBox(width: 8),
       Text(
@@ -290,7 +292,7 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
         tooltip: 'Następne zdjęcie',
         color: GrobingColors.text,
         onPressed: _index < count - 1 ? () => _turnTo(_index + 1) : null,
-        icon: const Icon(Icons.chevron_right),
+        icon: const GrobingIcon(Glyphs.chevronRight, applyTextScaling: false),
       ),
     ],
   );
@@ -312,12 +314,12 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
           Expanded(
             child: _index == 0
                 ? _StackedAction(
-                    icon: Icons.crop_outlined,
+                    icon: Glyphs.crop,
                     label: 'Popraw kadr',
                     onPressed: _correctCrop,
                   )
                 : _StackedAction(
-                    icon: Icons.account_circle_outlined,
+                    icon: Glyphs.accountCircle,
                     label: 'Ustaw jako profilowe',
                     onPressed: _makeProfile,
                   ),
@@ -325,14 +327,14 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
           Expanded(
             child: background
                 ? _StackedAction(
-                    icon: Icons.hide_image_outlined,
+                    icon: Glyphs.hideImage,
                     label: 'Usuń z tła',
                     color: GrobingColors.text,
                     iconColor: GrobingColors.text,
                     onPressed: widget.draft.clearBackground,
                   )
                 : _StackedAction(
-                    icon: Icons.wallpaper_outlined,
+                    icon: Glyphs.wallpaper,
                     label: 'Ustaw jako tło',
                     color: GrobingColors.text,
                     onPressed: photo == null
@@ -342,7 +344,7 @@ class _PersonPhotoViewerScreenState extends State<PersonPhotoViewerScreen> {
           ),
           Expanded(
             child: _StackedAction(
-              icon: Icons.delete_outline,
+              icon: Glyphs.delete,
               label: 'Usuń z tej osoby',
               color: GrobingColors.text,
               iconColor: GrobingColors.text,
@@ -365,7 +367,7 @@ class _StackedAction extends StatelessWidget {
     this.iconColor,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String label;
   final VoidCallback? onPressed;
 
@@ -386,7 +388,7 @@ class _StackedAction extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
+        GrobingIcon(
           icon,
           color: onPressed == null ? null : (iconColor ?? GrobingColors.amber),
         ),

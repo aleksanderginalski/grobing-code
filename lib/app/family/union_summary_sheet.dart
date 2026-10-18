@@ -7,6 +7,8 @@ import '../dates.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/date_block.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'person_choice_list.dart';
 import 'union_wizard.dart';
 
@@ -535,7 +537,7 @@ class _UnionSummaryState extends State<_UnionSummary> {
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
               onPressed: _saving ? null : _confirmDelete,
-              icon: const Icon(Icons.delete_outline),
+              icon: const GrobingIcon(Glyphs.delete),
               label: const Text('Usuń związek'),
             ),
             StepActionsButton(
@@ -549,50 +551,52 @@ class _UnionSummaryState extends State<_UnionSummary> {
   }
 
   /// A row ≥ 56 dp: label · value (or "Dodaj" in amber) · chevron; the whole row one target.
-  Widget _row(
-    String label,
-    String? value,
-    VoidCallback onTap,
-  ) => MergeSemantics(
-    child: Semantics(
-      button: true,
-      child: InkWell(
-        onTap: _saving ? null : onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: GrobingColors.outline)),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 96,
-                child: Text(
-                  label,
-                  style: const TextStyle(
+  Widget _row(String label, String? value, VoidCallback onTap) =>
+      MergeSemantics(
+        child: Semantics(
+          button: true,
+          child: InkWell(
+            onTap: _saving ? null : onTap,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: GrobingColors.outline),
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        color: GrobingColors.textMuted,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      value ?? 'Dodaj',
+                      style: TextStyle(
+                        color: value == null
+                            ? GrobingColors.amber
+                            : GrobingColors.text,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  const GrobingIcon(
+                    Glyphs.chevronRight,
                     color: GrobingColors.textMuted,
-                    fontSize: 14,
                   ),
-                ),
+                ],
               ),
-              Expanded(
-                child: Text(
-                  value ?? 'Dodaj',
-                  style: TextStyle(
-                    color: value == null
-                        ? GrobingColors.amber
-                        : GrobingColors.text,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
-            ],
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _childRow(FamilyMember c, {required bool removable}) => ConstrainedBox(
     constraints: const BoxConstraints(minHeight: 56),
@@ -608,7 +612,11 @@ class _UnionSummaryState extends State<_UnionSummary> {
         ),
         if (removable)
           IconButton(
-            icon: const Icon(Icons.close, color: GrobingColors.textMuted),
+            icon: const GrobingIcon(
+              Glyphs.close,
+              color: GrobingColors.textMuted,
+              applyTextScaling: false,
+            ),
             tooltip: 'Usuń z tej rodziny',
             onPressed: _saving ? null : () => _removeChild(c),
           ),

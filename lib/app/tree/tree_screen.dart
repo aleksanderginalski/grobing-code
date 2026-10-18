@@ -25,6 +25,8 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/wreath.dart';
 import 'connect_dialog.dart';
 import 'migration_map.dart';
@@ -1458,7 +1460,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           // "Połącz dwie osoby" belongs to the tree: the map has no family lines to light (mapa-migracji.md D11).
           if (_treeShown && _family?.meId != null && _part == _Part.tree)
             IconButton(
-              icon: const Icon(Icons.link_outlined),
+              icon: const GrobingIcon(Glyphs.link, applyTextScaling: false),
               color: GrobingColors.amber,
               tooltip: 'Połącz dwie osoby',
               onPressed: _connect,
@@ -1472,7 +1474,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               onTap: _cast,
               excludeSemantics: true,
               child: IconButton(
-                icon: const Icon(Icons.cast_outlined),
+                icon: const GrobingIcon(Glyphs.cast, applyTextScaling: false),
                 color: GrobingColors.amber,
                 tooltip: 'Przesyłaj na telewizor',
                 onPressed: _cast,
@@ -2103,13 +2105,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     mainAxisSize: MainAxisSize.min,
     children: [
       _ZoomButton(
-        icon: Icons.add,
+        icon: Glyphs.add,
         tooltip: 'Przybliż — bliższa rodzina',
         onPressed: () => _zoomButton(treeZoomStep),
       ),
       const SizedBox(height: 8),
       _ZoomButton(
-        icon: Icons.remove,
+        icon: Glyphs.remove,
         tooltip: 'Oddal — dalsza rodzina',
         onPressed: () => _zoomButton(1 / treeZoomStep),
       ),
@@ -2468,7 +2470,7 @@ class _ZoomButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String tooltip;
   final VoidCallback onPressed;
 
@@ -2483,7 +2485,11 @@ class _ZoomButton extends StatelessWidget {
         onTap: onPressed,
         child: SizedBox.square(
           dimension: 48,
-          child: Icon(icon, color: GrobingColors.text),
+          child: GrobingIcon(
+            icon,
+            color: GrobingColors.text,
+            applyTextScaling: false,
+          ),
         ),
       ),
     ),
@@ -2583,7 +2589,7 @@ class _TreeCard extends StatelessWidget {
             'Pokaż',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
           ),
-          Icon(Icons.chevron_right),
+          GrobingIcon(Glyphs.chevronRight),
         ],
       ),
     );
@@ -2696,9 +2702,9 @@ class _PartSwitch extends StatelessWidget {
     fontWeight: FontWeight.w500,
   );
 
-  static const List<(_Part, IconData, String)> _parts = [
-    (_Part.tree, Icons.account_tree_outlined, 'Drzewo'),
-    (_Part.map, Icons.public_outlined, 'Mapa'),
+  static const List<(_Part, Glyph, String)> _parts = [
+    (_Part.tree, Glyphs.nature, 'Drzewo'),
+    (_Part.map, Glyphs.language, 'Mapa'),
   ];
 
   /// A segment with its words: 14 dp, the icon 20 dp, 6 dp, the words, 14 dp.
@@ -2756,7 +2762,7 @@ class _PartSwitch extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final (_Part p, IconData icon, String label) in _parts)
+              for (final (_Part p, Glyph icon, String label) in _parts)
                 _segment(p, icon, label, words),
             ],
           ),
@@ -2765,7 +2771,7 @@ class _PartSwitch extends StatelessWidget {
     },
   );
 
-  Widget _segment(_Part p, IconData icon, String label, bool words) {
+  Widget _segment(_Part p, Glyph icon, String label, bool words) {
     final bool on = p == part;
     return Semantics(
       button: true,
@@ -2799,10 +2805,11 @@ class _PartSwitch extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    GrobingIcon(
                       icon,
                       size: 20,
                       color: on ? GrobingColors.amber : GrobingColors.textMuted,
+                      applyTextScaling: false,
                     ),
                     if (words) ...[
                       const SizedBox(width: 6),

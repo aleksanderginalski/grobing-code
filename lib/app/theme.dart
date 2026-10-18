@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../data/clans.dart' show ClanColour;
+import 'widgets/glyphs.dart';
+import 'widgets/grobing_icon.dart';
 
 /// Style B (PROJECT_BRIEF §6a): near-black background, soft grey text, one accent colour — warm
 /// amber like candlelight. The one home of the colour values; roles, rules and contrast measurements
@@ -73,6 +75,14 @@ abstract final class GrobingTheme {
   static final ThemeData dark = ThemeData(
     brightness: Brightness.dark,
     scaffoldBackgroundColor: GrobingColors.background,
+    // Flutter's own back and close buttons (AppBar, BackButton) draw Material Icons; these builders give them
+    // the app's icons (style-b.md rule 3, ISSUE-046) — standalone controls, so they do not grow with text.
+    actionIconTheme: ActionIconThemeData(
+      backButtonIconBuilder: (_) =>
+          const GrobingIcon(Glyphs.arrowBack, applyTextScaling: false),
+      closeButtonIconBuilder: (_) =>
+          const GrobingIcon(Glyphs.close, applyTextScaling: false),
+    ),
     colorScheme: const ColorScheme.dark(
       primary: GrobingColors.amber,
       onPrimary: GrobingColors.background,

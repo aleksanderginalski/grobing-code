@@ -5,17 +5,19 @@ import 'people/people_screen.dart';
 import 'photo/photos.dart';
 import 'theme.dart';
 import 'tree/tree_screen.dart';
+import 'widgets/glyphs.dart';
+import 'widgets/grobing_icon.dart';
 
 /// The destinations of the bottom bar (style-b.md rule 12; 05_DESIGN/cmentarze.md, element 18).
 enum AppTab {
-  map('Mapa', Icons.map_outlined),
-  people('Osoby', Icons.group_outlined),
-  tree('Drzewo', Icons.account_tree_outlined);
+  map('Mapa', Glyphs.map),
+  people('Osoby', Glyphs.group),
+  tree('Drzewo', Glyphs.nature);
 
   const AppTab(this.label, this.icon);
 
   final String label;
-  final IconData icon;
+  final Glyph icon;
 
   /// The name of the tab's main screen on the navigator's stack. The map's is the first route.
   String get routeName => '/$name';
@@ -129,7 +131,7 @@ class _Tab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(tab.icon, color: color),
+            GrobingIcon(tab.icon, color: color, applyTextScaling: false),
             const SizedBox(height: 4),
             DecoratedBox(
               decoration: BoxDecoration(

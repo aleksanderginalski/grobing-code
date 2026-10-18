@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 // What presentation mode shows over the tree (05_DESIGN/drzewo.md v1.14, element 11; ISSUE-038): the year in the
 // corner (L1 — D39), the bar at the bottom and "Zakończ prezentację" (B2 — D40). The TV gets all of it: the
@@ -109,7 +111,7 @@ class PresentationExit extends StatelessWidget {
       minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
     ),
     onPressed: onPressed,
-    icon: const Icon(Icons.close),
+    icon: const GrobingIcon(Glyphs.close),
     label: const Text('Zakończ prezentację'),
   );
 }

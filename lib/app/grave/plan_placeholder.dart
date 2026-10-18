@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// Why a cemetery has no plan to show (05_DESIGN/cmentarz.md, element 2a): each reason has its own way
 /// forward, so one placeholder for all would say something untrue in three of them (D17).
@@ -52,7 +54,7 @@ class PlanPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (
-      IconData? icon,
+      Glyph? icon,
       String fact,
       String? way,
       String? action,
@@ -66,14 +68,14 @@ class PlanPlaceholder extends StatelessWidget {
         null,
       ),
       PlanGap.offline => (
-        Icons.cloud_download_outlined,
+        Glyphs.cloudDownload,
         'Plan tego cmentarza pobierze się, gdy będzie internet.',
         hasGraves ? 'Groby są na liście — pasek na dole.' : null,
         'Pobierz teraz',
         onDownload,
       ),
       PlanGap.serverError => (
-        Icons.cloud_off_outlined,
+        Glyphs.cloudOff,
         'Nie udało się pobrać planu — serwer map nie odpowiada.',
         hasGraves
             ? 'Spróbuję znowu później. Groby są na liście.'
@@ -82,14 +84,14 @@ class PlanPlaceholder extends StatelessWidget {
         onDownload,
       ),
       PlanGap.notInOsm => (
-        Icons.not_listed_location_outlined,
+        Glyphs.notListedLocation,
         'W OpenStreetMap nie ma planu tego cmentarza.',
         'Z internetem zobaczysz go na zdjęciu z góry.',
         onShowPhoto == null ? null : 'Pokaż zdjęcie z góry',
         onShowPhoto,
       ),
       PlanGap.noPoint => (
-        Icons.location_off_outlined,
+        Glyphs.locationOff,
         'Plan pobierze się, gdy wskażesz cmentarz na mapie.',
         null,
         'Wskaż na mapie',
@@ -111,7 +113,12 @@ class PlanPlaceholder extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 3),
                 )
               else
-                Icon(icon, size: 32, color: GrobingColors.textMuted),
+                GrobingIcon(
+                  icon,
+                  size: 32,
+                  color: GrobingColors.textMuted,
+                  applyTextScaling: false,
+                ),
               const SizedBox(height: 12),
               Text(fact, textAlign: TextAlign.center, style: line),
               if (way != null) ...[

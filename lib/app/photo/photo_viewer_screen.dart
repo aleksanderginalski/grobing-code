@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// One photo on the whole screen (05_DESIGN/zdjecie.md, B): all of it, nothing cut off, with zoom —
 /// an inscription has to be readable (brief §4a, step 3). Nothing is drawn on the photo (style-b.md
@@ -123,7 +125,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
         if (widget.replace != null)
           TextButton.icon(
             onPressed: _changing ? null : _change,
-            icon: const Icon(Icons.photo_library_outlined),
+            icon: const GrobingIcon(Glyphs.photoLibrary),
             label: const Text('Zmień zdjęcie'),
           ),
         if (widget.onDelete != null)
@@ -133,7 +135,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
               iconColor: GrobingColors.text,
             ),
             onPressed: _changing ? null : _delete,
-            icon: const Icon(Icons.delete_outline),
+            icon: const GrobingIcon(Glyphs.delete),
             label: const Text('Usuń zdjęcie'),
           ),
       ],
@@ -310,7 +312,11 @@ class UnreadablePhoto extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.broken_image_outlined, color: GrobingColors.textMuted),
+        GrobingIcon(
+          Glyphs.brokenImage,
+          color: GrobingColors.textMuted,
+          applyTextScaling: false,
+        ),
         SizedBox(height: 8),
         Text(
           'Nie udało się otworzyć zdjęcia.',
@@ -335,7 +341,7 @@ class PhotoErrorLine extends StatelessWidget {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.error_outline, size: 18, color: GrobingColors.error),
+        const GrobingIcon(Glyphs.error, size: 18, color: GrobingColors.error),
         const SizedBox(width: 6),
         Expanded(
           child: Text(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
 import '../theme.dart';
+import 'glyphs.dart';
+import 'grobing_icon.dart';
 
 /// Element 4a of the person form (05_DESIGN/wpis-osoby.md v5.6), also in the family wizard's new person
 /// (rodzina.md C1'): ♀ and ♂ beside "Imiona". One or none — a touch on the chosen one takes it away (sex
@@ -25,14 +27,14 @@ class SexToggle extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _button(Sex.female, Icons.female_outlined),
+        _button(Sex.female, Glyphs.female),
         const SizedBox(width: 6),
-        _button(Sex.male, Icons.male_outlined),
+        _button(Sex.male, Glyphs.male),
       ],
     ),
   );
 
-  Widget _button(Sex sex, IconData icon) {
+  Widget _button(Sex sex, Glyph icon) {
     final bool chosen = value == sex;
     void toggle() => onChanged(chosen ? null : sex);
     return Semantics(
@@ -63,9 +65,10 @@ class SexToggle extends StatelessWidget {
             child: SizedBox(
               width: 48,
               height: 56,
-              child: Icon(
+              child: GrobingIcon(
                 icon,
                 color: chosen ? GrobingColors.amber : GrobingColors.textMuted,
+                applyTextScaling: false,
               ),
             ),
           ),

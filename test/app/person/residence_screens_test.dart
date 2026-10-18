@@ -10,6 +10,7 @@ import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/person/place_picker_screen.dart';
 import 'package:grobing/app/person/residence_screen.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
@@ -17,6 +18,7 @@ import 'package:grobing/data/places.dart';
 import 'package:grobing/data/residences.dart';
 
 import '../../support/a11y.dart';
+import '../../support/glyphs.dart';
 import '../../support/photo_fakes.dart';
 import '../../support/place_fakes.dart';
 
@@ -354,7 +356,7 @@ void main() {
         find.text('Koniec nie może być przed początkiem.'),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.error_outline), findsNWidgets(2));
+      expect(findGlyph(Glyphs.error), findsNWidgets(2));
       expect(find.text('Miejsce zamieszkania'), findsOneWidget); // not closed
 
       await tester.tap(find.byTooltip('Zamknij'));

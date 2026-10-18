@@ -9,6 +9,8 @@ import '../polish.dart' show fold;
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'place_picker_screen.dart';
 
 // Places of residence (ISSUE-042; 05_DESIGN/zamieszkanie.md): the window "Miejsce zamieszkania" (A), the
@@ -329,7 +331,11 @@ class _ResidenceScreenState extends State<ResidenceScreen> {
     child: Row(
       children: [
         IconButton(
-          icon: const Icon(Icons.close, color: GrobingColors.text),
+          icon: const GrobingIcon(
+            Glyphs.close,
+            color: GrobingColors.text,
+            applyTextScaling: false,
+          ),
           tooltip: 'Zamknij',
           onPressed: _close,
         ),
@@ -517,7 +523,7 @@ class _PlaceField extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.place_outlined, color: GrobingColors.textMuted),
+              const GrobingIcon(Glyphs.place, color: GrobingColors.textMuted),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -532,7 +538,10 @@ class _PlaceField extends StatelessWidget {
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+              const GrobingIcon(
+                Glyphs.chevronRight,
+                color: GrobingColors.textMuted,
+              ),
             ],
           ),
         ),
@@ -564,7 +573,7 @@ class ResidencesFormSection extends StatelessWidget {
         header: true,
         child: const Row(
           children: [
-            Icon(Icons.home_outlined, size: 20, color: GrobingColors.amber),
+            GrobingIcon(Glyphs.home, size: 20, color: GrobingColors.amber),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -623,9 +632,10 @@ class ResidencesFormSection extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(
-                        Icons.edit_outlined,
+                      icon: const GrobingIcon(
+                        Glyphs.inkPen,
                         color: GrobingColors.amber,
+                        applyTextScaling: false,
                       ),
                       tooltip: 'Popraw miejsce',
                       onPressed: () => onEdit(r),
@@ -646,7 +656,7 @@ class ResidencesFormSection extends StatelessWidget {
               minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
             ),
             onPressed: onAdd,
-            icon: const Icon(Icons.add_home_outlined),
+            icon: const GrobingIcon(Glyphs.addHome),
             label: const Text('Dodaj miejsce'),
           ),
         ),

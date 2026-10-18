@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart' show MapLayer;
 
 // What sits on the cemetery's map in every mode (05_DESIGN/cmentarz.md, elements 3, 6, 7, 13, 16, 17): the
@@ -126,13 +128,13 @@ class MapBadges extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget? state = planShown
         ? const MapBadge(
-            icon: Icons.offline_pin,
+            icon: Glyphs.offlinePin,
             iconColor: GrobingColors.stateOk,
             text: 'Plan offline',
           )
         : photo
         ? MapBadge(
-            icon: photoOnline == false ? Icons.wifi_off_outlined : Icons.wifi,
+            icon: photoOnline == false ? Glyphs.wifiOff : Glyphs.wifi,
             iconColor: GrobingColors.textMuted,
             text: photoOnline == false ? 'bez internetu' : 'tylko z internetem',
           )
@@ -215,7 +217,7 @@ class MapBadge extends StatelessWidget {
     this.small = false,
   });
 
-  final IconData? icon;
+  final Glyph? icon;
   final Color iconColor;
   final String text;
   final bool small;
@@ -233,7 +235,7 @@ class MapBadge extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 18, color: iconColor),
+              GrobingIcon(icon, size: 18, color: iconColor),
               const SizedBox(width: 6),
             ],
             Flexible(
@@ -264,20 +266,14 @@ class LayerSwitch extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      _half(MapLayer.plan, Icons.map_outlined, 'Plan', !photo, left: true),
-      _half(
-        MapLayer.photo,
-        Icons.satellite_alt_outlined,
-        'Zdjęcie',
-        photo,
-        left: false,
-      ),
+      _half(MapLayer.plan, Glyphs.map, 'Plan', !photo, left: true),
+      _half(MapLayer.photo, Glyphs.satelliteAlt, 'Zdjęcie', photo, left: false),
     ],
   );
 
   Widget _half(
     MapLayer layer,
-    IconData icon,
+    Glyph icon,
     String text,
     bool active, {
     required bool left,
@@ -313,7 +309,7 @@ class LayerSwitch extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icon, size: 18, color: fg),
+                      GrobingIcon(icon, size: 18, color: fg),
                       const SizedBox(width: 4),
                       Text(
                         text,
@@ -346,7 +342,7 @@ class MapPill extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String label;
   final VoidCallback onTap;
 
@@ -377,7 +373,7 @@ class MapPill extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, size: 18, color: GrobingColors.amber),
+                    GrobingIcon(icon, size: 18, color: GrobingColors.amber),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
@@ -454,12 +450,13 @@ class HereButton extends StatelessWidget {
             child: SizedBox(
               width: 48,
               height: 48,
-              child: Icon(
+              child: GrobingIcon(
                 state == HereButtonState.away
-                    ? Icons.location_searching
-                    : Icons.my_location,
+                    ? Glyphs.locationSearching
+                    : Glyphs.myLocation,
                 size: 24,
                 color: on ? GrobingColors.here : GrobingColors.text,
+                applyTextScaling: false,
               ),
             ),
           ),
@@ -480,7 +477,7 @@ class HereStatus extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
     child: MapBadge(
-      icon: Icons.my_location,
+      icon: Glyphs.myLocation,
       iconColor: GrobingColors.here,
       text: text,
     ),
@@ -500,10 +497,11 @@ class NoInternetForPhoto extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.wifi_off_outlined,
+          const GrobingIcon(
+            Glyphs.wifiOff,
             size: 32,
             color: GrobingColors.textMuted,
+            applyTextScaling: false,
           ),
           const SizedBox(height: 12),
           const Text(

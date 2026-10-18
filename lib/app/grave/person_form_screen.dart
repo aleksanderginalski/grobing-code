@@ -17,6 +17,8 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/sex_toggle.dart';
 import 'grave_screen.dart';
 
@@ -879,9 +881,10 @@ class _PhotoField extends StatelessWidget {
         size: _size,
         unreadable: const ColoredBox(
           color: GrobingColors.surface,
-          child: Icon(
-            Icons.broken_image_outlined,
+          child: GrobingIcon(
+            Glyphs.brokenImage,
             color: GrobingColors.textMuted,
+            applyTextScaling: false,
           ),
         ),
       ),
@@ -900,10 +903,11 @@ class _PhotoField extends StatelessWidget {
                   dimension: 28,
                   child: CircularProgressIndicator(strokeWidth: 3),
                 )
-              : const Icon(
-                  Icons.add_a_photo_outlined,
+              : const GrobingIcon(
+                  Glyphs.addPhotoAlternate,
                   size: 28,
                   color: GrobingColors.amber,
+                  applyTextScaling: false,
                 ),
         ),
       ),

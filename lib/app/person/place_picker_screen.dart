@@ -6,6 +6,8 @@ import '../../dev/frame_log.dart';
 import '../home/cemetery_base.dart' show joinPlaceLine;
 import '../theme.dart';
 import '../widgets/date_block.dart' show inputTextStyle;
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'place_list_asset.dart';
 
 /// The choice of a residence's place (05_DESIGN/zamieszkanie.md, B, elements 17–22): the list in the app,
@@ -112,7 +114,10 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
               style: inputTextStyle,
               onChanged: (_) => _search(),
               decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search, color: GrobingColors.textMuted),
+                prefixIcon: GrobingIcon(
+                  Glyphs.search,
+                  color: GrobingColors.textMuted,
+                ),
                 hintText: 'Kraj albo miejscowość',
               ),
             ),
@@ -144,7 +149,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
           _header('Ostatnio wybrane'),
           for (final ResidencePlace p in _recent)
             _PlaceRow(
-              icon: Icons.history,
+              icon: Glyphs.history,
               name: p.name,
               detail: _detail(p),
               onTap: () => Navigator.of(context).pop(p),
@@ -159,7 +164,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
         // Element 19: the localities.
         for (final ListedPlace l in _localities)
           _PlaceRow(
-            icon: Icons.location_city_outlined,
+            icon: Glyphs.locationCity,
             name: l.name,
             detail: joinPlaceLine([?l.unit, l.countryName]),
             onTap: () => Navigator.of(context).pop(
@@ -208,7 +213,7 @@ class _PlacePickerScreenState extends State<PlacePickerScreen> {
 
   /// A country's row (element 20): back to the window with the level "kraj".
   Widget _country(ListedCountry c) => _PlaceRow(
-    icon: Icons.public,
+    icon: Glyphs.language,
     name: c.name,
     detail: 'cały kraj',
     onTap: () => Navigator.of(context).pop(
@@ -253,7 +258,7 @@ class _PlaceRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String name;
   final String detail;
   final VoidCallback onTap;
@@ -274,7 +279,7 @@ class _PlaceRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Icon(icon, color: GrobingColors.textMuted),
+              GrobingIcon(icon, color: GrobingColors.textMuted),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

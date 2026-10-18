@@ -8,6 +8,8 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import '../widgets/sex_toggle.dart';
 import 'person_choice_list.dart';
 
@@ -134,7 +136,11 @@ class SheetHeader extends StatelessWidget {
     children: [
       if (onBack != null)
         IconButton(
-          icon: const Icon(Icons.arrow_back, color: GrobingColors.text),
+          icon: const GrobingIcon(
+            Glyphs.arrowBack,
+            color: GrobingColors.text,
+            applyTextScaling: false,
+          ),
           tooltip: 'Wstecz',
           onPressed: onBack,
         )
@@ -147,7 +153,11 @@ class SheetHeader extends StatelessWidget {
         ),
       ),
       IconButton(
-        icon: const Icon(Icons.close, color: GrobingColors.text),
+        icon: const GrobingIcon(
+          Glyphs.close,
+          color: GrobingColors.text,
+          applyTextScaling: false,
+        ),
         tooltip: 'Zamknij',
         onPressed: onClose,
       ),
@@ -203,7 +213,7 @@ class OptionCard extends StatelessWidget {
     this.selected = false,
   });
 
-  final IconData icon;
+  final Glyph icon;
   final String title;
   final String? subtitle;
   final bool selected;
@@ -238,7 +248,7 @@ class OptionCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
-                  Icon(
+                  GrobingIcon(
                     icon,
                     color: onTap == null
                         ? GrobingColors.textMuted
@@ -1007,7 +1017,7 @@ class _UnionWizardState extends State<_UnionWizard> {
         'Kto jest mamą?',
         sofar: personName(widget.self.givenNames, widget.self.surname),
         extra: OptionCard(
-          icon: Icons.help_outline,
+          icon: Glyphs.help,
           title: 'Nie wiem',
           subtitle: 'przejdź do taty',
           onTap: () => _go(_Step.father),
@@ -1024,7 +1034,7 @@ class _UnionWizardState extends State<_UnionWizard> {
         extra: _mother == null
             ? null
             : OptionCard(
-                icon: Icons.help_outline,
+                icon: Glyphs.help,
                 title: 'Nie wiem — zapisz',
                 subtitle: 'dodasz go później przez ✎',
                 onTap: _saving ? null : _save,
@@ -1122,14 +1132,14 @@ class _UnionWizardState extends State<_UnionWizard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             OptionCard(
-              icon: Icons.favorite_border,
+              icon: Glyphs.favorite,
               title: 'Razem',
               subtitle: 'bez ślubu — ślub możesz dodać w następnym kroku',
               selected: _kind == _Kind.together,
               onTap: () => _chooseKind(_Kind.together),
             ),
             OptionCard(
-              icon: Icons.diamond_outlined,
+              icon: Glyphs.diamond,
               title: 'Małżeństwo',
               subtitle: 'od ślubu',
               selected: _kind == _Kind.married,
@@ -1170,19 +1180,19 @@ class _UnionWizardState extends State<_UnionWizard> {
           children: [
             if (!_married)
               OptionCard(
-                icon: Icons.diamond_outlined,
+                icon: Glyphs.diamond,
                 title: 'Wzięli ślub',
                 subtitle: 'związek staje się małżeństwem',
                 onTap: () => _go(_Step.marriage),
               ),
             OptionCard(
-              icon: Icons.call_split_outlined,
+              icon: Glyphs.callSplit,
               title: 'Związek się zakończył',
               subtitle: 'rozwód albo rozstanie',
               onTap: () => _go(_Step.end),
             ),
             OptionCard(
-              icon: Icons.check,
+              icon: Glyphs.check,
               title: 'Nic więcej — zapisz',
               subtitle: _parents
                   ? 'rodzice pojawią się w sekcji „Rodzina”'

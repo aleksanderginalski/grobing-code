@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// The place of a missing photo as one button — an outline, the icon in amber, the caption — never a
 /// placeholder picture (style-b.md rules 11, 14). The gravestone's field (05_DESIGN/grob.md D12: the full
@@ -66,10 +68,11 @@ class AddPhotoField extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.add_a_photo_outlined,
+                  GrobingIcon(
+                    Glyphs.addPhotoAlternate,
                     size: iconSize,
                     color: GrobingColors.amber,
+                    applyTextScaling: false,
                   ),
                   SizedBox(height: iconSize / 4),
                   Text(label, textAlign: TextAlign.center, style: captionStyle),

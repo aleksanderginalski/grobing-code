@@ -382,6 +382,38 @@ Wieniec rodu przy portrecie i na drzewie (ISSUE-044; vault: `05_DESIGN/wieniec.m
   `python tool/wreaths/build_wreaths.py <katalog>` (Python 3, Pillow, numpy). Nowy wzór to też nowa wartość `WreathMotif` w
   `lib/data/clans.dart` — bez zmiany schematu.
 
+## Ikony
+
+Ikony w aplikacji i ikona aplikacji (ISSUE-046; vault: `05_DESIGN/brand/style-b.md` reguły 3 i 8).
+
+- **Ikony w aplikacji:** Material Symbols Rounded, grubość 300, w dwóch tonach — ten sam glif wypełniony przy kryciu 25% pod glifem
+  z kreską (`lib/app/widgets/grobing_icon.dart` → `GrobingIcon`). Stałe ikon są w `lib/app/widgets/glyphs.dart` (`Glyphs.inkPen`
+  …), font w `assets/fonts/grobing-symbols.ttf` (ok. 210 KB, licencja Apache-2.0 obok, w licencjach aplikacji). Ikona obok tekstu
+  rośnie z systemowym rozmiarem tekstu; przycisk z samą ikoną, zakładka albo ikona w pudełku o stałym rozmiarze podaje
+  `applyTextScaling: false`.
+- **Dlaczego nie `Icon` i nie pakiet `material_symbols_icons`:** Flutter przy buildzie release wycina z fontów ikon nieużywane glify
+  (`--tree-shake-icons`), a jego narzędzie gubi glify, które Material Symbols podmienia wzdłuż osi FILL — `group` i `settings`
+  wychodziły puste (sonda 2026-10-18). Nasz font jest już wycięty poprawnie i aplikacja rysuje go jak tekst, nie przez `IconData`,
+  więc Flutter go nie rusza. Nie używaj `Icon(...)` ani `Icons.*` w `lib/` — test to sprawdza.
+- **Dziewięć ikon z arkusza autora** (decyzja 1' ISSUE-046): zakładki Mapa, Osoby i Drzewo, lupa, ustawienia, dodaj zdjęcie, pinezka ze
+  zniczem, pióro, telewizor — obraz z DALL-E (bursztyn, dwa tony) przerysowany do wektora (potrace) i dołożony do tego samego fontu jako para
+  glifów: linie i wypełnienie (`Glyph(…, fill: …)`, wolne kody z prywatnego obszaru Unicode). Ostre w każdym rozmiarze, kolor ze stanu jak
+  reszta. Wypełnienie to wszystko wewnątrz zewnętrznego obrysu poza dużymi ciemnymi dziurami (środek koła zębatego) — tekstura DALL-E nie
+  przechodzi. Obraz arkusza jest u autora, **poza repo**.
+- **Znicz** (znak aplikacji — logo, przyciski „Otwórz cmentarz”/„Pokaż grób”, środek pinezek, znacznik zmarłych w drzewie): rysunek autora z
+  DALL-E (`Z-znicz.png` w dwóch tonach, `Z-znicz-pelny.png` pełny z wyciętymi detalami), przerysowany tak samo do tego fontu (`Glyphs.candle`,
+  `Glyphs.candleSolid`; `lib/app/widgets/candle.dart`). Pinezka zostaje kroplą z kodu (czubek co do piksela), w środku pełny znicz.
+- **Nowa ikona albo przebudowa:** dopisz nazwę z pliku `.codepoints` do `tool/icons/glyphs.txt` i uruchom
+  `python tool/icons/build_symbols.py <MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf> <…codepoints> <arkusz.png> <Z-znicz.png> <Z-znicz-pelny.png>` (Python 3:
+  `python -m pip install fonttools potracer numpy pillow`). Źródło fontu: `github.com/google/material-design-icons`, katalog `variablefont/`,
+  commit `49d4db35df873165d6bd6ba09b063c7dafbac2f4` (wersja fontu 2.975). Lista ikon z arkusza i ich kolejność — `SHEET` w skrypcie. Skrypt
+  przebudowuje font i `glyphs.dart`.
+- **Ikona aplikacji:** ikona adaptacyjna (`res/mipmap-anydpi-v26/ic_launcher.xml`): tło `@color/grobing_background`, na pierwszym
+  planie znicz L1 w akcencie, warstwa jednobarwna z samych linii (motywy Androida 13+), do tego `mipmap-*/ic_launcher.png` dla Androida 7.
+  Wszystko z jednego obrazu autora (DALL-E, poza repo):
+  `python tool/icons/build_launcher.py <L1-znicz.png> [<ikona sklepu 512 px poza repo>]` (Python 3, Pillow). Ikonę 512 × 512 do
+  karty w Play Console skrypt zapisuje tylko poza repo.
+
 ## Zdjęcia
 
 Zdjęcie nagrobka: jedno na grób, do dodania, zmiany i usunięcia (ISSUE-016 w vaulcie). Zdjęcia osób: każda

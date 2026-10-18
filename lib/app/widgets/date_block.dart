@@ -5,6 +5,8 @@ import '../../data/database.dart';
 import '../../data/graves.dart';
 import '../dates.dart';
 import '../theme.dart';
+import 'glyphs.dart';
+import 'grobing_icon.dart';
 
 // The date block of style B forms — label, qualifier, date (two for "między") and preview
 // (05_DESIGN/wpis-osoby.md, elements b–e) — shared by the person form and the family sheet
@@ -26,7 +28,7 @@ class ErrorLine extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Icon(Icons.error_outline, size: 16, color: GrobingColors.error),
+      const GrobingIcon(Glyphs.error, size: 16, color: GrobingColors.error),
       const SizedBox(width: 4),
       Expanded(
         child: Text(
@@ -251,7 +253,7 @@ class DateBlock extends StatelessWidget {
           ),
           // The choice is a check and a selected state too, never colour alone (SC 1.4.1; ui review).
           leadingIcon: q == d.qualifier
-              ? const Icon(Icons.check)
+              ? const GrobingIcon(Glyphs.check)
               : const SizedBox(width: 24),
           onPressed: () => _choose(q),
           child: Semantics(
@@ -288,7 +290,13 @@ class DateBlock extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(_qualifierLabels[d.qualifier]!),
-          const Icon(Icons.arrow_drop_down, color: GrobingColors.textMuted),
+          // The menu's arrow stays 24 dp like Material's dropdown arrow: grown with the text it pushed the
+          // date's row 2 px past the residence window at 200% on 360 dp (qa, ISSUE-046).
+          const GrobingIcon(
+            Glyphs.arrowDropDown,
+            color: GrobingColors.textMuted,
+            applyTextScaling: false,
+          ),
         ],
       ),
     ),

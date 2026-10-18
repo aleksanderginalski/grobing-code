@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/grobing_app.dart';
@@ -20,6 +22,7 @@ import 'dev/frame_log.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   startFrameLog();
+  LicenseRegistry.addLicense(_iconFontLicence);
   // App-private storage. Excluded from Android's own backup and device transfer (ADR-004 pkt 4,
   // res/xml/data_extraction_rules.xml): the one way off the phone is the backup below.
   final Directory support = await getApplicationSupportDirectory();
@@ -34,6 +37,13 @@ Future<void> main() async {
       reopen: () => _open(support, cache),
     ),
   );
+}
+
+/// The icon font is not a package, so its licence (Apache-2.0) joins the packages' licences here (ISSUE-046).
+Stream<LicenseEntry> _iconFontLicence() async* {
+  yield LicenseEntryWithLineBreaks(<String>[
+    'Material Symbols',
+  ], await rootBundle.loadString('assets/fonts/LICENSE-material-symbols.txt'));
 }
 
 /// Opens the data — at start, and again after a restore replaced it.

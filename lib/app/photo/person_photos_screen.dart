@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../data/photos.dart' show PhotoCrop;
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'person_photo_viewer_screen.dart';
 import 'person_photos_draft.dart';
 import 'photo_picker.dart';
@@ -236,7 +238,7 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
                         onPressed: () => Navigator.of(
                           context,
                         ).pop(const BackgroundChoice(null)),
-                        icon: const Icon(Icons.hide_image_outlined),
+                        icon: const GrobingIcon(Glyphs.hideImage),
                         label: const Text('Bez zdjęcia w tle'),
                       ),
                     ),
@@ -389,8 +391,8 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      const Icon(
-        Icons.photo_library_outlined,
+      const GrobingIcon(
+        Glyphs.photoLibrary,
         size: 20,
         color: GrobingColors.amber,
       ),
@@ -488,10 +490,11 @@ class _AddTile extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.add_a_photo_outlined,
+                  GrobingIcon(
+                    Glyphs.addPhotoAlternate,
                     size: 28,
                     color: GrobingColors.amber,
+                    applyTextScaling: false,
                   ),
                   SizedBox(height: 6),
                   Text(
@@ -521,7 +524,11 @@ class _Unreadable extends StatelessWidget {
   Widget build(BuildContext context) => const ColoredBox(
     color: GrobingColors.surface,
     child: Center(
-      child: Icon(Icons.broken_image_outlined, color: GrobingColors.textMuted),
+      child: GrobingIcon(
+        Glyphs.brokenImage,
+        color: GrobingColors.textMuted,
+        applyTextScaling: false,
+      ),
     ),
   );
 }

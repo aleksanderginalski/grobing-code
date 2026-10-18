@@ -13,6 +13,8 @@ import '../polish.dart';
 import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'add_child_sheet.dart';
 import 'role_names.dart';
 import 'union_summary_sheet.dart';
@@ -162,7 +164,7 @@ class _FamilySectionState extends State<FamilySection> {
           // a: the header with its icon in amber, as R4's sections (style-b.md rule 3).
           const Row(
             children: [
-              Icon(Icons.people_outline, size: 20, color: GrobingColors.amber),
+              GrobingIcon(Glyphs.group, size: 20, color: GrobingColors.amber),
               SizedBox(width: 8),
               Text(
                 'Rodzina',
@@ -211,7 +213,7 @@ class _FamilySectionState extends State<FamilySection> {
                   OutlinedButton.icon(
                     style: _rowButton,
                     onPressed: () => _wizard(UnionWizardKind.parents),
-                    icon: const Icon(Icons.group_add_outlined),
+                    icon: const GrobingIcon(Glyphs.groupAdd),
                     label: const Text('Dodaj rodziców'),
                   ),
                 OutlinedButton.icon(
@@ -224,7 +226,7 @@ class _FamilySectionState extends State<FamilySection> {
                         if (u.partner case final FamilyMember p) p.id,
                     },
                   ),
-                  icon: const Icon(Icons.person_add_alt_outlined),
+                  icon: const GrobingIcon(Glyphs.personAddAlt),
                   label: Text(
                     r.unions.isEmpty
                         ? 'Dodaj partnera'
@@ -259,7 +261,11 @@ class _FamilySectionState extends State<FamilySection> {
         ),
       ),
       IconButton(
-        icon: const Icon(Icons.edit_outlined, color: GrobingColors.amber),
+        icon: const GrobingIcon(
+          Glyphs.inkPen,
+          color: GrobingColors.amber,
+          applyTextScaling: false,
+        ),
         tooltip: tooltip,
         onPressed: onEdit,
       ),
@@ -360,9 +366,10 @@ class _FamilySectionState extends State<FamilySection> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(
-                      Icons.edit_outlined,
+                    icon: const GrobingIcon(
+                      Glyphs.inkPen,
                       color: GrobingColors.amber,
+                      applyTextScaling: false,
                     ),
                     tooltip: 'Popraw związek',
                     onPressed: () => _summary(u.familyId, parents: false),
@@ -377,9 +384,10 @@ class _FamilySectionState extends State<FamilySection> {
                         child: const SizedBox(
                           width: 32,
                           height: 48,
-                          child: Icon(
-                            Icons.chevron_right,
+                          child: GrobingIcon(
+                            Glyphs.chevronRight,
                             color: GrobingColors.textMuted,
+                            applyTextScaling: false,
                           ),
                         ),
                       ),
@@ -411,7 +419,7 @@ class _FamilySectionState extends State<FamilySection> {
                     OutlinedButton.icon(
                       style: _rowButton,
                       onPressed: () => _addChild(u),
-                      icon: const Icon(Icons.person_add_alt_outlined),
+                      icon: const GrobingIcon(Glyphs.personAddAlt),
                       label: const Text('Dodaj dziecko'),
                     ),
                   ],
@@ -455,8 +463,8 @@ class _FamilySectionState extends State<FamilySection> {
     children: [
       for (final (String role, FamilyMember m) in people)
         ActionChip(
-          avatar: const Icon(
-            Icons.person_outline,
+          avatar: const GrobingIcon(
+            Glyphs.person,
             size: 18,
             color: GrobingColors.amber,
           ),

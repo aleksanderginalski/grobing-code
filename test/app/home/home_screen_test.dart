@@ -18,6 +18,7 @@ import 'package:grobing/app/home/poland_map_data.dart';
 import 'package:grobing/app/settings/settings_screen.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/widgets/candle.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/backup/backup_settings.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/claims.dart';
@@ -25,6 +26,7 @@ import 'package:grobing/data/database.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../support/backup_fakes.dart';
+import '../../support/glyphs.dart';
 
 // ISSUE-014 — the home screen, happy path per AC (05_DESIGN/cmentarze.md):
 // AC-1 the map of Poland from bundled data, also empty · AC-2 a candle per cemetery with a point, the
@@ -616,6 +618,31 @@ void main() {
   );
 
   testWidgets(
+    'ISSUE-046 AC-2: the link arrow grows with the text once — 32 dp at 200% (GrobingIcon scales it; the screen '
+    'no longer scales it by hand too)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: GrobingTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: BasePreviewScreen(
+              cemetery: _base.search('rakowicki').shown.single,
+              mapData: _map,
+              onSave: (_) async => 1,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(findGlyph(Glyphs.northEast)), const Size(32, 32));
+    },
+  );
+
+  testWidgets(
     'ISSUE-021 AC-3: the satellite link is a link with a tap action, so Switch Access and Voice Access '
     'can press it (WCAG 2.2 SC 4.1.2); the action opens the same address as a tap',
     (tester) async {
@@ -820,7 +847,7 @@ void main() {
         find.text('Nie udało się zapisać. Spróbuj jeszcze raz.'),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(findGlyph(Glyphs.error), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Dodaj ten cmentarz'));
       await tester.pumpAndSettle();

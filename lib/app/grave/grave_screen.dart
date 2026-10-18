@@ -21,6 +21,8 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart' show ErrorLine;
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart' show MapLayer;
 import 'person_form_screen.dart';
 import 'pin_screen.dart';
@@ -284,7 +286,7 @@ class _GraveScreenState extends State<GraveScreen> {
           OutlinedButton.icon(
             style: _rowButton,
             onPressed: () => _addPerson(grave),
-            icon: const Icon(Icons.person_add_alt_outlined),
+            icon: const GrobingIcon(Glyphs.personAddAlt),
             label: const Text('Dodaj osobę'),
           ),
         ],
@@ -326,7 +328,7 @@ class _GraveScreenState extends State<GraveScreen> {
         ),
       ),
       IconButton(
-        icon: const Icon(Icons.edit_outlined),
+        icon: const GrobingIcon(Glyphs.inkPen, applyTextScaling: false),
         color: GrobingColors.amber,
         tooltip: 'Popraw grób',
         onPressed: () => _editGrave(grave),
@@ -363,10 +365,13 @@ class _GraveScreenState extends State<GraveScreen> {
                 alignment: PlaceholderAlignment.middle,
                 child: Padding(
                   padding: EdgeInsets.only(right: 4),
-                  child: Icon(
-                    Icons.place_outlined,
+                  // A WidgetSpan's child already grows with the text (Flutter scales it): scaled again it
+                  // stood 3.2 × at 200% (ui review, ISSUE-046).
+                  child: GrobingIcon(
+                    Glyphs.place,
                     size: 18,
                     color: GrobingColors.textMuted,
+                    applyTextScaling: false,
                   ),
                 ),
               ),
@@ -416,7 +421,7 @@ class _GraveScreenState extends State<GraveScreen> {
             minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
           ),
           onPressed: () => _placePin(grave),
-          icon: const Icon(Icons.add_location_alt_outlined),
+          icon: const GrobingIcon(Glyphs.addLocationAlt),
           label: const Text('Postaw pinezkę'),
         ),
       ),
@@ -518,7 +523,11 @@ class _UnreadablePhoto extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.broken_image_outlined, color: GrobingColors.textMuted),
+          GrobingIcon(
+            Glyphs.brokenImage,
+            color: GrobingColors.textMuted,
+            applyTextScaling: false,
+          ),
           SizedBox(height: 8),
           Text(
             'Nie udało się otworzyć zdjęcia.',
@@ -621,7 +630,10 @@ class _PersonCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+                const GrobingIcon(
+                  Glyphs.chevronRight,
+                  color: GrobingColors.textMuted,
+                ),
               ],
             ),
           ),
@@ -648,10 +660,11 @@ class _ProfileThumbnail extends StatelessWidget {
       size: 40,
       unreadable: const ColoredBox(
         color: GrobingColors.background,
-        child: Icon(
-          Icons.broken_image_outlined,
+        child: GrobingIcon(
+          Glyphs.brokenImage,
           size: 20,
           color: GrobingColors.textMuted,
+          applyTextScaling: false,
         ),
       ),
     ),

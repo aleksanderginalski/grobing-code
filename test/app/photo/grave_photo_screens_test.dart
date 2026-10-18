@@ -8,12 +8,14 @@ import 'package:grobing/app/grave/grave_screen.dart';
 import 'package:grobing/app/photo/photo_picker.dart';
 import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 
+import '../../support/glyphs.dart';
 import '../../support/photo_fakes.dart';
 
 // ISSUE-016 — the gravestone photo on the screens (05_DESIGN/grob.md v3, zdjecie.md v1.1, cmentarz.md
@@ -258,7 +260,7 @@ void main() {
       );
       await _pumpUntil(tester, () => message.evaluate().isNotEmpty);
 
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      expect(findGlyph(Glyphs.error), findsOneWidget);
       expect(_photo, findsNothing);
       expect(_addPhoto, findsOneWidget);
       expect(await photoInDb(tester), isNull);

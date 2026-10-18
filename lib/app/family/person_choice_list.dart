@@ -7,6 +7,8 @@ import '../dates.dart';
 import '../photo/photo_people_screen.dart' show PeopleSectionHeader;
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 /// What the person list gives back: someone already in the app, or a new person to type.
 sealed class PickedMember {
@@ -120,7 +122,10 @@ class _PersonChoiceListState extends State<PersonChoiceList> {
         style: const TextStyle(color: GrobingColors.text, fontSize: 16),
         decoration: const InputDecoration(
           hintText: 'Szukaj osoby albo wpisz nową',
-          prefixIcon: Icon(Icons.search, color: GrobingColors.textMuted),
+          prefixIcon: GrobingIcon(
+            Glyphs.search,
+            color: GrobingColors.textMuted,
+          ),
         ),
       ),
       Expanded(
@@ -255,10 +260,7 @@ class _NewRow extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 56),
         child: Row(
           children: [
-            const Icon(
-              Icons.person_add_alt_outlined,
-              color: GrobingColors.amber,
-            ),
+            const GrobingIcon(Glyphs.personAddAlt, color: GrobingColors.amber),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

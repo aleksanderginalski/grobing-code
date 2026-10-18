@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data/cemeteries.dart';
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_base.dart';
 
 /// "Miejscowość · 3 groby · 6 osób", and "· bez punktu na mapie" when it has no candle
@@ -60,7 +62,10 @@ class CemeteryCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: GrobingColors.textMuted),
+            const GrobingIcon(
+              Glyphs.chevronRight,
+              color: GrobingColors.textMuted,
+            ),
           ],
         ),
       ),
@@ -152,8 +157,8 @@ class BaseCemeteryCard extends StatelessWidget {
                     ),
                   )
                 else
-                  const Icon(
-                    Icons.chevron_right,
+                  const GrobingIcon(
+                    Glyphs.chevronRight,
                     color: GrobingColors.textMuted,
                   ),
               ],

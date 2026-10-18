@@ -10,12 +10,14 @@ import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/tree/tree_screen.dart';
+import 'package:grobing/app/widgets/glyphs.dart';
 import 'package:grobing/app/widgets/wreath.dart';
 import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
 import '../../support/a11y.dart';
+import '../../support/glyphs.dart';
 import '../../support/style_checks.dart';
 
 // ISSUE-033 — the Drzewo tab (05_DESIGN/drzewo.md v1.6; US-009), happy path per AC: AC-1 "Ja" in the middle
@@ -557,7 +559,7 @@ void main() {
       await _afterMove(tester);
 
       // Element 1 (D30): the cast icon in place of the TV icon, read with "w ustawieniach telefonu" and pressable.
-      expect(find.byIcon(Icons.cast_outlined), findsOneWidget);
+      expect(findGlyph(Glyphs.cast), findsOneWidget);
       expect(find.byIcon(Icons.tv_outlined), findsNothing);
       SemanticsHandle semantics = tester.ensureSemantics();
       final Finder cast = find.bySemanticsLabel(

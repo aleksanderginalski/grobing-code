@@ -6,6 +6,8 @@ import '../photo/photos.dart';
 import '../photo/profile_circle.dart';
 import '../polish.dart';
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 
 // The list of people of the Osoby tab (05_DESIGN/osoby.md, elements 2, 4 and 5) — also the choice of
 // "ja" (ISSUE-022 D3), which lists the same people the same way.
@@ -129,11 +131,14 @@ class PeopleSearchField extends StatelessWidget {
         fillColor: GrobingColors.surface,
         hintText: 'Szukaj osoby',
         hintStyle: const TextStyle(color: GrobingColors.textMuted),
-        prefixIcon: const Icon(Icons.search, color: GrobingColors.textMuted),
+        prefixIcon: const GrobingIcon(
+          Glyphs.search,
+          color: GrobingColors.textMuted,
+        ),
         suffixIcon: controller.text.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(Icons.close),
+                icon: const GrobingIcon(Glyphs.close, applyTextScaling: false),
                 color: GrobingColors.textMuted,
                 tooltip: 'Wyczyść',
                 onPressed: controller.clear,
@@ -211,10 +216,10 @@ class PersonListCard extends StatelessWidget {
                     ),
                   ),
                   if (selected)
-                    const Icon(Icons.check, color: GrobingColors.amber)
+                    const GrobingIcon(Glyphs.check, color: GrobingColors.amber)
                   else if (!choosing)
-                    const Icon(
-                      Icons.chevron_right,
+                    const GrobingIcon(
+                      Glyphs.chevronRight,
                       color: GrobingColors.textMuted,
                     ),
                 ],

@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'tree_time.dart';
 
 /// Element 6 (05_DESIGN/drzewo.md v1.14; US-010, ISSUE-037, ISSUE-038): the time row in the tree's card — ▶ / ❚❚,
@@ -79,9 +81,10 @@ class TreeTimeBar extends StatelessWidget {
           color: GrobingColors.amber,
           shape: BoxShape.circle,
         ),
-        child: Icon(
-          playing ? Icons.pause : Icons.play_arrow,
+        child: GrobingIcon(
+          playing ? Glyphs.pause : Glyphs.playArrow,
           color: GrobingColors.background,
+          applyTextScaling: false,
         ),
       ),
     );

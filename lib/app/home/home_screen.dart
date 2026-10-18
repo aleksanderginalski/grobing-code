@@ -26,6 +26,8 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_base.dart';
 import 'cemetery_card.dart';
 import 'cemetery_edit.dart';
@@ -396,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         const Spacer(),
         IconButton(
-          icon: const Icon(Icons.settings_outlined),
+          icon: const GrobingIcon(Glyphs.settings, applyTextScaling: false),
           color: GrobingColors.textMuted,
           tooltip: 'Ustawienia',
           onPressed: _openSettings,
@@ -420,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(
             children: [
               SizedBox(width: 16),
-              Icon(Icons.search, color: GrobingColors.textMuted),
+              GrobingIcon(Glyphs.search, color: GrobingColors.textMuted),
               SizedBox(width: 12),
               Text(
                 'Szukaj cmentarza',
@@ -512,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen>
       FilledButton.icon(
         style: primaryButtonStyle,
         onPressed: _openSearch,
-        icon: const Icon(Icons.add_location_alt_outlined),
+        icon: const GrobingIcon(Glyphs.addLocationAlt),
         label: const Text('Dodaj cmentarz'),
       ),
     ],
@@ -699,15 +701,12 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   const SizedBox(height: 8),
                   _iconLine(
-                    Icons.people_outline,
+                    Glyphs.group,
                     '${gravesLabel(c.graveCount)} · ${peopleLabel(c.personCount)}',
                   ),
                   if (c.point == null) ...[
                     const SizedBox(height: 4),
-                    _iconLine(
-                      Icons.location_off_outlined,
-                      'Bez punktu na mapie',
-                    ),
+                    _iconLine(Glyphs.locationOff, 'Bez punktu na mapie'),
                   ],
                 ],
               ),
@@ -725,7 +724,7 @@ class _HomeScreenState extends State<HomeScreen>
                         24,
             ),
             child: IconButton(
-              icon: const Icon(Icons.edit_outlined),
+              icon: const GrobingIcon(Glyphs.inkPen, applyTextScaling: false),
               color: GrobingColors.amber,
               tooltip: 'Popraw cmentarz',
               onPressed: () => _edit(c),
@@ -745,16 +744,20 @@ class _HomeScreenState extends State<HomeScreen>
       FilledButton.icon(
         style: primaryButtonStyle,
         onPressed: () => _openCemetery(c),
-        icon: const CandleIcon(size: 22, color: GrobingColors.background),
+        icon: const CandleIcon(
+          size: 22,
+          color: GrobingColors.background,
+          applyTextScaling: true,
+        ),
         label: const Text('Otwórz cmentarz'),
       ),
     ],
   );
 
-  Widget _iconLine(IconData icon, String text) => Row(
+  Widget _iconLine(Glyph icon, String text) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Icon(icon, size: 18, color: GrobingColors.textMuted),
+      GrobingIcon(icon, size: 18, color: GrobingColors.textMuted),
       const SizedBox(width: 6),
       // Next to the photo the line is narrower: it wraps rather than run past the ✎.
       Flexible(
@@ -833,9 +836,10 @@ class _CemeteryPhoto extends StatelessWidget {
             errorBuilder: (_, _, _) => const SizedBox(
               width: width,
               height: height,
-              child: Icon(
-                Icons.broken_image_outlined,
+              child: GrobingIcon(
+                Glyphs.brokenImage,
                 color: GrobingColors.textMuted,
+                applyTextScaling: false,
               ),
             ),
           ),

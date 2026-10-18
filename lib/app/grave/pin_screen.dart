@@ -16,6 +16,8 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart';
 import 'here_location.dart';
 import 'map_chrome.dart';
@@ -538,7 +540,7 @@ class _PinScreenState extends State<PinScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         IconButton(
-          icon: const Icon(Icons.close),
+          icon: const GrobingIcon(Glyphs.close, applyTextScaling: false),
           color: GrobingColors.text,
           tooltip: 'Anuluj',
           onPressed: _leave,
@@ -813,11 +815,13 @@ class _PinScreenState extends State<PinScreen>
         TextSpan(text: '$byHand '),
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: Icon(
-            Icons.my_location,
+          // Flutter already scales a WidgetSpan's child with the text (ui review, ISSUE-046).
+          child: GrobingIcon(
+            Glyphs.myLocation,
             size: 16,
             color: GrobingColors.text,
             semanticLabel: 'Gdzie jestem',
+            applyTextScaling: false,
           ),
         ),
         TextSpan(text: ' wraca do Twojej pozycji.'),
@@ -882,8 +886,8 @@ class _PinScreenState extends State<PinScreen>
             children: [
               const Padding(
                 padding: EdgeInsets.only(top: 1),
-                child: Icon(
-                  Icons.place_outlined,
+                child: GrobingIcon(
+                  Glyphs.place,
                   size: 18,
                   color: GrobingColors.textMuted,
                 ),
@@ -936,8 +940,8 @@ class _PinScreenState extends State<PinScreen>
             children: [
               const Padding(
                 padding: EdgeInsets.only(top: 1),
-                child: Icon(
-                  Icons.gps_not_fixed,
+                child: GrobingIcon(
+                  Glyphs.gpsNotFixed,
                   size: 18,
                   color: GrobingColors.text,
                 ),
@@ -1037,8 +1041,8 @@ class _PinInstructionState extends State<_PinInstruction> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.edit_location_alt_outlined,
+              const GrobingIcon(
+                Glyphs.editLocationAlt,
                 size: 18,
                 color: GrobingColors.amber,
               ),

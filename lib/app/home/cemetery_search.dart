@@ -7,6 +7,8 @@ import '../external_link.dart';
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
+import '../widgets/glyphs.dart';
+import '../widgets/grobing_icon.dart';
 import 'base_preview_screen.dart';
 import 'cemetery_base.dart';
 import 'cemetery_card.dart';
@@ -164,7 +166,7 @@ class _CemeterySearchScreenState extends State<CemeterySearchScreen> {
         actions: [
           if (_query.text.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: const GrobingIcon(Glyphs.close, applyTextScaling: false),
               color: GrobingColors.textMuted,
               tooltip: 'Wyczyść',
               onPressed: _query.clear,
@@ -267,7 +269,7 @@ class _CemeterySearchScreenState extends State<CemeterySearchScreen> {
       ? FilledButton.icon(
           style: primaryButtonStyle,
           onPressed: _addByHand,
-          icon: const Icon(Icons.add_location_alt_outlined),
+          icon: const GrobingIcon(Glyphs.addLocationAlt),
           label: const Text('Dodaj ręcznie'),
         )
       : Align(
