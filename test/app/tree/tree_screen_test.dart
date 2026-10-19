@@ -17,19 +17,21 @@ import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
 import '../../support/a11y.dart';
+import '../../support/gestures.dart';
 import '../../support/glyphs.dart';
 import '../../support/style_checks.dart';
 
 // ISSUE-033 — the Drzewo tab (05_DESIGN/drzewo.md v1.6; US-009), happy path per AC: AC-1 "Ja" in the middle
-// at level 2 · AC-2 a touch puts a person in the middle and the card says who they are; the middle or "Pokaż"
-// opens their view · AC-3 − / + and a double tap change the level with the pill · AC-5 a farther relation in
+// — since ISSUE-049 on "Linia krwi" · AC-2 a touch puts a person in the middle and the card says who they are; the
+// middle or "Pokaż" opens their view · AC-3 (S2) replaced by ISSUE-049: the level on its own + / − (v1.25, D58), zooming
+// the view only (drzewo.md v1.23, D50–D57) · AC-5 a farther relation in
 // the card · AC-6 "Pokaż w drzewie" from a person's view · AC-7 text at 200 % on 360 dp · the states (an
 // empty base, no "ja", a person without a family) · tap targets (retro 3, R2). AC-4 (the trace) —
 // tree_layout_test.dart; the kinship words — kinship_names_test.dart. The made-up family of the debug build
 // (family-data.md).
 //
 // ISSUE-034 — presentation mode (drzewo.md element 11, D16; US-009 AC-8): the TV icon only with a tree;
-// landscape, no bars, level 2 fitted, no buttons, the hint for 4 s; a touch puts a person in the middle, the
+// landscape, no bars, the phone's level and scale since ISSUE-049 (D56), no buttons, the hint for 4 s; a touch puts a person in the middle, the
 // middle opens nothing, the edges of the bars take no drag, the empty space shows "Zakończ prezentację" — from
 // ISSUE-038 with the bar, for 5 s (D3); it and back return portrait with the same person, the card and the bar. The phone's turn is the test
 // view's new size; what the tree asks of the system — the platform channel (presentation_mode_test.dart).
@@ -55,11 +57,32 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
 
 bool _shown(Finder f) => f.evaluate().isNotEmpty;
 
-/// The people on the tree: a node says "w środek", the one in the middle "otwórz".
+/// A hard space, as the screens write it after "·" and between a number and its word (style-b.md rule 6).
+final String _nb = String.fromCharCode(0xA0);
+
+/// The tree's scale, read from the x axis as the screen reads it.
+double _scale(WidgetTester tester) => tester
+    .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+    .transformationController!
+    .value
+    .entry(0, 0);
+
+/// The node of the person whose reader's label starts with [name].
+Finder _nodeOf(String name) => find.byWidgetPredicate(
+  (w) =>
+      w is Semantics &&
+      w.container &&
+      (w.properties.label?.startsWith(name) ?? false),
+);
+
+/// The people on the tree: a node says "w środek", the one in the middle "otwórz" — and every one "przybliż" when
+/// the tree is so small that a touch only zooms in (ISSUE-049, D52).
 Finder _people() => find.byWidgetPredicate(
   (w) =>
       w is Semantics &&
-      (w.properties.hint == 'w środek' || w.properties.hint == 'otwórz'),
+      (w.properties.hint == 'w środek' ||
+          w.properties.hint == 'otwórz' ||
+          w.properties.hint == 'przybliż'),
 );
 
 /// The move of the people and of the view, and the pill's moment.
@@ -88,21 +111,34 @@ Future<void> _turn(WidgetTester tester, {required bool landscape}) async {
   await _afterMove(tester);
 }
 
-/// A point of the tree's area where no one stands, 40 dp in from its edges (the bars' 24 dp take no touch).
+/// A point of the tree's area where no one stands, 40 dp in from its edges (the bars' 24 dp take no touch), and not
+/// on the level's + / − in the bottom right corner (ISSUE-049).
 Offset _empty(WidgetTester tester) {
   final Rect area = tester.getRect(find.byType(InteractiveViewer));
-  final List<Rect> people = [
+  final List<Rect> taken = [
     for (final Element e in _nodes().evaluate())
+      tester.getRect(find.byWidget(e.widget)),
+    for (final Element e in find.byType(InkWell).evaluate())
       tester.getRect(find.byWidget(e.widget)),
   ];
   for (final Offset p in [
+    area.topLeft + const Offset(40, 40),
+    area.topRight + const Offset(-40, 40),
     area.bottomLeft + const Offset(40, -40),
     area.bottomRight + const Offset(-40, -40),
-    area.topLeft + const Offset(40, 40),
   ]) {
-    if (!people.any((r) => r.inflate(8).contains(p))) return p;
+    if (!taken.any((r) => r.inflate(8).contains(p))) return p;
   }
   fail('no empty space on the tree');
+}
+
+/// Two fingers together until the tree is as small as it gets — the whole level (D51) — and the settle after: the
+/// way out since the zoom buttons went (v1.25, D58).
+Future<void> _zoomOutFully(WidgetTester tester) async {
+  for (int i = 0; i < 4; i++) {
+    await pinch(tester, find.byType(InteractiveViewer), 0.4);
+    await _afterMove(tester);
+  }
 }
 
 double _opacityOf(WidgetTester tester, String text) => tester
@@ -121,7 +157,28 @@ const String _hint =
 void main() {
   late GrobingDatabase db;
 
-  setUp(() => db = GrobingDatabase(NativeDatabase.memory()));
+  setUp(() {
+    db = GrobingDatabase(NativeDatabase.memory());
+    // The level chosen lives while the app runs (D57): each test starts as a new app does.
+    treeLevel = 1;
+  });
+
+  /// A touch of [name]'s node, zooming out with two fingers first while it is off the tree's area — since ISSUE-049
+  /// the first level has 91 people (D50), and since v1.25 there are no zoom buttons (D58). Never under 0.3: there a
+  /// touch only zooms in (D52).
+  Future<void> tapPerson(WidgetTester tester, String name) async {
+    for (int i = 0; i < 3; i++) {
+      final Rect area = tester.getRect(find.byType(InteractiveViewer));
+      if (_shown(_nodeOf(name)) &&
+          area.deflate(8).contains(tester.getCenter(_nodeOf(name).first))) {
+        break;
+      }
+      await pinch(tester, find.byType(InteractiveViewer), 1 / 1.45);
+      await _afterMove(tester);
+    }
+    await tester.tapAt(tester.getCenter(_nodeOf(name).first));
+    await _afterMove(tester);
+  }
 
   Future<void> cleanUp(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
@@ -170,40 +227,69 @@ void main() {
           )
           .then((id) => id!);
 
-  testWidgets(
-    'AC-1 — "Ja" in the middle at level 2: 20 people, the card "to ja"; tap targets (R2)',
-    (tester) async {
-      await tester.runAsync(() => addFictionalFamily(db));
-      await pumpTree(tester);
-      await _pumpUntil(tester, () => _shown(_people()));
-      await _afterMove(tester);
+  testWidgets('AC-1 — "Ja" in the middle on "Linia krwi" (ISSUE-049, D50): 91 people, the card "to ja", the level\'s + / −; '
+      'tap targets (R2)', (tester) async {
+    await tester.runAsync(() => addFictionalFamily(db));
+    await pumpTree(tester);
+    await _pumpUntil(tester, () => _shown(_people()));
+    await _afterMove(tester);
 
-      expect(_people(), findsNWidgets(20));
-      expect(find.text('Mateusz Wymyślony'), findsOneWidget);
-      expect(find.text('ur. 1983 · to ja'), findsOneWidget);
-      final SemanticsHandle semantics = tester.ensureSemantics();
-      expect(
-        find.bySemanticsLabel(RegExp(r'^Mateusz Wymyślony, ur\. 1983, to ja$')),
-        findsOneWidget,
-      );
-      expect(
-        find.bySemanticsLabel(
-          RegExp(r'^Kasia Wymyślona z d\. Przykładowa, ur\. 1985, Moja żona$'),
-        ),
-        findsOneWidget,
-      );
-      // A relation's name is in the author's voice (ISSUE-035, G2 — drzewo.md D28): nowhere "Twoja" / "Twój".
-      expect(find.bySemanticsLabel(RegExp('Twoj|Twój')), findsNothing);
-      expect(find.textContaining(RegExp('Twoj|Twój')), findsNothing);
-      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      expectEveryButtonTappable(tester);
-      // The glow of the person in the middle lies under the circle (ui review, MAJOR).
-      expectNoGlowOverContent(tester);
-      semantics.dispose();
-      await cleanUp(tester);
-    },
-  );
+    expect(_people(), findsNWidgets(91));
+    expect(find.text('Mateusz Wymyślony'), findsOneWidget);
+    expect(find.text('ur. 1983 · to ja'), findsOneWidget);
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    // Element 3 (D58): the level's + / −, buttons the reader can press — − off on "Linia krwi", the first level.
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Dalsza rodzina')),
+      isSemantics(
+        isButton: true,
+        hasTapAction: true,
+        hasEnabledState: true,
+        isEnabled: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Bliższa rodzina')),
+      isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+    );
+    // Off has no outline either — not the colour alone (SC 1.4.1; ui review of ISSUE-049, round 2).
+    BorderSide outlineOf(String tooltip) =>
+        (tester
+                    .widget<Material>(
+                      find.descendant(
+                        of: find.byTooltip(tooltip),
+                        matching: find.byType(Material),
+                      ),
+                    )
+                    .shape!
+                as CircleBorder)
+            .side;
+    expect(outlineOf('Bliższa rodzina'), BorderSide.none);
+    expect(outlineOf('Dalsza rodzina').color, GrobingColors.outline);
+    // No zoom buttons: two fingers, a double tap and a touch of a small tree zoom (element 3a, D58).
+    expect(find.byTooltip('Przybliż'), findsNothing);
+    expect(find.byTooltip('Oddal'), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp(r'^Mateusz Wymyślony, ur\. 1983, to ja$')),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(
+        RegExp(r'^Kasia Wymyślona z d\. Przykładowa, ur\. 1985, Moja żona$'),
+      ),
+      findsOneWidget,
+    );
+    // A relation's name is in the author's voice (ISSUE-035, G2 — drzewo.md D28): nowhere "Twoja" / "Twój".
+    expect(find.bySemanticsLabel(RegExp('Twoj|Twój')), findsNothing);
+    expect(find.textContaining(RegExp('Twoj|Twój')), findsNothing);
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    expectEveryButtonTappable(tester);
+    // The glow of the person in the middle lies under the circle (ui review, MAJOR).
+    expectNoGlowOverContent(tester);
+    semantics.dispose();
+    await cleanUp(tester);
+  });
 
   testWidgets(
     'AC-2 — a touch puts Kasia in the middle; "Pokaż" opens her view with Drzewo active',
@@ -229,38 +315,235 @@ void main() {
   );
 
   testWidgets(
-    'AC-3 — − adds a level with the pill, + takes it back; a double tap on empty space zooms in',
+    'ISSUE-049 AC-1 (element 3a, D51, D58) — two fingers and a double tap change the view only: 91 people all along; '
+    'zoomed out to the end, the whole level in the area and in its middle; no pill',
     (tester) async {
       await tester.runAsync(() => addFictionalFamily(db));
       await pumpTree(tester);
       await _pumpUntil(tester, () => _shown(_people()));
       await _afterMove(tester);
+      expect(_scale(tester), closeTo(1, 1e-6));
+      final Finder viewer = find.byType(InteractiveViewer);
 
-      await tester.tap(find.byTooltip('Oddal — dalsza rodzina'));
+      for (int i = 0; i < 4; i++) {
+        await pinch(tester, viewer, 0.4);
+        await _afterMove(tester);
+        expect(_people(), findsNWidgets(91), reason: 'together $i');
+      }
+      // The end: the whole level in the area, 24 dp in (D51), never under 0.08.
+      final double least = _scale(tester);
+      expect(least, lessThan(treeMinScaleAtMost));
+      expect(least, greaterThanOrEqualTo(treeMinScaleAtLeast));
+      await pinch(tester, viewer, 0.5);
       await _afterMove(tester);
-      expect(find.text('Poziom 3 · 66 osób'), findsOneWidget);
-      expect(_people(), findsNWidgets(66));
+      expect(_scale(tester), closeTo(least, 1e-6));
+      final Rect area = tester.getRect(viewer);
+      final List<Rect> nodes = [
+        for (final Element e in _people().evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ];
+      final Rect whole = nodes.reduce((a, b) => a.expandToInclude(b));
+      expect(area.contains(whole.topLeft), isTrue, reason: '$whole in $area');
+      expect(
+        area.contains(whole.bottomRight),
+        isTrue,
+        reason: '$whole in $area',
+      );
+      // In the middle of the area once the fingers rest (Dev report, deviation 1): the same room left and right.
+      expect(
+        whole.left - area.left,
+        moreOrLessEquals(area.right - whole.right, epsilon: 2),
+      );
+      // Zooming tells nothing — no pill (it says a level).
+      expect(find.textContaining('osób$_nb('), findsNothing);
 
-      await tester.tap(find.byTooltip('Oddal — dalsza rodzina'));
+      // Two fingers apart: closer, the same people.
+      await pinch(tester, viewer, 4);
       await _afterMove(tester);
-      expect(find.text('Poziom 4 · 99 osób'), findsOneWidget);
+      expect(_people(), findsNWidgets(91));
+      final double before = _scale(tester);
+      expect(before, greaterThan(least * 2));
+      // Over 24 dp a place: a double tap is the double tap, not a touch of a small tree (D52).
+      expect(80 * before, greaterThanOrEqualTo(treeTargetMin));
 
-      await tester.tap(find.byTooltip('Przybliż — bliższa rodzina'));
-      await _afterMove(tester);
-      await tester.tap(find.byTooltip('Przybliż — bliższa rodzina'));
-      await _afterMove(tester);
-      expect(find.text('Poziom 2 · 20 osób'), findsOneWidget);
-      expect(_people(), findsNWidgets(20));
-
-      // Empty space at the bottom left of the tree's area, under everyone.
-      final Rect area = tester.getRect(find.byType(InteractiveViewer));
-      final Offset empty = area.bottomLeft + const Offset(24, -24);
+      // A double tap on empty space zooms in by one step (D18).
+      final Offset empty = _empty(tester);
       await tester.tapAt(empty);
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tapAt(empty);
       await _afterMove(tester);
-      expect(find.text('Poziom 1 · 6 osób'), findsOneWidget);
-      expect(_people(), findsNWidgets(6));
+      expect(_scale(tester), closeTo(before * 1.45, 1e-6));
+      expect(_people(), findsNWidgets(91));
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-049 AC-2, AC-3 (element 3, D55, D58) — + brings the next level\'s people and the pill with the change, − '
+    'the level before; "Ja" and the scale stay (K1); + off at the last level of "Ja", − at the first; tap targets (R2)',
+    (tester) async {
+      await tester.runAsync(() => addFictionalFamily(db));
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+      // AC-2 on level 1: the brother's partner without her parents.
+      expect(_nodeOf('Natalia Zmyślewicz'), findsOneWidget);
+      expect(_nodeOf('Zbigniew Zmyślewicz'), findsNothing);
+      final Offset ja = tester.getCenter(_nodeOf('Mateusz Wymyślony'));
+
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
+      await _afterMove(tester);
+      expect(_people(), findsNWidgets(113));
+      expect(
+        find.text('Przez 1 związek ·${_nb}113${_nb}osób$_nb(+22)'),
+        findsOneWidget,
+      );
+      // AC-2 on level 2: her parents, her sister and the sister's husband (M2 — he is an end here).
+      for (final String who in [
+        'Zbigniew Zmyślewicz',
+        'Alicja Zmyślewicz',
+        'Patrycja Przykładniak',
+        'Konrad Przykładniak',
+      ]) {
+        expect(_nodeOf(who), findsOneWidget, reason: who);
+      }
+      expect(_nodeOf('Ryszard Przykładniak'), findsNothing);
+      // K1 (D55): "Ja" where it was, at the same scale.
+      expect(
+        tester.getCenter(_nodeOf('Mateusz Wymyślony')),
+        offsetMoreOrLessEquals(ja, epsilon: 1),
+      );
+      expect(_scale(tester), closeTo(1, 1e-6));
+
+      // AC-3: the husband's parents and brother.
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
+      await _afterMove(tester);
+      expect(_people(), findsNWidgets(116));
+      expect(
+        find.text('Przez 2 związki ·${_nb}116${_nb}osób$_nb(+3)'),
+        findsOneWidget,
+      );
+      expect(_nodeOf('Ryszard Przykładniak'), findsOneWidget);
+      expect(_nodeOf('Olaf Przykładniak'), findsOneWidget);
+
+      // "Ja" has three levels: + is off at the third, − on; a touch of + changes nothing.
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Dalsza rodzina')),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+      );
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Bliższa rodzina')),
+        isSemantics(
+          isButton: true,
+          hasTapAction: true,
+          hasEnabledState: true,
+          isEnabled: true,
+        ),
+      );
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
+      await _afterMove(tester);
+      expect(treeLevel, 3);
+      expect(_people(), findsNWidgets(116));
+
+      // − twice, back to "Linia krwi": 3 go, then 22.
+      await tester.tap(find.byTooltip('Bliższa rodzina'));
+      await _afterMove(tester);
+      expect(
+        find.text('Przez 1 związek ·${_nb}113${_nb}osób$_nb(−3)'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Bliższa rodzina'));
+      await _afterMove(tester);
+      expect(_people(), findsNWidgets(91));
+      expect(
+        find.text('Linia krwi ·${_nb}91${_nb}osób$_nb(−22)'),
+        findsOneWidget,
+      );
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-049 D52 — a place under 24 dp on the screen: a touch of a person zooms in to 0.45 and chooses no one; '
+    'the reader hears "przybliż", and "w środek" again once zoomed in',
+    (tester) async {
+      await tester.runAsync(() => addFictionalFamily(db));
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+      await _zoomOutFully(tester);
+      expect(80 * _scale(tester), lessThan(treeTargetMin));
+      Semantics kasia() => tester.widget<Semantics>(_nodeOf('Kasia Wymyślona'));
+      expect(kasia().properties.hint, 'przybliż');
+
+      await tester.tapAt(tester.getCenter(_nodeOf('Kasia Wymyślona')));
+      await _afterMove(tester);
+      expect(_scale(tester), closeTo(treeTapZoomScale, 1e-6));
+      // No one chosen: "Ja" is still in the middle, the card says so.
+      expect(find.text('ur. 1983 · to ja'), findsOneWidget);
+      expect(kasia().properties.hint, 'w środek');
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-049 D57 — the level chosen stays for a new tree from the tab; a person with fewer levels shows hers, '
+    'and the choice comes back with "Ja"',
+    (tester) async {
+      await tester.runAsync(() => addFictionalFamily(db));
+      final int alone = (await tester.runAsync(
+        () => db
+            .into(db.persons)
+            .insert(
+              PersonsCompanion.insert(
+                givenNames: const Value('Teofil'),
+                surname: const Value('Przykładowski'),
+              ),
+            ),
+      ))!;
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+      for (int i = 0; i < 2; i++) {
+        await tester.tap(find.byTooltip('Dalsza rodzina'));
+        await _afterMove(tester);
+      }
+      expect(treeLevel, 3);
+
+      // A person alone: one level, "Linia krwi"; the choice is kept.
+      await tester.pumpWidget(const SizedBox());
+      await pumpTree(tester, focus: alone);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+      expect(_people(), findsOneWidget);
+      // One level: + and − both off, and a touch of + changes nothing — no pill, the choice kept.
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      for (final String button in ['Dalsza rodzina', 'Bliższa rodzina']) {
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(button)),
+          isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+          reason: button,
+        );
+      }
+      semantics.dispose();
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
+      await _afterMove(tester);
+      expect(find.textContaining('Linia krwi'), findsNothing);
+      expect(treeLevel, 3);
+
+      // A new tree from the tab: "Ja", at the scale 1, on the level chosen.
+      await tester.pumpWidget(const SizedBox());
+      await pumpTree(tester);
+      await _pumpUntil(tester, () => _shown(_people()));
+      await _afterMove(tester);
+      expect(_people(), findsNWidgets(116));
+      expect(treeLevel, 3);
+      expect(_scale(tester), closeTo(1, 1e-6));
       await cleanUp(tester);
     },
   );
@@ -272,10 +555,9 @@ void main() {
     await pumpTree(tester);
     await _pumpUntil(tester, () => _shown(find.text('Kasia')));
     await _afterMove(tester);
-    await tester.tap(find.text('Kasia'));
-    await _afterMove(tester);
-    await tester.tap(find.text('Jolanta'));
-    await _afterMove(tester);
+    await tapPerson(tester, 'Kasia Wymyślona');
+    // Kasia's aunt is her blood: on "Linia krwi" from her (D50).
+    await tapPerson(tester, 'Jolanta Zmyślewska');
     expect(find.text('ur. 1961 · Ciotka mojej żony'), findsOneWidget);
     await cleanUp(tester);
   });
@@ -374,7 +656,12 @@ void main() {
       26,
     );
     // The initials grow at most 1.3× and stay inside the 44 dp circle.
-    expect(tester.getSize(find.text('KW')).width, lessThanOrEqualTo(44));
+    expect(
+      tester
+          .getSize(find.descendant(of: kasia, matching: find.text('KW')))
+          .width,
+      lessThanOrEqualTo(44),
+    );
     // "Pokaż" stands under the card's text (D20).
     expect(
       tester.getTopLeft(find.text('Pokaż')).dy,
@@ -394,7 +681,7 @@ void main() {
           find.text('Tu pojawi się drzewo — osoby z grobów i ich rodziny.'),
         ),
       );
-      expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
+      expect(find.byTooltip('Dalsza rodzina'), findsNothing);
       // No tree, no casting (element 1, ISSUE-034, ISSUE-036).
       expect(find.byTooltip('Przesyłaj na telewizor'), findsNothing);
 
@@ -533,22 +820,9 @@ void main() {
     ),
   );
 
-  void expectAllOnScreen(WidgetTester tester, Size screen) {
-    final Rect view = Offset.zero & screen;
-    for (final Element e in _nodes().evaluate()) {
-      final Rect r = tester.getRect(find.byWidget(e.widget));
-      expect(
-        view.contains(r.topLeft) &&
-            view.contains(r.bottomRight - const Offset(0.1, 0.1)),
-        isTrue,
-        reason: '${(e.widget as Semantics).properties.label} at $r',
-      );
-    }
-  }
-
   testWidgets(
     'ISSUE-036 AC-1 + AC-8 — "Przesyłaj na telewizor" opens the system\'s cast screen; the tree waits until the app is '
-    'back on top, a second tap meanwhile opens nothing (D3); then landscape, no bars, level 2 fitted, no buttons and '
+    'back on top, a second tap meanwhile opens nothing (D3); then landscape, no bars, the phone\'s level and scale (D56), no buttons and '
     'no hint; the reader hears where the tap leads; tap targets (R2)',
     (tester) async {
       final List<String> chrome = recordChrome();
@@ -592,11 +866,16 @@ void main() {
       expect(find.byType(GrobingTabBar), findsNothing);
       expect(find.text('ur. 1983 · to ja'), findsNothing);
       expect(find.text('Pokaż'), findsNothing);
-      expect(find.byTooltip('Oddal — dalsza rodzina'), findsNothing);
+      expect(find.byTooltip('Dalsza rodzina'), findsNothing);
       expect(find.byTooltip('Przesyłaj na telewizor'), findsNothing);
-      // Level 2 from "Ja" — 20 people, all of them on the 800 × 360 dp screen.
-      expect(_nodes(), findsNWidgets(20));
-      expectAllOnScreen(tester, const Size(800, 360));
+      // ISSUE-049 (D56): the phone's level and scale — "Linia krwi", 91 people, the scale 1 — and "Ja" in the middle
+      // of the 800 dp screen, not 42 % down: there is no card under it.
+      expect(_nodes(), findsNWidgets(91));
+      expect(_scale(tester), closeTo(1, 1e-6));
+      expect(
+        tester.getCenter(_nodeOf('Mateusz Wymyślony')).dx,
+        moreOrLessEquals(400, epsilon: 1),
+      );
       // Casting was just chosen: the hint about the quick settings would only reach the TV (D26, D30).
       expect(find.text(_hint), findsNothing);
 
@@ -610,18 +889,23 @@ void main() {
   );
 
   testWidgets(
-    'AC-8 — in presentation a touch puts Kasia in the middle, fitted anew; the middle opens nothing; a drag from '
+    'AC-8 — in presentation a touch puts Kasia in the middle at the same scale (D56); the middle opens nothing; a drag from '
     'the bars\' edge leaves the tree; the empty space shows "Zakończ prezentację" and the bar for 5 s (ISSUE-038 D3)',
     (tester) async {
       await present(tester);
       await tester.tap(find.text('Kasia'));
       await _afterMove(tester);
-      // Level 2 from Kasia — 17 people, still no card; in the middle she has no hint (D5).
-      expect(_nodes(), findsNWidgets(17));
+      // "Linia krwi" from Kasia — 19 people (D50), still no card; in the middle she has no hint (D5); the scale stays
+      // and she stands in the middle of the screen (D56).
+      expect(_nodes(), findsNWidgets(19));
       expect(find.text('ur. 1985 · Moja żona'), findsNothing);
       expect(node(tester, 'Kasia Wymyślona').properties.hint, isNull);
       expect(node(tester, 'Mateusz Wymyślony').properties.hint, 'w środek');
-      expectAllOnScreen(tester, const Size(800, 360));
+      expect(_scale(tester), closeTo(1, 1e-6));
+      expect(
+        tester.getCenter(_nodeOf('Kasia Wymyślona')).dx,
+        moreOrLessEquals(400, epsilon: 1),
+      );
 
       // The middle opens nothing.
       await tester.tap(find.text('Kasia'));
@@ -644,7 +928,7 @@ void main() {
         greaterThan(fitted.dx + 50),
       );
 
-      // A touch of the person in the middle fits the level again (Dev report, deviation 1).
+      // A touch of the person in the middle brings her back to the middle, the scale as it is (D25 a, D56).
       await tester.tap(find.text('Kasia'));
       await _afterMove(tester);
       expect(
@@ -666,8 +950,8 @@ void main() {
   );
 
   testWidgets(
-    'AC-8 — "Zakończ prezentację" and back: portrait with the bars, the same person in the middle at level 2, '
-    'the card and the bar',
+    'AC-8 — "Zakończ prezentację" and back: portrait with the bars, the same person in the middle at the same level '
+    'and scale (D56), the card and the bar',
     (tester) async {
       final List<String> chrome = await present(tester);
       await tester.tap(find.text('Kasia'));
@@ -681,11 +965,12 @@ void main() {
       await _turn(tester, landscape: false);
       expect(chrome, leaving);
       expect(find.text('ur. 1985 · Moja żona'), findsOneWidget);
-      expect(_people(), findsNWidgets(17));
+      expect(_people(), findsNWidgets(19));
+      expect(_scale(tester), closeTo(1, 1e-6));
       expect(find.byTooltip('Przesyłaj na telewizor'), findsOneWidget);
-      expect(find.byTooltip('Oddal — dalsza rodzina'), findsOneWidget);
+      expect(find.byTooltip('Dalsza rodzina'), findsOneWidget);
       expect(find.byType(GrobingTabBar), findsOneWidget);
-      // Kasia in the middle across the 360 dp screen, at the tree's own scale (level 2).
+      // Kasia in the middle across the 360 dp screen, at the scale she had in presentation.
       expect(
         tester.getCenter(find.text('Kasia')).dx,
         moreOrLessEquals(180, epsilon: 1),
@@ -725,7 +1010,7 @@ void main() {
       expect(calls, ['openCastSettings', 'recommendedTimeout']);
       expect(chrome, entering);
       expect(find.text('Drzewo'), findsNothing);
-      expect(_nodes(), findsNWidgets(20));
+      expect(_nodes(), findsNWidgets(91));
       expect(_opacityOf(tester, _hint), 1);
       await tester.pump(const Duration(seconds: 4));
       await tester.pump(const Duration(milliseconds: 300));

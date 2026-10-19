@@ -104,8 +104,11 @@ class TreeGraph {
     return null;
   }
 
-  /// D2: level k adds the parents, partners and children of everyone at level k − 1 and, from k = 2, their
-  /// siblings too. Each person once, at their lowest level — so a cycle in the data cannot hang it.
+  /// How many steps of the family [focus] is from each person, up to [maxLevel]: step k adds the parents,
+  /// partners and children of everyone at step k − 1 and, from k = 2, their siblings too (the levels of D2 until
+  /// drzewo.md v1.22). Since ISSUE-049 not who is shown — [unionLevels] is — but the order of the layout and of
+  /// the names (I2, D57): the brother before the grandfather's cousin. Each person once, at their lowest step —
+  /// so a cycle in the data cannot hang it.
   Map<int, int> levelsFrom(int focus, int maxLevel) {
     final Map<int, int> level = {focus: 0};
     List<int> frontier = [focus];
@@ -128,6 +131,65 @@ class TreeGraph {
     }
     return level;
   }
+
+  final Map<int, Set<int>> _blood = {};
+  final Map<int, Map<int, int>> _unionLevels = {};
+
+  /// [n] and their blood relatives: every ancestor, then everyone descended from them — a common ancestor
+  /// (drzewo.md D50; KRO art. 617). Half-siblings too: they share a parent.
+  Set<int> bloodOf(int n) => _blood[n] ??= () {
+    final Set<int> ancestors = {n};
+    final List<int> up = [n];
+    while (up.isNotEmpty) {
+      for (final int p in parentsOf(up.removeLast())) {
+        if (ancestors.add(p)) up.add(p);
+      }
+    }
+    final Set<int> blood = {...ancestors};
+    final List<int> down = [...ancestors];
+    while (down.isNotEmpty) {
+      for (final int c in childrenOf(down.removeLast())) {
+        if (blood.add(c)) down.add(c);
+      }
+    }
+    return blood;
+  }();
+
+  /// The levels of drzewo.md D50 (M2, ISSUE-049): blood costs nothing, every union a level. Level 1 — the blood
+  /// of [focus] with the partners of each of them (married or "razem", an ended union too); level k + 1 — the
+  /// blood of each partner from outside it at level k, with their partners. Each person once, at the lowest level,
+  /// so a cycle in the data cannot hang it; everyone joined to [focus] by the family has a level.
+  Map<int, int> unionLevels(int focus) => _unionLevels[focus] ??= () {
+    final Map<int, int> level = {};
+    List<int> open = [focus];
+    for (int k = 1; open.isNotEmpty; k++) {
+      final Set<int> family = {};
+      for (final int e in open) {
+        for (final int b in bloodOf(e)) {
+          family.add(b);
+          level.putIfAbsent(b, () => k);
+        }
+      }
+      final List<int> ends = [];
+      for (final int b in family) {
+        for (final int p in partnersOf(b)) {
+          if (!level.containsKey(p)) {
+            level[p] = k;
+            ends.add(p);
+          }
+        }
+      }
+      open = ends;
+    }
+    return level;
+  }();
+
+  /// The highest level of [focus] — at least 1, the person alone.
+  int unionLevelCount(int focus) => unionLevels(focus).values.fold(1, math.max);
+
+  /// How many people a level of [focus] shows, all of them, whatever the year.
+  int unionLevelSize(int focus, int level) =>
+      unionLevels(focus).values.where((l) => l <= level).length;
 }
 
 class _Union {
@@ -331,9 +393,10 @@ class TreeLayout {
 
 const double _gap = 0.3;
 
-/// Lays out [focus]'s family to [level] (D2) and [also] people beyond it — the rest of a path that goes further
-/// than level 4 (ISSUE-039, drzewo.md element 8). They must join [focus] through the people shown, as a path's
-/// people do.
+/// Lays out [focus]'s family to [level] (drzewo.md D50 — [TreeGraph.unionLevels]) and [also] people beyond it,
+/// who must join [focus] through the people shown. Since ISSUE-049 every person joined to [focus] has a level, so
+/// a path needs no [also] any more (pathLevel); it stays for a caller that wants someone more. The order in the
+/// rows and of the names comes from the steps of the family ([TreeGraph.levelsFrom]), not from the level.
 TreeLayout layoutTree(
   TreeGraph graph,
   int focus,
@@ -341,7 +404,12 @@ TreeLayout layoutTree(
   TreeMetrics metrics = const TreeMetrics(),
   Set<int> also = const {},
 }) {
-  final Set<int> vis = {...graph.levelsFrom(focus, level).keys, ...also};
+  final Set<int> vis = {
+    for (final MapEntry<int, int> e in graph.unionLevels(focus).entries)
+      if (e.value <= level) e.key,
+    focus,
+    ...also,
+  };
   final Map<int, int> lv = graph.levelsFrom(focus, 99);
   int lvOf(int n) => lv[n] ?? 99;
 

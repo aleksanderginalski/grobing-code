@@ -40,22 +40,31 @@ import 'tree_presentation.dart';
 import 'tree_time.dart';
 import 'tree_time_bar.dart';
 
-/// The scale the tree may take (drzewo.md D17, D18): at 0.4 a person's place is still 32 dp, at least the
-/// 24 CSS px of WCAG 2.2 SC 2.5.8; at 2 a name is 26 sp.
-const double treeMinScale = 0.4;
+/// The scale the tree may take (drzewo.md element 3a, D51 — ISSUE-049): down to the whole level shown in the
+/// tree's area, 24 dp from its edges — that smallest scale never above 0.4, the floor until v1.22, and never under
+/// [treeMinScaleAtLeast] — up to 2, where a name is 26 sp. Zooming changes the view only, never who is shown.
+const double treeMinScaleAtMost = 0.4;
+const double treeMinScaleAtLeast = 0.08;
 const double treeMaxScale = 2;
 
-/// One press of + / − and a double tap: about one level (D18).
+/// A double tap (D18, kept by D51). Since v1.25 + / − change the level (D58), and two fingers alone zoom out.
 const double treeZoomStep = 1.45;
 
-/// S2 (drzewo.md element 3, D18): zooming out adds a level, threshold by threshold — 1.3 · 0.85 · 0.55.
-int treeLevelAtScale(double scale) => scale >= 1.3
-    ? 1
-    : scale >= 0.85
-    ? 2
-    : scale >= 0.55
-    ? 3
-    : 4;
+/// D52: a person's place on the screen under 24 dp — the minimum of WCAG 2.2 SC 2.5.8 — and a touch of the tree
+/// zooms in there, to [treeTapZoomScale], instead of choosing a person (style-b.md v1.44).
+const double treeTargetMin = 24;
+const double treeTapZoomScale = 0.45;
+
+/// The level chosen (drzewo.md element 3, D57): kept while the app runs, as the tempo; "Linia krwi" at first.
+int treeLevel = 1;
+
+/// "113 osób" with a hard space: the number stays with its word (style-b.md rule 6; ui review of ISSUE-049).
+String _peopleCount(int n) => peopleLabel(n).replaceFirst(' ', '\u00A0');
+
+/// The name of a level (N2 — D54): the author's words for the first, the rule for the next.
+String treeLevelName(int level) => level <= 1
+    ? 'Linia krwi'
+    : 'Przez ${level - 1} ${plural(level - 1, 'związek', 'związki', 'związków')}';
 
 const Duration _moveTime = Duration(milliseconds: 450);
 
@@ -63,11 +72,12 @@ const Duration _moveTime = Duration(milliseconds: 450);
 const double _middleHeight = 0.42;
 
 /// The Drzewo tab (05_DESIGN/drzewo.md v1.6; US-009, ISSUE-033): the family around one person, "Ja" at
-/// first (AC-1). A touch puts a person in the middle (AC-2); zooming out adds the wider family level by
-/// level (AC-3); a short dashed trace says where the family goes on (AC-4); the card says who the person
+/// first (AC-1). A touch puts a person in the middle (AC-2); the level — blood, then each union (v1.23, D50;
+/// ISSUE-049) — is chosen with its own + / − (v1.25, D58), and zooming changes the view only, down to the whole tree (D51);
+/// a short dashed trace says where the family goes on (AC-4); the card says who the person
 /// is to "ja" (AC-5). "Pokaż w drzewie" opens it with a given person in the middle ([focusPersonId], AC-6).
-/// The TV icon turns it into presentation mode (element 11, AC-8; ISSUE-034): landscape, full screen, level 2
-/// fitted to the screen, no buttons. "Połącz dwie osoby" lights the path between two people on the same tree
+/// The TV icon turns it into presentation mode (element 11, AC-8; ISSUE-034): landscape, full screen, the level
+/// and the scale of the phone, two fingers zooming (D56). "Połącz dwie osoby" lights the path between two people on the same tree
 /// (elements 7–10; US-011, ISSUE-039). Since ISSUE-045 the tab has two parts, "Drzewo" and "Mapa" (drzewo.md v1.20,
 /// W2): the migration map (05_DESIGN/mapa-migracji.md) shares the person in the middle, the card, the year, the
 /// tempo, ▶ and presentation mode.
@@ -113,8 +123,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   /// The person in the middle; null without "ja" and without a person given.
   int? _focus;
-  int _level = 2;
   TreeLayout? _layout;
+
+  /// The level shown (element 3, D57): the one chosen ([treeLevel]), at most the highest the person in the
+  /// middle has — someone without a family has one; the choice comes back with a person who has it.
+  int get _level {
+    final TreeGraph? graph = _graph;
+    final int? focus = _focus;
+    if (graph == null || focus == null) return treeLevel;
+    return math.min(treeLevel, graph.unionLevelCount(focus));
+  }
+
+  /// The smallest scale now: the whole level shown in the tree's area (element 3a, D51).
+  double _minScale = treeMinScaleAtMost;
 
   /// The lines of [_layout] in [_year], their paths built once (SPIKE-002 M3).
   TreeLinesPainter? _lines;
@@ -175,7 +196,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _pillShown = false;
   Timer? _pillTimer;
 
-  /// Presentation mode (element 11, D16): level 2 fitted to the screen, no bar, card or + / −. A tap on the
+  /// Presentation mode (element 11, D16, D56): the phone's level and scale, two fingers zooming, no bar, card or
+  /// + / − on the tree. A tap on the
   /// empty space shows the controls — the bar at the bottom and "Zakończ prezentację" (B2 — D40) — for 5 s
   /// from the last touch of them, or as long as "Czas na działanie" asks; a second tap hides them. With a
   /// screen reader they stay: it cannot tap the empty space, which has no node (Dev report, deviation).
@@ -402,7 +424,6 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   void _onData(FamilyTreeData data) {
     if (!mounted) return;
-    final bool wasLit = _path != null;
     setState(() {
       _error = null;
       _family = data;
@@ -419,20 +440,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _kinAll = null;
       if (_year case final int y? when y < time.start) _year = time.start;
       // The family changed under a lit path: its people may be gone, so the light goes (element 8), as at its end
-      // — the level from the scale, at least 0.4 (D46; ui review of ISSUE-039).
+      // — the level and the scale stay (D57).
       if (_lit) _clearPath();
-      if (wasLit) _level = treeLevelAtScale(math.max(_scale, treeMinScale));
       final int? wanted = _focus ?? widget.focusPersonId ?? data.meId;
       _focus = wanted != null && data.people.containsKey(wanted)
           ? wanted
           : data.meId;
       _relayout(keep: _focus);
     });
-    final int? focus = _focus;
-    if (wasLit && _scale < treeMinScale && focus != null) {
-      final Matrix4? home = _centreOn(focus, treeMinScale);
-      if (home != null) _view.value = home;
-    }
   }
 
   /// Lays the tree out again for the middle and level now. [keep] stays where it is on the screen: the
@@ -473,6 +488,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       // The same picture in the new frame: the world moved by [shift] under the person kept.
       _view.value = _matrix(_scale, _offset - shift * _scale);
     }
+    _fitMinScale(keep: keep);
     final bool moving = animate && !_noMotion && old != null;
     _from = {
       for (final int n in next.positions.keys)
@@ -508,6 +524,84 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _touched = false;
     }
   }
+
+  /// The smallest scale for [layout] in an area of [size] (element 3a, D51): the whole level in it, 24 dp from its
+  /// edges — never above the old floor 0.4, never under [treeMinScaleAtLeast].
+  static double _minScaleFor(TreeLayout layout, Size size) => math
+      .min(
+        (size.width - 48) / layout.spanWidth,
+        (size.height - 48) / layout.spanHeight,
+      )
+      .clamp(treeMinScaleAtLeast, treeMinScaleAtMost);
+
+  /// [_minScale] for the layout and the area now. A view under it comes up to it after the frame — [keep] staying
+  /// where it is on the screen — when a level with fewer people or a new size of the area raised it.
+  void _fitMinScale({int? keep}) {
+    final TreeLayout? layout = _layout;
+    final Size? v = _viewport;
+    if (layout == null || v == null) return;
+    _minScale = _minScaleFor(layout, v);
+    if (_scale >= _minScale - 1e-6) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final Size? size = _viewport;
+      if (!mounted || size == null || _scale >= _minScale - 1e-6) return;
+      // A view on its way somewhere — a new middle, a path's frame — already ends at [_minScale] or over it.
+      if (_viewMove != null || _glide.isAnimating) return;
+      final Offset? p = keep == null ? null : _layout?.positions[keep];
+      _zoomTo(
+        _minScale,
+        p == null
+            ? Offset(size.width / 2, size.height * _middleHeight)
+            : _offset + p * _scale,
+      );
+    });
+  }
+
+  /// The view at [scale] — within [_minScale] and [treeMaxScale] — with the point [at] of the tree's area staying
+  /// where it is; [glide] moves there in 0.35 s, unless the system asks for no animations (SC 2.3.3).
+  void _zoomTo(double scale, Offset at, {bool glide = false}) {
+    final double next = scale.clamp(_minScale, treeMaxScale);
+    if ((next - _scale).abs() < 1e-6) return;
+    final Offset world = (at - _offset) / _scale;
+    // Zoomed out to the end: the whole level, in the middle of the area (element 3a, D51).
+    final Matrix4 target = next <= _minScale + 1e-6
+        ? _wholeView() ?? _matrix(next, at - world * next)
+        : _matrix(next, at - world * next);
+    if (glide && !_noMotion) {
+      _glideTo = Matrix4Tween(begin: _view.value.clone(), end: target);
+      _glide.forward(from: 0);
+    } else {
+      _view.value = target;
+    }
+  }
+
+  /// The whole level at [_minScale], its people's places in the middle of the tree's area — where zooming out ends
+  /// (element 3a, D51). Found on the emulator: zoomed out from "Ja" with −, the tree stood off to one side, a person
+  /// cut at the edge.
+  Matrix4? _wholeView() {
+    final TreeLayout? layout = _layout;
+    final Size? v = _viewport;
+    if (layout == null || v == null || layout.positions.isEmpty) return null;
+    final double half = _metrics.slot / 2;
+    final Iterable<Offset> places = layout.positions.values;
+    final Rect people = Rect.fromLTRB(
+      places.map((p) => p.dx).reduce(math.min) - half,
+      places.map((p) => p.dy).reduce(math.min),
+      places.map((p) => p.dx).reduce(math.max) + half,
+      places.map((p) => p.dy).reduce(math.max) + _metrics.labelBottom,
+    );
+    final double s = _minScale;
+    return _matrix(
+      s,
+      Offset(
+        v.width / 2 - people.center.dx * s,
+        v.height / 2 - people.center.dy * s,
+      ),
+    );
+  }
+
+  /// D52: a person's place on the screen under 24 dp — a touch of the tree zooms in there first.
+  bool get _tinyTargets => _metrics.slot * _scale < treeTargetMin;
 
   /// Where each person of the layout shown stands now — in the middle of a move, between its two ends.
   Map<int, Offset> _positionsNow() {
@@ -563,34 +657,32 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     // All three axes, as InteractiveViewer scales: with z left at 1 its own reading of the scale breaks.
     ..scaleByDouble(scale, scale, scale, 1);
 
-  /// The view with [person] in the middle, at the scale now — or at [scale].
+  /// The view with [person] in the middle, at the scale now — or at [scale]; in presentation, in the middle of
+  /// the screen (element 11, D56), not 42 % down, as there is no card under it.
   Matrix4? _centreOn(int person, [double? scale]) {
     final Size? v = _viewport;
     final Offset? p = _layout?.positions[person];
     if (v == null || p == null) return null;
-    final double s = scale ?? _scale;
+    final double s = math.max(scale ?? _scale, _minScale);
     return _matrix(
       s,
       Offset(
         v.width / 2 - p.dx * s,
-        v.height * _middleHeight - (p.dy + 30) * s,
+        v.height * (_presenting ? 0.5 : _middleHeight) - (p.dy + 30) * s,
       ),
     );
   }
 
-  /// Where the view rests: [person] in the middle — in presentation, the whole level fitted; with a path lit,
-  /// the whole path.
-  Matrix4? _home(int person) => _presenting
-      ? _fitted()
-      : _path != null
-      ? _pathFramed()
-      : _centreOn(person);
+  /// Where the view rests: [person] in the middle at the scale now — in presentation too, which since ISSUE-049
+  /// keeps the phone's scale (D56); with a path lit, the whole path.
+  Matrix4? _home(int person) =>
+      _path != null && !_presenting ? _pathFramed() : _centreOn(person);
 
-  /// F2 (drzewo.md D46): the whole path in the view — under the banner, 24 dp from the other edges, at the scale
-  /// of its level (element 3), or smaller until it fits, never under [pathMinScale]. Measured on the mockup: at
-  /// 100 % text 10 of 105 paths from "Ja" need less than 0.4, down to 0.34. Under 1 the names keep their size on
-  /// the screen (I2), so the frame counts them, not only the people's places — at 200 % the name of "Do" went
-  /// off the screen (ui review of ISSUE-039, MAJOR). A path that would reach under + / − is framed clear of them.
+  /// F2 (drzewo.md D46): the whole path in the view — under the banner, 24 dp from the other edges, at the largest
+  /// scale it fits, at most [pathMaxScale], at least [treeMinScaleAtLeast] (v1.23 — the scale no longer belongs to a
+  /// level; the path may stand under the whole level's scale, as its names keep their size). Under 1 the names keep their size on the screen (I2), so
+  /// the frame counts them, not only the people's places — at 200 % the name of "Do" went off the screen (ui review
+  /// of ISSUE-039, MAJOR). A path that would reach under + / − or the level's label is framed clear of them.
   Matrix4? _pathFramed() {
     final Size? v = _viewport;
     final TreeLayout? layout = _layout;
@@ -616,19 +708,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       people,
       Rect.fromLTRB(margin, top, v.width - margin, v.height - margin),
     );
-    if (!_underZoomButtons(framed, layout, family, people, v)) return framed;
+    if (!_underControls(framed, layout, family, people, v)) return framed;
     return _pathFrame(
       layout,
       family,
       people,
-      Rect.fromLTRB(margin, top, v.width - _zoomColumn, v.height - margin),
+      Rect.fromLTRB(margin, top, v.width - _buttonColumn, v.height - margin),
     );
   }
 
-  /// The column of + / − at the right of the tree: 12 dp from the edge, 48 dp wide, 12 dp more of room.
-  static const double _zoomColumn = 12 + 48 + 12;
+  /// The column of the level's + / − at the right of the tree: 12 dp from the edge, 48 dp wide, 12 dp more of room.
+  static const double _buttonColumn = 12 + 48 + 12;
 
-  /// [people] fitted into [area] at the scale of the level, or under it until they fit (F2).
+  /// [people] fitted into [area] at the largest scale they fit, at most [pathMaxScale] (F2).
   Matrix4 _pathFrame(
     TreeLayout layout,
     FamilyTreeData family,
@@ -660,10 +752,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         ),
       );
     }
-    final ({double low, double high}) range = levelScales(_level);
-    final double s = fit >= range.low
-        ? math.min(fit, range.high)
-        : math.max(pathMinScale, fit);
+    // Under the whole level's scale too, down to the tree's least: that scale counts the people's places, and under 1
+    // the names keep their size (I2), so a path with its names may need a hair less (qa's test, ISSUE-049: "Zdzisław"
+    // 0.4 dp past the margin — the ui review's MAJOR of ISSUE-039 again).
+    final double s = math.max(treeMinScaleAtLeast, math.min(fit, pathMaxScale));
     // Centre what is drawn: across, the same on both sides; down, the places and, under 1, the names.
     final double bottom = math.max(
       _metrics.labelBottom * s,
@@ -682,8 +774,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   double _labelWidth(FamilyTreeData family, int n) =>
       math.min(_nameWidth(_label(family, n)) + 6, _metrics.slot - 8);
 
-  /// Whether a person of the path, with their name, would stand under + / − in [view].
-  bool _underZoomButtons(
+  /// Whether a person of the path, with their name, would stand under the level's + / − in [view].
+  bool _underControls(
     Matrix4 view,
     TreeLayout layout,
     FamilyTreeData family,
@@ -709,81 +801,21 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         _metrics.labelBottom * s,
         s < 1 ? (TreeMetrics.node + 4) * s + nameHeight : 0,
       );
-      if (Rect.fromLTWH(
-        p.dx - width / 2,
-        p.dy,
-        width,
-        height,
-      ).overlaps(buttons)) {
-        return true;
-      }
+      final Rect place = Rect.fromLTWH(p.dx - width / 2, p.dy, width, height);
+      if (place.overlaps(buttons)) return true;
     }
     return false;
   }
 
-  /// Presentation (D4): the whole level in the view, 24 dp from its edges, at a scale within the tree's
-  /// (D17, D18). An axis that does not fit even at the smallest scale — large text, a wide family — keeps
-  /// the person in the middle in the middle; dragging shows the rest.
-  Matrix4? _fitted() {
-    final Size? v = _viewport;
-    final TreeLayout? layout = _layout;
-    if (v == null || layout == null || layout.positions.isEmpty) return null;
-    final double half = _metrics.slot / 2;
-    final Iterable<Offset> places = layout.positions.values;
-    final Rect people = Rect.fromLTRB(
-      places.map((p) => p.dx).reduce(math.min) - half,
-      places.map((p) => p.dy).reduce(math.min),
-      places.map((p) => p.dx).reduce(math.max) + half,
-      places.map((p) => p.dy).reduce(math.max) + _metrics.labelBottom,
-    );
-    const double margin = 24;
-    final double scale = math
-        .min(
-          (v.width - 2 * margin) / people.width,
-          (v.height - 2 * margin) / people.height,
-        )
-        .clamp(treeMinScale, treeMaxScale);
-    final Offset focus = layout.positions[layout.focus]!;
-    // Half a dp of slack: on the axis the scale came from, size × scale is the room itself, and in floating point
-    // it fell a hair over it — the level was then not fitted but put round the middle, cut at one side (seen at
-    // 200 % with Michał in the middle; ui review of ISSUE-038, MAJOR).
-    double along(double room, double size, double start, double focusAt) =>
-        size * scale <= room - 2 * margin + 0.5
-        ? (room - size * scale) / 2 - start * scale
-        : room / 2 - focusAt * scale;
-    return _matrix(
-      scale,
-      Offset(
-        along(v.width, people.width, people.left, focus.dx),
-        along(
-          v.height,
-          people.height,
-          people.top,
-          focus.dy + _metrics.labelBottom / 2,
-        ),
-      ),
-    );
-  }
-
-  /// Every change of the view: the names follow the scale (D1 — I2), and a threshold crossed changes the
-  /// level, the person in the middle kept in place (AC-3) — except in presentation, where level 2 stays at
-  /// whatever scale fits it to the screen (D16).
+  /// Every change of the view: the names follow the scale (D1 — I2). Since ISSUE-049 the scale changes nothing
+  /// else — who is shown is the level's, chosen with its own + / − (element 3a, D51; v1.25, D58).
   void _onView() {
     // Once the view has stood still for a moment — after a fling too — check that the tree is in it.
     _settle?.cancel();
     _settle = Timer(const Duration(milliseconds: 400), _keepInView);
     final double s = _view.value.entry(0, 0);
     if ((s - _scale).abs() < 1e-4) return;
-    final int level = treeLevelAtScale(s);
-    setState(() {
-      _scale = s;
-      // A lit path keeps its level at the scale that frames it, under 0.4 too (D46); zooming ends it first.
-      if (!_presenting && _path == null && level != _level && _layout != null) {
-        _level = level;
-        _relayout(keep: _focus, animate: true);
-        _showPill();
-      }
-    });
+    setState(() => _scale = s);
   }
 
   /// No one on the screen — the tree panned or zoomed out of the view: it glides back to the person in the
@@ -795,6 +827,22 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final int? focus = _focus;
     if (!mounted || layout == null || v == null || focus == null) return;
     if (_move.isAnimating || _glide.isAnimating) return;
+    // Zoomed out to the end with two fingers: the whole level comes to the middle, as with − (element 3a). Not
+    // with a path lit — its own frame may stand at that scale.
+    if (_path == null && _scale <= _minScale + 1e-3) {
+      final Matrix4? whole = _wholeView();
+      if (whole != null &&
+          (Offset(whole.entry(0, 3), whole.entry(1, 3)) - _offset).distance >
+              2) {
+        if (_noMotion) {
+          _view.value = whole;
+        } else {
+          _glideTo = Matrix4Tween(begin: _view.value.clone(), end: whole);
+          _glide.forward(from: 0);
+        }
+      }
+      return;
+    }
     final Rect seen = Rect.fromPoints(
       _view.toScene(Offset.zero),
       _view.toScene(Offset(v.width, v.height)),
@@ -827,14 +875,42 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// The level and its people on the tree in the year shown (D37).
-  void _showPill() {
-    final TreeLayout? layout = _layout;
-    if (layout == null) return;
+  /// The people of the layout shown who are on the tree in the year shown (D37).
+  int get _onTreeCount => _layout?.positions.keys.where(_isOn).length ?? 0;
+
+  /// The level's name and its people on the tree in the year shown (D37), and how many came or went since
+  /// [before] — "Przez 1 związek · 113 osób (+22)" (element 3, D57).
+  void _showPill(int before) {
+    final int now = _onTreeCount;
+    final int change = now - before;
     _flash(
-      'Poziom $_level · ${peopleLabel(layout.positions.keys.where(_isOn).length)}',
-      const Duration(milliseconds: 1500),
+      '${treeLevelName(_level)} ·\u00A0${_peopleCount(now)}'
+      '${change == 0 ? '' : '\u00A0(${change > 0 ? '+' : '−'}${change.abs()})'}',
+      const Duration(milliseconds: 1800),
     );
+  }
+
+  /// How many levels the person in the middle has — one at least (element 3, D57).
+  int get _levels {
+    final TreeGraph? graph = _graph;
+    final int? focus = _focus;
+    if (graph == null || focus == null) return 1;
+    return graph.unionLevelCount(focus);
+  }
+
+  /// + / − (element 3, D58 — v1.25): the next level or the one before. The people come and go around the person in
+  /// the middle, who stays where they are, at the scale they are (D55 — K1); a lit path ends (D49). The pill says the
+  /// level — in presentation too, under the controls: since the label went nothing else names it (D58).
+  void _setLevel(int level) {
+    if (level == _level || level < 1 || level > _levels) return;
+    _endPath();
+    final int before = _onTreeCount;
+    setState(() {
+      treeLevel = level;
+      _relayout(keep: _focus, animate: true);
+      _showPill(before);
+    });
+    _armControls();
   }
 
   // ---- time (element 6; US-010, ISSUE-037) ----
@@ -1040,7 +1116,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _reached = 1;
       _pathRun.value = 0;
       _focus = to;
-      _level = at.level;
+      // Up to the path's level, never down: the level chosen stays chosen (D57).
+      if (at.level > _level) treeLevel = at.level;
       // The banner stands where the level's pill would (D49).
       _pillTimer?.cancel();
       _pillShown = false;
@@ -1101,28 +1178,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// The end of the light (D49): a touch of the tree, back, zooming, ▶, the slider, a person's view, casting.
-  /// "Do" stays in the middle at the level and scale it has; under the tree's smallest scale the view goes back
-  /// to it (F2 — D46), and the people beyond the level go.
+  /// The end of the light (D49): a touch of the tree, back, zooming, a level, ▶, the slider, a person's view,
+  /// casting. "Do" stays in the middle at the level and scale it has (D57 — the scale no longer belongs to a level).
   void _endPath() {
     final TreePath? path = _path;
     if (!_lit) return;
     setState(() {
       _clearPath();
-      if (path == null) return;
-      final int level = treeLevelAtScale(math.max(_scale, treeMinScale));
-      if (level != _level || path.also.isNotEmpty) {
-        _level = level;
-        _relayout(keep: _focus);
-      }
+      if (path != null && path.also.isNotEmpty) _relayout(keep: _focus);
     });
-    if (path != null && _scale < treeMinScale) {
-      final int? focus = _focus;
-      final Matrix4? home = focus == null
-          ? null
-          : _centreOn(focus, treeMinScale);
-      if (home != null) _view.value = home;
-    }
   }
 
   /// The path's state gone, without a build — the caller builds.
@@ -1169,9 +1233,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _casting = false;
   }
 
-  /// Landscape, full screen, level 2 fitted once the screen has turned. The [hint] about casting from the
-  /// quick settings only when the phone had no cast screen to open (D26, AC-2): after that screen the hint
-  /// would only reach the TV.
+  /// Landscape, full screen, the level and the scale of the phone, the person in the middle in the middle of the
+  /// screen once it has turned (D56; until v1.22 level 2 fitted). The [hint] about casting from the quick settings
+  /// only when the phone had no cast screen to open (D26, AC-2): after that screen the hint would only reach the TV.
   void _present({required bool hint}) {
     setState(() {
       _presenting = true;
@@ -1181,11 +1245,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       // The year of the card goes along, as the person in the middle (Z2 — D42). ▶ stops: the system's
       // cast screen came in between, as a person's view stops it (D37).
       _stopPlaying();
-      if (_level != 2) {
-        _level = 2;
-        _relayout(keep: _focus);
-      }
-      // Fitted when the landscape size comes (_treeArea), as a new size before any touch.
+      // Put in the middle when the landscape size comes (_treeArea), as a new size before any touch.
       _centred = false;
       _touched = false;
       _pillShown = false;
@@ -1207,8 +1267,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// "Zakończ prezentację" or back: portrait again, with the bars, the same person in the middle, level 2 at
-  /// the tree's own scale.
+  /// "Zakończ prezentację" or back: portrait again, with the bars, the same person in the middle, the same level
+  /// and scale (D56; until v1.22 level 2 at the scale 1).
   void _leave() {
     _controlsTimer?.cancel();
     _todayTimer?.cancel();
@@ -1218,7 +1278,6 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _sliding = false;
       _todayShown = false;
       _pillShown = false;
-      _scale = 1;
       final int? focus = _focus;
       final Matrix4? home = focus == null ? null : _centreOn(focus);
       if (home != null) _view.value = home;
@@ -1262,19 +1321,16 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _armControls();
   }
 
-  /// + / − and the double tap: the point [at] of the tree's area stays where it is.
+  /// The double tap: the point [at] of the tree's area stays where it is.
   void _zoom(double factor, Offset at) {
     _endPath();
-    final double next = (_scale * factor).clamp(treeMinScale, treeMaxScale);
-    if ((next - _scale).abs() < 1e-6) return;
-    final Offset world = (at - _offset) / _scale;
-    _view.value = _matrix(next, at - world * next);
+    _zoomTo(_scale * factor, at);
   }
 
-  void _zoomButton(double factor) {
-    final Size? v = _viewport;
-    if (v == null) return;
-    _zoom(factor, Offset(v.width / 2, v.height * _middleHeight));
+  /// D52: under 24 dp a touch zooms in at [at] to [treeTapZoomScale], gliding, and chooses no one.
+  void _zoomIn(Offset at) {
+    _endPath();
+    _zoomTo(math.max(treeTapZoomScale, _scale), at, glide: true);
   }
 
   void _tap(int person) {
@@ -1283,9 +1339,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _endPath();
       return;
     }
+    // A place under 24 dp: the touch zooms in to the person first (D52; style-b.md v1.44).
+    final Offset? at = _layout?.positions[person];
+    if (_tinyTargets && at != null) {
+      _zoomIn(_offset + (at + const Offset(0, TreeMetrics.node / 2)) * _scale);
+      return;
+    }
     if (person == _focus) {
       // In presentation the person in the middle does not open their view — in portrait, it would end the
-      // show (D5); the level is fitted anew, as after any touch of a person (element 11).
+      // show (D5); the view glides back to them at the scale it has (element 11, D56).
       _presenting ? _glideHome(person) : _open(person);
       return;
     }
@@ -1356,9 +1418,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _endPath();
       return;
     }
-    // In presentation the level stays (D16): a tap on the empty space shows the controls or hides them (D40).
+    // In presentation a tap on the empty space shows the controls or hides them (D40), even with the tree small.
     if (_presenting) {
       _toggleControls();
+      return;
+    }
+    // A place under 24 dp: a touch of the empty space zooms in there too (D52).
+    if (_tinyTargets) {
+      _lastTap = null;
+      _zoomIn(e.localPosition);
       return;
     }
     final ({Offset at, Duration time})? last = _lastTap;
@@ -1605,7 +1673,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         if (_viewport != null && _viewport != size && !_touched) {
           _centred = false;
         }
+        final bool resized = _viewport != size;
         _viewport = size;
+        // The smallest scale belongs to the area too: landscape in presentation, a card growing with the text.
+        if (resized) _fitMinScale(keep: _focus);
         if (!_centred) {
           _centred = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1628,12 +1699,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           Positioned.fill(
             child: map ? _mapView(family) : _treeView(family, layout),
           ),
+          // Element 3 (D58): the level's + / − in the corner where + / − zoomed until v1.24.
           if (!_presenting && !map)
-            Positioned(right: 12, bottom: 12, child: _zoomButtons()),
+            Positioned(right: 12, bottom: 12, child: _levelButtons()),
           // In immersive sticky mode the system's swipe from the edge, which shows the bars for a moment,
           // reaches the app too: it dragged the tree away (found on the emulator) — from the top and the
           // bottom, and from the side where a three-button navigation bar stands in landscape. Along every
-          // edge the tree takes no touch; the fitted level keeps 24 dp from them anyway (D4; drzewo.md D25).
+          // edge the tree takes no touch; a person under one is reached by dragging (D4; drzewo.md D25).
           if (_presenting)
             for (final Alignment edge in const [
               Alignment.topCenter,
@@ -1663,7 +1735,16 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               ),
             ),
           if (!map) ...[
-            Positioned(top: 10, left: 16, right: 16, child: _levelPill()),
+            // In presentation under the top row of the controls — 48 dp at any text size — which a level's change
+            // from the bar has shown (D58).
+            // Clear of the year in the corner on both sides, as the controls' switch: on a narrow phone held sideways a
+            // long pill reached under the year (ui review of ISSUE-049, round 2, MINOR).
+            Positioned(
+              top: _presenting && _controlsShown ? 12 + 48 + 8 : 10,
+              left: _presenting ? PresentationYear.right(context) + 12 : 16,
+              right: _presenting ? PresentationYear.right(context) + 12 : 16,
+              child: _levelPill(),
+            ),
             // Elements 9 and 10: where the pill stands, which does not show with them (D49).
             Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
           ],
@@ -1676,23 +1757,41 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 bottom: PresentationBar.margin,
                 child: RepaintBoundary(
                   child: PresentationBar(
-                    child: TreeTimeBar(
-                      start: time.start,
-                      now: time.now,
-                      year: _year,
-                      playing: _playing,
-                      onPlay: () {
-                        _togglePlay();
-                        _armControls();
-                      },
-                      onYear: (year) {
-                        _chooseYear(year);
-                        _armControls();
-                      },
-                      tempo: treeTempo,
-                      onTempo: _nextTempo,
-                      oneRow: true,
-                      onSlide: _slide,
+                    child: LayoutBuilder(
+                      builder: (context, bar) => Row(
+                        children: [
+                          Expanded(
+                            child: TreeTimeBar(
+                              start: time.start,
+                              now: time.now,
+                              year: _year,
+                              playing: _playing,
+                              onPlay: () {
+                                _togglePlay();
+                                _armControls();
+                              },
+                              onYear: (year) {
+                                _chooseYear(year);
+                                _armControls();
+                              },
+                              tempo: treeTempo,
+                              onTempo: _nextTempo,
+                              oneRow: true,
+                              onSlide: _slide,
+                            ),
+                          ),
+                          // T2 (D56): the level's − / + on the bar (v1.25, D58 — the label and the zoom went), on the tree's
+                          // part only — the map has no levels. Only on a bar of a phone held sideways (from 560 dp): a reader's
+                          // controls come before the phone has turned, and at 302 dp the time row had no room left (qa's
+                          // test, ISSUE-049).
+                          if (!map && bar.maxWidth >= 560) ...[
+                            const SizedBox(width: 8),
+                            _nearer(onBar: true),
+                            const SizedBox(width: 4),
+                            _further(onBar: true),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1779,22 +1878,22 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         transformationController: _view,
         constrained: false,
         boundaryMargin: const EdgeInsets.all(double.infinity),
-        minScale: treeMinScale,
+        minScale: _minScale,
         maxScale: treeMaxScale,
-        // In presentation dragging moves, but the level stays: no pinch (D16).
-        scaleEnabled: !_presenting,
+        // Two fingers zoom in presentation too (AC-4 ISSUE-049, D56; until v1.22 no pinch — D16).
+        scaleEnabled: true,
         // Two fingers end a lit path (D49); one drags it into view and keeps it.
         onInteractionUpdate: (details) {
           if (details.pointerCount > 1 && _path != null) _endPath();
         },
-        child: _world(layout, nodes),
+        child: _world(layout, nodes, named),
       ),
     );
   }
 
   /// The tree's own plane: the lines under the people. During a move the people slide and the lines wait,
   /// then fade in — no line is measured anew in each frame (SPIKE-002 M3).
-  Widget _world(TreeLayout layout, Map<int, Widget> nodes) {
+  Widget _world(TreeLayout layout, Map<int, Widget> nodes, Set<int> named) {
     final double half = _metrics.slot / 2;
     return SizedBox(
       width: layout.width,
@@ -1838,14 +1937,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 builder: (context, _) {
                   final double t = Curves.easeInOut.transform(_move.value);
                   final double pad = _tapPad;
+                  // Keyed: a person moves between the groups (a name shown, hidden), and the photo keeps its state.
                   Widget place(int person, Offset at, Widget child) =>
                       Positioned(
+                        key: ValueKey<int>(person),
                         left: at.dx - half,
                         top: at.dy - pad,
                         width: _metrics.slot,
                         child: child,
                       );
+                  // The people whose names show go last, over their neighbours: zoomed far out a name is wider than
+                  // several circles, and the circles drawn after it cut its letters (found on the emulator, ISSUE-049).
                   final List<Widget> steady = [],
+                      steadyNamed = [],
                       entering = [],
                       bornNow = [],
                       goneNow = [];
@@ -1873,7 +1977,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                             ? (dim ? enteringDim : entering)
                             : _fadingIn.contains(e.key)
                             ? (dim ? bornNowDim : bornNow)
-                            : (dim ? steadyDim : steady))
+                            : (dim
+                                  ? steadyDim
+                                  : named.contains(e.key)
+                                  ? steadyNamed
+                                  : steady))
                         .add(place(e.key, at, node));
                   }
                   Widget dimmed(List<Widget> group, double opacity) =>
@@ -1940,6 +2048,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                         ),
                       if (steadyDim.isNotEmpty) dimmed(steadyDim, 1),
                       ...steady,
+                      ...steadyNamed,
                       if (enteringDim.isNotEmpty) dimmed(enteringDim, t),
                       if (entering.isNotEmpty)
                         Positioned.fill(
@@ -2039,12 +2148,15 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
             ?kin,
           ].join(', ') +
           (ring ? ' — przed narodzinami' : ''),
-      // In presentation the person in the middle opens nothing (D5): no hint, the touch only fits the level anew.
-      // With a path lit a touch only ends it (D49) — the reader hears that (ui review of ISSUE-039).
+      // In presentation the person in the middle opens nothing (D5): no hint, the touch only brings them back to the
+      // middle. With a path lit a touch only ends it (D49) — the reader hears that (ui review of ISSUE-039). A place
+      // under 24 dp only zooms in (D52).
       hint: ring
           ? null
           : _path != null
           ? 'zakończ ścieżkę'
+          : _tinyTargets
+          ? 'przybliż'
           : n != layout.focus
           ? 'w środek'
           : _presenting
@@ -2101,21 +2213,26 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     return width;
   }();
 
-  Widget _zoomButtons() => Column(
+  /// The level's + above − (element 3, D58).
+  Widget _levelButtons() => Column(
     mainAxisSize: MainAxisSize.min,
-    children: [
-      _ZoomButton(
-        icon: Glyphs.add,
-        tooltip: 'Przybliż — bliższa rodzina',
-        onPressed: () => _zoomButton(treeZoomStep),
-      ),
-      const SizedBox(height: 8),
-      _ZoomButton(
-        icon: Glyphs.remove,
-        tooltip: 'Oddal — dalsza rodzina',
-        onPressed: () => _zoomButton(1 / treeZoomStep),
-      ),
-    ],
+    children: [_further(), const SizedBox(height: 8), _nearer()],
+  );
+
+  /// + — the next level, further family; off at the last level of the person in the middle.
+  Widget _further({bool onBar = false}) => _RoundButton(
+    icon: Glyphs.add,
+    tooltip: 'Dalsza rodzina',
+    onPressed: _level < _levels ? () => _setLevel(_level + 1) : null,
+    onBar: onBar,
+  );
+
+  /// − — the level before, nearer family; off at "Linia krwi".
+  Widget _nearer({bool onBar = false}) => _RoundButton(
+    icon: Glyphs.remove,
+    tooltip: 'Bliższa rodzina',
+    onPressed: _level > 1 ? () => _setLevel(_level - 1) : null,
+    onBar: onBar,
   );
 
   /// Elements 9 and 10 for a while at the top of the tree. A live region, as the pill: the reader says it once it
@@ -2139,7 +2256,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// "Poziom 3 · 66 osób" for a moment after a change of level; a screen reader hears the same (element 3).
+  /// "Przez 1 związek · 113 osób (+22)" for a moment after a change of level, in presentation too (D58); a screen
+  /// reader hears the same (element 3, D57).
   /// In presentation, the hint about casting from the quick settings — only on a phone without the system's
   /// cast screen (element 11, D26, D30).
   Widget _levelPill() => IgnorePointer(
@@ -2159,6 +2277,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               child: Text(
                 _pill,
                 textAlign: TextAlign.center,
+                // In two lines as wide as the longer, not the whole row (ui review of ISSUE-049, round 2, MINOR).
+                textWidthBasis: TextWidthBasis.longestLine,
                 style: const TextStyle(color: GrobingColors.text, fontSize: 13),
               ),
             ),
@@ -2462,33 +2582,61 @@ class _CandleBadge extends StatelessWidget {
   );
 }
 
-/// + and − (element 3): one touch instead of two fingers (SC 2.5.1), 48 dp, the surface with an outline.
-class _ZoomButton extends StatelessWidget {
-  const _ZoomButton({
+/// The level's + and − (element 3, D58 — v1.25; until v1.24 they zoomed, element 3a): 48 dp, the surface with an
+/// outline. On the presentation's bar (element 11, D56), which is the surface: 44 dp in the background's colour, in a
+/// 48 dp target. Off at the first and the last level ([onPressed] null): no outline and the icon in the muted text's
+/// colour, as an inactive tab (style-b.md *Token roles*) — the shape says it too, not the colour alone (SC 1.4.1) — and
+/// a reader hears it is off.
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.onBar = false,
   });
 
   final Glyph icon;
   final String tooltip;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool onBar;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: Material(
-      color: GrobingColors.surface,
-      shape: const CircleBorder(side: BorderSide(color: GrobingColors.outline)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: onPressed != null,
+    label: tooltip,
+    onTap: onPressed,
+    excludeSemantics: true,
+    child: Tooltip(
+      message: tooltip,
+      // The 2 dp around the bar's 44 dp circle take the touch too: the target is 48 dp, and a circle clipped to itself
+      // took only its own (ui review of ISSUE-049, round 2, MINOR).
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onPressed,
-        child: SizedBox.square(
-          dimension: 48,
-          child: GrobingIcon(
-            icon,
-            color: GrobingColors.text,
-            applyTextScaling: false,
+        child: Padding(
+          padding: EdgeInsets.all(onBar ? 2 : 0),
+          child: Material(
+            color: onBar ? GrobingColors.background : GrobingColors.surface,
+            shape: CircleBorder(
+              side: onPressed == null
+                  ? BorderSide.none
+                  : const BorderSide(color: GrobingColors.outline),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              child: SizedBox.square(
+                dimension: onBar ? 44 : 48,
+                child: GrobingIcon(
+                  icon,
+                  color: onPressed == null
+                      ? GrobingColors.textMuted
+                      : GrobingColors.text,
+                  applyTextScaling: false,
+                ),
+              ),
+            ),
           ),
         ),
       ),

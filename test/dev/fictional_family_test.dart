@@ -13,6 +13,8 @@ import 'package:grobing/dev/fictional_family.dart';
 // "razem" (one later married). Surnames from the invented stems only (family-data.md, retro 3 R7).
 // ISSUE-039 D4 — one more person with no family at all, for "Te osoby nie łączą się" (drzewo.md element 10):
 // 107 people, 32 dead, 40 without parents; the family from "Ja" the same 106.
+// ISSUE-049 — 10 more, all living, the families the levels by unions reach (drzewo.md D50, AC-2, AC-3): 117 people,
+// 42 unions, 44 without parents; the family from "Ja" 116, its levels 91 → 113 → 116.
 
 const List<String> _stems = ['Wymyśl', 'Zmyśl', 'Testow', 'Przykład'];
 
@@ -26,17 +28,17 @@ void main() {
     expect(await addFictionalFamily(db), isTrue);
     final FamilyTreeData family = await loadFamilyTree(db);
 
-    expect(family.people, hasLength(107));
-    expect(family.unions, hasLength(38));
+    expect(family.people, hasLength(117));
+    expect(family.unions, hasLength(42));
     expect(family.people.values.where((p) => p.dead), hasLength(32));
     final Set<int> children = {
       for (final TreeUnion u in family.unions) ...u.children,
     };
     expect(
       family.people.keys.where((id) => !children.contains(id)),
-      hasLength(40),
+      hasLength(44),
     );
-    // ISSUE-039 D4: Teofil Przykładowski — no parents, no unions; the family from "Ja" stays 106 people.
+    // ISSUE-039 D4: Teofil Przykładowski — no parents, no unions; the family from "Ja" is everyone else.
     final Set<int> inUnions = {
       for (final TreeUnion u in family.unions) ...u.partners,
     };
@@ -48,7 +50,14 @@ void main() {
       [for (final p in alone) (p.givenNames, p.surname)],
       [('Teofil', 'Przykładowski')],
     );
-    expect(TreeGraph(family).levelsFrom(family.meId!, 99), hasLength(106));
+    expect(TreeGraph(family).levelsFrom(family.meId!, 99), hasLength(116));
+    expect(
+      [
+        for (int k = 1; k <= 3; k++)
+          TreeGraph(family).unionLevelSize(family.meId!, k),
+      ],
+      [91, 113, 116],
+    );
     final Map<int, int> unionsOf = {};
     for (final TreeUnion u in family.unions) {
       for (final int p in u.partners) {
@@ -85,7 +94,7 @@ void main() {
     expect(together, hasLength(2));
     expect(family.unions.where((u) => !u.married), hasLength(1));
     // Six generations from "Ja" with everyone shown.
-    expect(layoutTree(TreeGraph(family), family.meId!, 5).generations, 6);
+    expect(layoutTree(TreeGraph(family), family.meId!, 3).generations, 6);
   });
 
   test('surnames only from the invented stems', () async {
@@ -111,7 +120,7 @@ void main() {
     expect((ja.givenNames, ja.surname), ('Mateusz', 'Wymyślony'));
 
     expect(await addFictionalFamily(db), isFalse);
-    expect(await db.select(db.persons).get(), hasLength(107));
+    expect(await db.select(db.persons).get(), hasLength(117));
   });
 
   test('a "ja" already chosen stays', () async {

@@ -22,9 +22,6 @@ const Duration pathStepTime = Duration(milliseconds: 700);
 /// action takes "Czas na działanie" the same way).
 const Duration pathBannerTime = Duration(seconds: 4);
 
-/// The smallest scale a whole path may need (F2 — D46): under the tree's own 0.4, only while it is lit.
-const double pathMinScale = 0.15;
-
 /// The people, lines and traces off the path while it is lit (element 8): one layer for each group, never an
 /// opacity on each person (ISSUE-037 — a layer each, in every frame).
 const double pathDim = 0.3;
@@ -34,8 +31,8 @@ const double pathDim = 0.3;
 const String noPathText =
     'Te osoby nie łączą się — w drzewie brakuje rodziny między nimi.';
 
-/// A path lit on the tree: from [from] to [to] through [steps] (`KinGraph.path`), with [also] — its people
-/// beyond level 4, laid out besides the level (element 8, D49).
+/// A path lit on the tree: from [from] to [to] through [steps] (`KinGraph.path`), with [also] — people laid out
+/// besides the level (element 8, D49); since ISSUE-049 none, as every person of a path has a level (pathLevel).
 class TreePath {
   TreePath({
     required this.from,
@@ -55,35 +52,23 @@ class TreePath {
   late final Set<int> members = people.toSet();
 }
 
-/// The lowest level from [focus] that shows all of [people] (drzewo.md element 8, D49); past level 4, level 4
-/// and the people of the path it lacks.
+/// The lowest level from [focus] that shows all of [people] (drzewo.md element 8, D49): the highest of their
+/// levels ([TreeGraph.unionLevels], D50). People of one path are joined by the family, so each has a level and
+/// nothing is laid out besides it ([also] stays empty since ISSUE-049). The screen goes up to it, never down (D57).
 ({int level, Set<int> also}) pathLevel(
   TreeGraph graph,
   int focus,
   List<int> people,
 ) {
-  for (int level = 1; level <= 4; level++) {
-    final Map<int, int> shown = graph.levelsFrom(focus, level);
-    if (people.every(shown.containsKey)) return (level: level, also: const {});
-  }
-  final Map<int, int> shown = graph.levelsFrom(focus, 4);
+  final Map<int, int> levels = graph.unionLevels(focus);
   return (
-    level: 4,
-    also: {
-      for (final int n in people)
-        if (!shown.containsKey(n)) n,
-    },
+    level: people.fold(1, (top, n) => math.max(top, levels[n] ?? 1)),
+    also: const {},
   );
 }
 
-/// The scales of a level (element 3, S2 — D18), for the path's frame: level 1 from 1.3, 2 — 0.85 to 1.3,
-/// 3 — 0.55 to 0.85, 4 — 0.4 to 0.55. The frame takes no more than 1.3: a short path is not zoomed in on.
-({double low, double high}) levelScales(int level) => switch (level) {
-  1 => (low: 1.3, high: 1.3),
-  2 => (low: 0.85, high: 1.299),
-  3 => (low: 0.55, high: 0.849),
-  _ => (low: 0.4, high: 0.549),
-};
+/// The largest scale of a path's frame (F2 — D46, v1.17): a short path is not zoomed in on past it.
+const double pathMaxScale = 1.3;
 
 /// What the banner says (elements 9, 10): from "ja" — one line, the card's own name in the author's voice
 /// (G2 — D28); from someone else — "Od → Do" over the name without "mój" (O2 — D47); nothing between them —

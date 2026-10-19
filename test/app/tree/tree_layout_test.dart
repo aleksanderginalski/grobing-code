@@ -9,9 +9,10 @@ import 'package:grobing/data/kinship.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
 // ISSUE-033 — the tree's layout (05_DESIGN/drzewo.md elements 3 and 4): US-009 AC-1 "Ja" in the middle with
-// the family by generation and the partner's family to one side; AC-3 the levels of D2; AC-4 the trace of the
-// family beyond the view. The port of SPIKE-002's mockup gives its numbers (Findings M1) on the same made-up
-// family. Made-up people only (family-data.md).
+// the family by generation and the partner's family to one side; AC-4 the trace of the family beyond the view.
+// ISSUE-049 — the levels by unions (D50, M2): blood costs nothing, every union a level (AC-2, AC-3); the steps of
+// the family (D2 until v1.22) stay for the order of the layout and of the names. The port of the mockups gives
+// their numbers on the same made-up family. Made-up people only (family-data.md).
 
 void main() {
   late FamilyTreeData family;
@@ -33,24 +34,102 @@ void main() {
   });
 
   test(
-    'AC-3 — the levels from "Ja" and the layout are SPIKE-002 M1, number for number',
+    'ISSUE-049 AC-2, AC-3 (D50, M2) — the levels by unions from "Ja": the blood with its husbands, wives and '
+    'partners; their families a level up; the layout as drzewo-049.html measured it',
     () {
-      final List<(int, int, int, int)> expected = [
-        // people, generations, width (dp), crossings
-        (6, 3, 212, 0),
-        (20, 4, 864, 0),
-        (66, 5, 1960, 6),
-        (99, 6, 2663, 9),
-        (106, 6, 2960, 10),
+      Set<String> at(int level) => {
+        for (final MapEntry<int, int> e in graph.unionLevels(ja).entries)
+          if (e.value == level)
+            '${family.people[e.key]!.givenNames} ${family.people[e.key]!.surname}',
+      };
+      // AC-2: the brother, his son and his partner; not her parents — they come at level 2.
+      for (final String who in [
+        'Michał Wymyślony',
+        'Leon Wymyślony',
+        'Natalia Zmyślewicz',
+        'Kasia Wymyślona',
+        'Bartosz Testowicz',
+        'Józef Wymyślony',
+        'Henryk Zmyślony',
+        'Antoni Wymyślony',
+      ]) {
+        expect(at(1), contains(who), reason: who);
+      }
+      expect(
+        at(2),
+        containsAll([
+          'Zbigniew Zmyślewicz',
+          'Alicja Zmyślewicz',
+          'Patrycja Przykładniak',
+          'Piotr Przykładowy',
+        ]),
+      );
+      // M2: the husband of Natalia's sister is an end at level 2 — his parents and brother come at level 3 (AC-3).
+      expect(at(2), contains('Konrad Przykładniak'));
+      expect(at(3), {
+        'Ryszard Przykładniak',
+        'Dorota Przykładniak',
+        'Olaf Przykładniak',
+      });
+      expect(graph.unionLevelCount(ja), 3);
+      expect(
+        [for (int k = 1; k <= 3; k++) graph.unionLevelSize(ja, k)],
+        [91, 113, 116],
+      );
+
+      final List<(int, int, int)> expected = [
+        // people, width (dp), crossings — drzewo-049.html, the same algorithm at 80 dp a place
+        (91, 2568, 3),
+        (113, 3153, 14),
+        (116, 3320, 26),
       ];
-      for (int level = 1; level <= 5; level++) {
+      for (int level = 1; level <= 3; level++) {
         final TreeLayout l = layoutTree(graph, ja, level);
         expect(
-          (l.count, l.generations, l.spanWidth.round(), l.crossings),
+          (l.count, l.spanWidth.round(), l.crossings),
           expected[level - 1],
           reason: 'level $level',
         );
       }
+    },
+  );
+
+  test(
+    'ISSUE-049 (D50) — the blood is up then down: ancestors, their descendants, half-siblings; not a partner; a person '
+    'alone has one level; Teofil, with no family, is no one\'s level',
+    () {
+      final Set<int> blood = graph.bloodOf(ja);
+      for (final String who in [
+        'Antoni Wymyślony', // a great-great-grandfather
+        'Agata Zmyślik', // a cousin of the mother
+        'Zdzisław Wymyślewicz', // the grandmother's half-brother
+        'Mateusz Wymyślony',
+      ]) {
+        expect(blood, contains(id[who]), reason: who);
+      }
+      for (final String who in [
+        'Kasia Wymyślona',
+        'Natalia Zmyślewicz',
+        'Tadeusz Wymyślewicz',
+      ]) {
+        expect(blood, isNot(contains(id[who])), reason: who);
+      }
+      final int teofil = id['Teofil Przykładowski']!;
+      expect(graph.unionLevels(teofil), {teofil: 1});
+      expect(graph.unionLevelCount(teofil), 1);
+      expect(graph.unionLevels(ja).containsKey(teofil), isFalse);
+      // Everyone else joins "Ja": 116 of the 117.
+      expect(graph.unionLevels(ja), hasLength(family.people.length - 1));
+    },
+  );
+
+  test(
+    'D57 — the steps of the family (D2 until v1.22) keep their numbers: they order the layout and the names',
+    () {
+      expect(
+        [for (int k = 1; k <= 6; k++) graph.levelsFrom(ja, k).length],
+        [6, 20, 66, 104, 113, 116],
+      );
     },
   );
 
@@ -105,45 +184,46 @@ void main() {
     },
   );
 
-  test(
-    'AC-4 — the trace: up, down and sideways where the family goes on; none with everyone shown',
-    () {
-      List<Offset> trace(TreeLayout l, TreeLineKind kind) =>
-          l.lines.singleWhere((lines) => lines.kind == kind).points;
-      final TreeLayout one = layoutTree(graph, ja, 1);
-      final Offset father = one.positions[id['Marek Wymyślony']]!;
-      final List<Offset> upDown = trace(one, TreeLineKind.traceParentChild);
-      // Marek's parents are beyond level 1: a short line up from his node, 14 dp.
-      expect(
-        upDown,
-        containsAllInOrder([
-          Offset(father.dx, father.dy - 2),
-          Offset(father.dx, father.dy - 16),
-        ]),
-      );
-      // At level 2 the brother's partner is beyond the view: a short line sideways from his node, 14 dp,
-      // away from the middle — he stands left of "Ja", so to the left (ui review of ISSUE-033).
-      final TreeLayout two = layoutTree(graph, ja, 2);
-      final Offset brother = two.positions[id['Michał Wymyślony']]!;
-      expect(brother.dx, lessThan(two.positions[ja]!.dx));
-      expect(
-        trace(two, TreeLineKind.tracePartner),
-        containsAllInOrder([
-          Offset(brother.dx - 22, brother.dy + 22),
-          Offset(brother.dx - 36, brother.dy + 22),
-        ]),
-      );
+  test('AC-4 — the trace: up where the family goes on beyond the level; sideways to a partner beyond it; none with '
+      'everyone shown', () {
+    List<Offset> trace(TreeLayout l, TreeLineKind kind) =>
+        l.lines.singleWhere((lines) => lines.kind == kind).points;
+    final TreeLayout one = layoutTree(graph, ja, 1);
+    // Kasia's parents come at level 2 (D50): a short line up from her node, 14 dp.
+    final Offset wife = one.positions[id['Kasia Wymyślona']]!;
+    expect(
+      trace(one, TreeLineKind.traceParentChild),
+      containsAllInOrder([
+        Offset(wife.dx, wife.dy - 2),
+        Offset(wife.dx, wife.dy - 16),
+      ]),
+    );
+    // From Tadeusz, Genowefa's second husband: she is his wife on level 1, her first husband Władysław comes
+    // at level 2 — a short line sideways from her node, away from the middle (ui review of ISSUE-033).
+    final int tadeusz = id['Tadeusz Wymyślewicz']!;
+    final TreeLayout fromTadeusz = layoutTree(graph, tadeusz, 1);
+    final Offset genowefa = fromTadeusz.positions[id['Genowefa Wymyślewicz']]!;
+    final double away = genowefa.dx < fromTadeusz.positions[tadeusz]!.dx
+        ? -1
+        : 1;
+    expect(
+      trace(fromTadeusz, TreeLineKind.tracePartner),
+      containsAllInOrder([
+        Offset(genowefa.dx + away * 22, genowefa.dy + 22),
+        Offset(genowefa.dx + away * 36, genowefa.dy + 22),
+      ]),
+    );
 
-      final TreeLayout all = layoutTree(graph, ja, 5);
-      expect(trace(all, TreeLineKind.traceParentChild), isEmpty);
-      expect(trace(all, TreeLineKind.tracePartner), isEmpty);
-    },
-  );
+    final TreeLayout all = layoutTree(graph, ja, 3);
+    expect(trace(all, TreeLineKind.traceParentChild), isEmpty);
+    expect(trace(all, TreeLineKind.tracePartner), isEmpty);
+  });
 
   // ---- ISSUE-039 — "Połącz dwie osoby" (drzewo.md element 8, D49) ----
 
   test(
-    'the lowest level that shows the whole path from "Do": Ja → Wanda at level 3',
+    'the lowest level that shows the whole path from "Do": Ja → Wanda at level 1 — Kasia is her great-granddaughter, '
+    '"Ja" Kasia\'s husband (D50; at level 3 by the steps of D2 until v1.22)',
     () {
       final int wanda = id['Wanda Przykładowa']!;
       final List<KinStep> steps = family.kin.path(ja, wanda)!;
@@ -153,18 +233,16 @@ void main() {
         ['Mateusz', 'Kasia', 'Piotr', 'Wanda'],
       );
       final ({int level, Set<int> also}) at = pathLevel(graph, wanda, people);
-      expect(at.level, 3);
+      expect(at.level, 1);
       expect(at.also, isEmpty);
-      expect(people.every(graph.levelsFrom(wanda, 3).containsKey), isTrue);
-      expect(people.every(graph.levelsFrom(wanda, 2).containsKey), isFalse);
     },
   );
 
   test(
-    'a path beyond level 4: level 4 and the people it lacks, laid out besides (also)',
+    'ISSUE-049 AC-5 — every path from "Ja" has its level and nothing laid out besides it: the highest level of its '
+    'people, from "Do"',
     () {
-      // From "Ja" to everyone: the paths whose people level 4 from "Do" does not hold all.
-      int found = 0;
+      final Map<int, int> levels = {};
       for (final int to in family.people.keys) {
         if (to == ja) continue;
         final List<KinStep>? steps = family.kin.path(ja, to);
@@ -174,19 +252,31 @@ void main() {
           for (final KinStep s in steps) s.personId,
         ];
         final ({int level, Set<int> also}) at = pathLevel(graph, to, people);
-        if (at.also.isEmpty) continue;
-        found++;
-        expect(at.level, 4);
-        final TreeLayout l = layoutTree(graph, to, 4, also: at.also);
+        expect(at.also, isEmpty, reason: 'path to $to');
+        final TreeLayout l = layoutTree(graph, to, at.level);
         expect(
           people.every(l.positions.containsKey),
           isTrue,
           reason: 'path to $to',
         );
-        expect(l.count, graph.levelsFrom(to, 4).length + at.also.length);
+        if (at.level > 1) {
+          final TreeLayout lower = layoutTree(graph, to, at.level - 1);
+          expect(
+            people.every(lower.positions.containsKey),
+            isFalse,
+            reason: 'path to $to, one level lower',
+          );
+        }
+        levels[at.level] = (levels[at.level] ?? 0) + 1;
       }
-      // The mockup measured 9 of the 105 (drzewo.md → Candidates — ISSUE-039 → Pomiar, W2).
-      expect(found, 9);
+      // Ja → Ryszard Przykładniak, the father-in-law of Natalia's sister: level 3 from him (drzewo-049.html).
+      final int ryszard = id['Ryszard Przykładniak']!;
+      final List<int> toRyszard = [
+        ja,
+        for (final KinStep s in family.kin.path(ja, ryszard)!) s.personId,
+      ];
+      expect(pathLevel(graph, ryszard, toRyszard).level, 3);
+      expect(levels.values.fold(0, (a, b) => a + b), 115);
     },
   );
 
@@ -288,45 +378,59 @@ void main() {
             },
           );
       const TreeMetrics wide = TreeMetrics(slot: 96, wreaths: true);
-      final int marek = id['Marek Wymyślony']!;
-      final int michal = id['Michał Wymyślony']!;
+      // From Tadeusz, Genowefa — his wife — has her first husband beyond level 1 (D50): the trace sideways.
+      final int tadeusz = id['Tadeusz Wymyślewicz']!;
+      final int genowefa = id['Genowefa Wymyślewicz']!;
 
-      // Marek's line: his son Michał wears it.
       final TreeLayout wreathed = layoutTree(
-        TreeGraph(withChoices({marek: const WreathChoice.clan(1)})),
-        ja,
-        2,
+        TreeGraph(withChoices({genowefa: const WreathChoice.clan(1)})),
+        tadeusz,
+        1,
         metrics: wide,
       );
-      final Offset brother = wreathed.positions[michal]!;
+      final Offset her = wreathed.positions[genowefa]!;
+      final double away = her.dx < wreathed.positions[tadeusz]!.dx ? -1 : 1;
       expect(
         trace(wreathed),
         containsAllInOrder([
-          Offset(brother.dx - 43, brother.dy + 22),
-          Offset(brother.dx - 57, brother.dy + 22),
+          Offset(her.dx + away * 43, her.dy + 22),
+          Offset(her.dx + away * 57, her.dy + 22),
         ]),
       );
 
-      // "Bez wieńca" at Michał, the others with Marek's line: his trace at his circle again.
+      // Without a wreath: the trace at her circle again.
       final TreeLayout bare = layoutTree(
-        TreeGraph(
-          withChoices({
-            marek: const WreathChoice.clan(1),
-            michal: const WreathChoice.none(),
-          }),
-        ),
-        ja,
-        2,
+        TreeGraph(withChoices(const {})),
+        tadeusz,
+        1,
         metrics: wide,
       );
-      final Offset bareBrother = bare.positions[michal]!;
+      final Offset bareHer = bare.positions[genowefa]!;
+      final double bareAway = bareHer.dx < bare.positions[tadeusz]!.dx ? -1 : 1;
       expect(
         trace(bare),
         containsAllInOrder([
-          Offset(bareBrother.dx - 22, bareBrother.dy + 22),
-          Offset(bareBrother.dx - 36, bareBrother.dy + 22),
+          Offset(bareHer.dx + bareAway * 22, bareHer.dy + 22),
+          Offset(bareHer.dx + bareAway * 36, bareHer.dy + 22),
         ]),
       );
+    },
+  );
+
+  test(
+    'ISSUE-049 (D50) — a cycle in the data does not hang the levels by unions either',
+    () {
+      const TreePerson a = TreePerson(id: 1, givenNames: 'Adam');
+      const TreePerson b = TreePerson(id: 2, givenNames: 'Beata');
+      final FamilyTreeData looped = FamilyTreeData(
+        people: {1: a, 2: b},
+        unions: const [
+          TreeUnion(familyId: 1, partners: [1, 2], children: [2]),
+        ],
+      );
+      final TreeGraph g = TreeGraph(looped);
+      expect(g.unionLevels(1), {1: 1, 2: 1});
+      expect(layoutTree(g, 1, 1).count, 2);
     },
   );
 }

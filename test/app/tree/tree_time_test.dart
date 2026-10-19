@@ -193,48 +193,48 @@ void main() {
     },
   );
 
-  test(
-    'D37, E3 — the lines of a year: nobody yet, nothing drawn; "//" from the end; the trace '
-    'only to family already born',
-    () {
-      final TreeGraph graph = TreeGraph(family);
-      List<Offset> of(List<TreeLines> lines, TreeLineKind kind) =>
-          lines.singleWhere((l) => l.kind == kind).points;
+  test('D37, E3 — the lines of a year: nobody yet, nothing drawn; "//" from the end; the trace '
+      'only to family already born', () {
+    final TreeGraph graph = TreeGraph(family);
+    List<Offset> of(List<TreeLines> lines, TreeLineKind kind) =>
+        lines.singleWhere((l) => l.kind == kind).points;
 
-      final TreeLayout fromJa = layoutTree(graph, p('JA'), 2);
-      for (final TreeLines l in fromJa.linesAt(time, 1900)) {
-        expect(l.points, isEmpty, reason: '${l.kind} in 1900');
-      }
-      // "Dziś" are the lines without the slider.
-      expect(
-        of(fromJa.linesAt(time, null), TreeLineKind.parentChild),
-        of(fromJa.lines, TreeLineKind.parentChild),
-      );
+    // Level 2 since ISSUE-049 reaches the great-great-grandparents (born from about 1865): in 1860 nobody yet.
+    final TreeLayout fromJa = layoutTree(graph, p('JA'), 2);
+    for (final TreeLines l in fromJa.linesAt(time, 1860)) {
+      expect(l.points, isEmpty, reason: '${l.kind} in 1860');
+    }
+    // "Dziś" are the lines without the slider.
+    expect(
+      of(fromJa.linesAt(time, null), TreeLineKind.parentChild),
+      of(fromJa.lines, TreeLineKind.parentChild),
+    );
 
-      // The trace sideways only to a partner the union with whom has begun (ui review of ISSUE-037): Teresa
-      // married Grzegorz — beyond the view from "Ja" — in 1986.
-      final Offset teresa =
-          fromJa.positions[family.people.values
-              .singleWhere(
-                (x) => x.givenNames == 'Teresa' && x.surname == 'Przykładowicz',
-              )
-              .id]!;
-      bool partnerTrace(int year) => of(
-        fromJa.linesAt(time, year),
-        TreeLineKind.tracePartner,
-      ).any((o) => o.dy == teresa.dy + 22 && (o.dx - teresa.dx).abs() == 22);
-      expect(partnerTrace(1984), isFalse);
-      expect(partnerTrace(1987), isTrue);
+    // The trace sideways only to a partner the union with whom has begun (ui review of ISSUE-037). From Tadeusz,
+    // Genowefa is his wife on level 1 and her first husband Władysław is beyond it (D50); their marriage has no
+    // date, so it begins with the oldest child, Czesław, in 1928 (D31).
+    final TreeLayout fromTadeusz = layoutTree(graph, p('td'), 1);
+    final Offset genowefa =
+        fromTadeusz.positions[family.people.values
+            .singleWhere(
+              (x) => x.givenNames == 'Genowefa' && x.surname == 'Wymyślewicz',
+            )
+            .id]!;
+    bool partnerTrace(int year) => of(
+      fromTadeusz.linesAt(time, year),
+      TreeLineKind.tracePartner,
+    ).any((o) => o.dy == genowefa.dy + 22 && (o.dx - genowefa.dx).abs() == 22);
+    expect(partnerTrace(1925), isFalse);
+    expect(partnerTrace(1930), isTrue);
 
-      final TreeLayout fromAndrzej = layoutTree(graph, p('adr'), 2);
-      expect(of(fromAndrzej.linesAt(time, 1990), TreeLineKind.ended), isEmpty);
-      expect(
-        of(fromAndrzej.linesAt(time, 2000), TreeLineKind.ended),
-        hasLength(4),
-      );
-      expect(of(fromAndrzej.lines, TreeLineKind.ended), hasLength(4));
-    },
-  );
+    final TreeLayout fromAndrzej = layoutTree(graph, p('adr'), 2);
+    expect(of(fromAndrzej.linesAt(time, 1990), TreeLineKind.ended), isEmpty);
+    expect(
+      of(fromAndrzej.linesAt(time, 2000), TreeLineKind.ended),
+      hasLength(4),
+    );
+    expect(of(fromAndrzej.lines, TreeLineKind.ended), hasLength(4));
+  });
 
   test(
     'ISSUE-038 AC-2, AC-3 (D41) — the tempi: "Wolno" 5, "Średnio" 10, "Szybko" 20 years a second; the button goes '

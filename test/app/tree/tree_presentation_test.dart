@@ -38,6 +38,9 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
 
 bool _shown(Finder f) => f.evaluate().isNotEmpty;
 
+/// A hard space, as the screens write it after "·" and between a number and its word (style-b.md rule 6).
+final String _nb = String.fromCharCode(0xA0);
+
 Future<void> _afterMove(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 500));
@@ -51,6 +54,21 @@ Finder _nodes() => find.byWidgetPredicate(
       w.container &&
       w.excludeSemantics &&
       (w.properties.label?.isNotEmpty ?? false),
+);
+
+/// The tree's scale, read from the x axis as the screen reads it.
+double _scale(WidgetTester tester) => tester
+    .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+    .transformationController!
+    .value
+    .entry(0, 0);
+
+/// The node of the person whose reader's label starts with [name].
+Finder _nodeOf(String name) => find.byWidgetPredicate(
+  (w) =>
+      w is Semantics &&
+      w.container &&
+      (w.properties.label?.startsWith(name) ?? false),
 );
 
 /// The bar of presentation: the time row in one row (B2).
@@ -92,6 +110,8 @@ void main() {
   setUp(() {
     db = GrobingDatabase(NativeDatabase.memory());
     treeTempo = TreeTempo.medium;
+    // The level chosen lives while the app runs (ISSUE-049, D57): each test starts as a new app does.
+    treeLevel = 1;
   });
 
   Future<void> cleanUp(WidgetTester tester) async {
@@ -308,8 +328,8 @@ void main() {
 
       expect(_cornerYear(tester), 1950);
       expect(_bar(), findsNothing);
-      // 5 of 20 on the tree in 1950, as in the card (US-010 AC-1), and the empty ring of "Ja" (C1).
-      expect(_nodes(), findsNWidgets(6));
+      // 32 of the 91 of "Linia krwi" on the tree in 1950, as in the card (US-010 AC-1), and the empty ring of "Ja" (C1).
+      expect(_nodes(), findsNWidgets(33));
       await tester.tapAt(_empty(tester));
       await tester.pump();
       expect(
@@ -459,8 +479,8 @@ void main() {
   );
 
   testWidgets(
-    'element 11, D16 — at 200 % each person put in the middle gets level 2 fitted: everyone on the screen, 24 dp '
-    'from its edges, unless the scale is at its least (ui review of ISSUE-038, MAJOR: Michał)',
+    'element 11, D56 (ISSUE-049) — at 200 % a person touched stands in the middle of the screen at the scale they had; '
+    'a touch of the middle after a drag brings them back',
     (tester) async {
       final FlutterExceptionHandler? previous = FlutterError.onError;
       FlutterError.onError = (details) {
@@ -475,50 +495,135 @@ void main() {
       mockChannel();
       await pumpTree(tester, text: 2);
       await present(tester);
+      final double scale = _scale(tester);
+      final Finder michal = _nodeOf('Michał Wymyślony');
+      await tester.tapAt(tester.getCenter(michal));
+      await _afterMove(tester);
+      final Rect area = tester.getRect(find.byType(InteractiveViewer));
+      expect(_scale(tester), closeTo(scale, 1e-6));
+      expect(
+        tester.getCenter(michal).dx,
+        moreOrLessEquals(area.center.dx, epsilon: 1),
+      );
+      final Offset middle = tester.getCenter(michal);
+      await tester.dragFrom(
+        area.center + const Offset(0, 40),
+        const Offset(-120, 0),
+      );
+      await _afterMove(tester);
+      expect(tester.getCenter(michal).dx, lessThan(middle.dx - 50));
+      await tester.tapAt(tester.getCenter(michal));
+      await _afterMove(tester);
+      expect(
+        tester.getCenter(michal),
+        offsetMoreOrLessEquals(middle, epsilon: 1),
+      );
+      expect(_scale(tester), closeTo(scale, 1e-6));
+      await cleanUp(tester);
+    },
+  );
 
-      // By the node, not the name: at 200 % names that would overlap hide (I2).
-      final List<String> checked = [];
-      for (final String name in const [
-        'Michał Wymyślony',
-        'Kasia Wymyślona',
-        'Joanna Testowicz',
-        'Mateusz Wymyślony',
-      ]) {
-        final Finder person = find.byWidgetPredicate(
-          (w) =>
-              w is Semantics &&
-              w.container &&
-              (w.properties.label?.startsWith(name) ?? false),
-        );
-        if (!_shown(person)) continue;
-        await tester.tapAt(tester.getCenter(person.first));
-        await _afterMove(tester);
-        final double scale = tester
-            .widget<InteractiveViewer>(find.byType(InteractiveViewer))
-            .transformationController!
-            .value
-            .entry(0, 0);
-        if (scale <= treeMinScale + 1e-6) continue;
-        checked.add('$name ${scale.toStringAsFixed(3)}');
-        final Rect area = tester.getRect(find.byType(InteractiveViewer));
-        for (final Element e in _nodes().evaluate()) {
-          final Rect r = tester.getRect(find.byWidget(e.widget));
-          final String label = (e.widget as Semantics).properties.label!;
-          expect(
-            r.left,
-            greaterThanOrEqualTo(area.left + 24 - 1),
-            reason: '$name in the middle: $label at $r, scale $scale',
-          );
-          expect(
-            r.right,
-            lessThanOrEqualTo(area.right - 24 + 1),
-            reason: '$name in the middle: $label at $r, scale $scale',
-          );
-        }
+  testWidgets(
+    'ISSUE-049 AC-4 (element 11, D56, T2, D58) — on the TV two fingers zoom and the people stay; the level\'s − / + '
+    'on the bar, no zoom buttons; + brings a level, its pill under the controls; out of presentation the same level '
+    'and scale',
+    (tester) async {
+      mockChannel();
+      await pumpTree(tester);
+      await present(tester);
+      final int people = _nodes().evaluate().length;
+      expect(people, 91);
+      expect(_scale(tester), closeTo(1, 1e-6));
+
+      // Two fingers apart: the tree comes closer, nobody comes or goes (AC-4).
+      final Offset c = tester.getCenter(find.byType(InteractiveViewer));
+      final TestGesture a = await tester.startGesture(
+        c - const Offset(40, 0),
+        pointer: 7,
+      );
+      final TestGesture b = await tester.startGesture(
+        c + const Offset(40, 0),
+        pointer: 8,
+      );
+      await tester.pump();
+      for (int i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(-10, 0));
+        await b.moveBy(const Offset(10, 0));
+        await tester.pump();
       }
-      // Not empty: at least one middle was fitted above the least scale, so the check above ran.
-      // In the test font: Michał and Joanna at 0.553, "Ja" at 0.435.
-      expect(checked, isNotEmpty);
+      await a.up();
+      await b.up();
+      await _afterMove(tester);
+      final double closer = _scale(tester);
+      expect(closer, greaterThan(1.5));
+      expect(_nodes(), findsNWidgets(people));
+
+      // The bar: the level's − / + (D58) — two fingers alone zoom; − off on "Linia krwi".
+      await tester.tapAt(_empty(tester));
+      await tester.pump();
+      expect(_bar(), findsOneWidget);
+      expect(find.byTooltip('Oddal'), findsNothing);
+      expect(find.byTooltip('Przybliż'), findsNothing);
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(
+          find.descendant(
+            of: find.byType(PresentationBar),
+            matching: find.bySemanticsLabel('Bliższa rodzina'),
+          ),
+        ),
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+      );
+      semantics.dispose();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(PresentationBar),
+          matching: find.byTooltip('Dalsza rodzina'),
+        ),
+      );
+      await _afterMove(tester);
+      expect(_nodes(), findsNWidgets(113));
+      expect(_scale(tester), closeTo(closer, 1e-6));
+      // The pill on the TV too, under the top row of the controls: nothing else names the level (D58; until
+      // v1.25 no pill there — Dev report, deviation 3).
+      final Finder pill = find
+          .ancestor(
+            of: find.text('Przez 1 związek ·${_nb}113${_nb}osób$_nb(+22)'),
+            matching: find.byType(DecoratedBox),
+          )
+          .first;
+      expect(pill, findsOneWidget);
+      expect(
+        tester.getRect(pill).top,
+        greaterThan(tester.getRect(find.byType(PresentationExit)).bottom),
+      );
+      // The bar's 48 dp target takes a touch 23 dp from the middle, past the 44 dp circle (ui review, round 2).
+      final Finder nearer = find.descendant(
+        of: find.byType(PresentationBar),
+        matching: find.byTooltip('Bliższa rodzina'),
+      );
+      expect(tester.getSize(nearer), const Size(48, 48));
+      await tester.tapAt(tester.getCenter(nearer) + const Offset(0, 23));
+      await _afterMove(tester);
+      expect(_nodes(), findsNWidgets(91));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(PresentationBar),
+          matching: find.byTooltip('Dalsza rodzina'),
+        ),
+      );
+      await _afterMove(tester);
+      expect(_nodes(), findsNWidgets(113));
+      final double kept = _scale(tester);
+
+      await tester.tap(find.byType(PresentationExit));
+      await tester.pump();
+      tester.view.physicalSize = const Size(1080, 2400);
+      await tester.pump();
+      await _afterMove(tester);
+      expect(_scale(tester), closeTo(kept, 1e-6));
+      expect(_nodes(), findsNWidgets(113));
+      expect(treeLevel, 2);
       await cleanUp(tester);
     },
   );

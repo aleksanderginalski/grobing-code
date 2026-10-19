@@ -11,8 +11,10 @@ import '../data/people.dart';
 // data, 3 people in two unions (a widower, a widow, a divorce), 2 pairs "razem" (one later married), the
 // wife's family over 3 generations with her cousins. The same family as SPIKE-002's mockup and prototype,
 // so the tree's numbers can be checked against them. One more person outside it, with no family at all
-// (ISSUE-039 D4): 107 people, 32 dead, 40 without parents. Surnames only from the invented stems (family-data.md,
-// retro 3 R7). Debug and profile only, never release (ISSUE-033 D6).
+// (ISSUE-039 D4): 107 people, 32 dead, 40 without parents. Since ISSUE-049, 10 more, all living, as in its mockup —
+// the families the levels by unions reach (drzewo.md D50): 117 people, 42 unions, 32 dead, 44 without parents;
+// from "Ja" the levels show 91 → 113 → 116, everyone but Teofil. Surnames only from the invented stems
+// (family-data.md, retro 3 R7). Debug and profile only, never release (ISSUE-033 D6).
 //
 // Some dates as the notes will give them, for the time slider (ISSUE-037, drzewo.md D32): "ok.", "między",
 // "przed", "po", none at all, a death without its date, three marriages without theirs. The same people and
@@ -133,6 +135,19 @@ const List<_Person> _people = [
   ('rk', 'Radosław', 'Wymyślak', Sex.male, 1963, null, null),
   ('mg2', 'Małgorzata', 'Wymyślak', Sex.female, 1965, null, null),
   ('sz', 'Szymon', 'Wymyślak', Sex.male, 1992, null, null),
+  // The families the levels by unions reach (ISSUE-049 AC-2, AC-3; drzewo.md D50) — as in its mockup: the
+  // parents and the sister of Natalia, the brother's partner; the sister's husband Konrad with his parents and
+  // brother; the parents of Bartosz, the sister's husband.
+  ('np1', 'Zbigniew', 'Zmyślewicz', Sex.male, 1958, null, null),
+  ('np2', 'Alicja', 'Zmyślewicz', Sex.female, 1961, null, 'Testowa'),
+  ('ns', 'Patrycja', 'Przykładniak', Sex.female, 1992, null, 'Zmyślewicz'),
+  ('nh', 'Konrad', 'Przykładniak', Sex.male, 1990, null, null),
+  ('nc', 'Oliwia', 'Przykładniak', Sex.female, 2018, null, null),
+  ('nhp1', 'Ryszard', 'Przykładniak', Sex.male, 1961, null, null),
+  ('nhp2', 'Dorota', 'Przykładniak', Sex.female, 1963, null, null),
+  ('nb', 'Olaf', 'Przykładniak', Sex.male, 1994, null, null),
+  ('bp1', 'Wiesław', 'Testowicz', Sex.male, 1959, null, null),
+  ('bp2', 'Urszula', 'Testowicz', Sex.female, 1962, null, 'Zmyślak'),
   // No parents and no unions: two people who do not join, for "Połącz dwie osoby" (ISSUE-039 D4, drzewo.md
   // element 10) — as in the mockups of ISSUE-038 and ISSUE-039.
   ('sam', 'Teofil', 'Przykładowski', Sex.male, 1910, 1975, null),
@@ -202,21 +217,44 @@ const List<_Union> _unions = [
   ('sl', 'jl2', null, 1987, ['emi'], null),
   ('lh', 'ce', null, 1958, ['ag', 'rk'], null),
   ('rk', 'mg2', null, 1990, ['sz'], null),
+  ('np1', 'np2', null, 1986, ['nt', 'ns'], null),
+  ('nh', 'ns', null, 2016, ['nc'], null),
+  ('nhp1', 'nhp2', null, 1988, ['nh', 'nb'], null),
+  ('bp1', 'bp2', null, 1985, ['bk'], null),
 ];
 
 /// The marker of this family's people — a second call adds nothing.
 const String _bio = 'Osoba wymyślona do drzewa (ISSUE-033).';
 
-/// Adds the made-up family, once; "ja" becomes its "Ja" unless someone already is. False when it is
-/// already there.
+/// The people ISSUE-049 added (drzewo.md D50): a family added before them gets them on the next call, joined to
+/// Natalia and Bartosz, whose names are once in it.
+const Set<String> _since049 = {
+  'np1',
+  'np2',
+  'ns',
+  'nh',
+  'nc',
+  'nhp1',
+  'nhp2',
+  'nb',
+  'bp1',
+  'bp2',
+};
+
+/// Adds the made-up family, once; "ja" becomes its "Ja" unless someone already is. A family added before
+/// ISSUE-049 gets only the people and unions it lacks ([_since049]) — the emulator's data stay as they are. False
+/// when everyone is already there.
 Future<bool> addFictionalFamily(GrobingDatabase db) async {
-  final bool present =
-      await (db.select(db.persons)
-            ..where((p) => p.bio.equals(_bio))
-            ..limit(1))
-          .getSingleOrNull() !=
-      null;
-  if (present) return false;
+  final List<Person> present = await (db.select(
+    db.persons,
+  )..where((p) => p.bio.equals(_bio))).get();
+  final bool topUp = present.isNotEmpty;
+  if (topUp &&
+      present.any(
+        (p) => p.givenNames == 'Zbigniew' && p.surname == 'Zmyślewicz',
+      )) {
+    return false;
+  }
   QualifiedDate? year(int? y) =>
       y == null ? null : QualifiedDate(DateQualifier.exact, PartialDate(y));
 
@@ -232,6 +270,15 @@ Future<bool> addFictionalFamily(GrobingDatabase db) async {
           String? bornAs,
         )
         in _people) {
+      if (topUp && !_since049.contains(key)) {
+        // Already there: its id, when the name is once in the family (Natalia, Bartosz — the new unions' children).
+        final List<Person> same = [
+          for (final Person p in present)
+            if (p.givenNames == given && p.surname == surname) p,
+        ];
+        if (same.length == 1) ids[key] = same.single.id;
+        continue;
+      }
       final int id = await db
           .into(db.persons)
           .insert(
@@ -271,6 +318,7 @@ Future<bool> addFictionalFamily(GrobingDatabase db) async {
           int? ended,
         )
         in _unions) {
+      if (topUp && !_since049.contains(a) && !_since049.contains(b)) continue;
       await saveFamily(
         db,
         FamilyDraft(

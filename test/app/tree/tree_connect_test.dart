@@ -44,8 +44,9 @@ bool _shown(Finder f) => f.evaluate().isNotEmpty;
 
 /// The people on the tree for the reader: a node says "w środek", the one in the middle "otwórz". Semantics on.
 /// With a path lit, its people say "zakończ ścieżkę": a touch only ends it (D49; ui review of ISSUE-039).
-SemanticsFinder _forReader() =>
-    find.semantics.byHint(RegExp(r'^(w środek|otwórz|zakończ ścieżkę)$'));
+SemanticsFinder _forReader() => find.semantics.byHint(
+  RegExp(r'^(w środek|otwórz|zakończ ścieżkę|przybliż)$'),
+);
 
 /// The path's line on the tree.
 Finder _pathLine() => find.byWidgetPredicate(
@@ -103,7 +104,11 @@ Offset _empty(WidgetTester tester) {
 void main() {
   late GrobingDatabase db;
 
-  setUp(() => db = GrobingDatabase(NativeDatabase.memory()));
+  setUp(() {
+    db = GrobingDatabase(NativeDatabase.memory());
+    // A path raises the level chosen (D57), which lives while the app runs: each test starts as a new app does.
+    treeLevel = 1;
+  });
 
   Future<void> cleanUp(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
@@ -319,7 +324,7 @@ void main() {
 
   testWidgets(
     'D49 — the end of the light: a touch of empty space; a touch of a person only ends it; back stays on the '
-    'tree; ▶; + — the reader has everyone again',
+    'tree; ▶; the level\'s + (D58) — the reader has everyone again',
     (tester) async {
       await tester.runAsync(() => addFictionalFamily(db));
       await pumpTree(tester);
@@ -335,8 +340,21 @@ void main() {
 
       await connect(tester, 'wand', 'Wanda Przykładowa z d. Testowicz');
       await untilBanner(tester);
-      // Lech, off the path: the first touch ends the light and moves nothing.
-      await tester.tap(_name('Lech'), warnIfMissed: false);
+      // Agnieszka, Piotr's wife, off the path beside it: the first touch ends the light and moves nothing. By her
+      // node — zoomed out, a hidden name's middle lies past it (I2).
+      final Finder agnieszka = find.byWidgetPredicate(
+        (w) =>
+            w is Semantics &&
+            w.container &&
+            (w.properties.label?.startsWith('Agnieszka Przykładowa') ?? false),
+      );
+      expect(
+        tester
+            .getRect(find.byType(InteractiveViewer))
+            .contains(tester.getCenter(agnieszka)),
+        isTrue,
+      );
+      await tester.tapAt(tester.getCenter(agnieszka));
       await _settle(tester);
       expect(_pathLine(), findsNothing);
       expect(find.text('ur. 1934 · Babcia mojej żony'), findsOneWidget);
@@ -359,7 +377,8 @@ void main() {
 
       await connect(tester, 'wand', 'Wanda Przykładowa z d. Testowicz');
       await untilBanner(tester);
-      await tester.tap(find.byTooltip('Przybliż — bliższa rodzina'));
+      // A change of level ends it (element 8) — + / − zoomed until v1.25 (D58).
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
       await _settle(tester);
       expect(_pathLine(), findsNothing);
       semantics.dispose();
@@ -450,7 +469,8 @@ void main() {
   );
 
   testWidgets(
-    'F2 (D46) — a path wider than the screen: under 0.4 while lit, all of it in view; after the end 0.4',
+    'F2 (D46) — a path wider than the screen: under 0.4 while lit, all of it in view; after the end the scale stays '
+    '(drzewo.md D57, ISSUE-049 — the scale no longer belongs to a level)',
     (tester) async {
       await tester.runAsync(() => addFictionalFamily(db));
       await pumpTree(tester);
@@ -458,7 +478,8 @@ void main() {
       await connect(tester, 'zdzis', 'Zdzisław Wymyślewicz');
       await untilBanner(tester);
       expect(_scale(tester), lessThan(0.4));
-      expect(_scale(tester), greaterThanOrEqualTo(pathMinScale));
+      expect(_scale(tester), greaterThanOrEqualTo(treeMinScaleAtLeast));
+      final double lit = _scale(tester);
       final Rect area = tester.getRect(find.byType(InteractiveViewer));
       for (final String name in [
         'Ja',
@@ -472,7 +493,7 @@ void main() {
       }
       await tester.tapAt(_empty(tester));
       await _settle(tester);
-      expect(_scale(tester), closeTo(0.4, 1e-6));
+      expect(_scale(tester), closeTo(lit, 1e-6));
       await cleanUp(tester);
     },
   );
@@ -489,8 +510,8 @@ void main() {
       expect(_scale(tester), lessThan(0.4));
       final Rect area = tester.getRect(find.byType(InteractiveViewer));
       final List<Rect> buttons = [
-        tester.getRect(find.byTooltip('Przybliż — bliższa rodzina')),
-        tester.getRect(find.byTooltip('Oddal — dalsza rodzina')),
+        tester.getRect(find.byTooltip('Dalsza rodzina')),
+        tester.getRect(find.byTooltip('Bliższa rodzina')),
       ];
       for (final String name in [
         'Ja',
@@ -508,6 +529,52 @@ void main() {
         );
         expect(buttons.any(r.overlaps), isFalse, reason: '$name under + / −');
       }
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-049 AC-5 (D57) — a path past the level chosen raises it: Ja → Ryszard Przykładniak, from him at level 3, '
+    'all of it in view; after the end the level and the scale stay; a path that needs less does not lower it',
+    (tester) async {
+      await tester.runAsync(() => addFictionalFamily(db));
+      await pumpTree(tester);
+      expect(treeLevel, 1);
+
+      await connect(tester, 'przykładn', 'Ryszard Przykładniak');
+      await untilBanner(tester);
+      expect(treeLevel, 3);
+      expect(find.text('Teść siostry partnerki mojego brata'), findsWidgets);
+      final Rect area = tester.getRect(find.byType(InteractiveViewer));
+      for (final String name in [
+        'Ja',
+        'Michał',
+        'Natalia',
+        'Patrycja',
+        'Konrad',
+      ]) {
+        final Rect r = tester.getRect(_name(name));
+        expect(area.contains(r.center), isTrue, reason: '$name in view');
+      }
+      final Finder ryszard = find.byWidgetPredicate(
+        (w) =>
+            w is Semantics &&
+            w.container &&
+            (w.properties.label?.startsWith('Ryszard Przykładniak') ?? false),
+      );
+      expect(area.contains(tester.getCenter(ryszard)), isTrue);
+
+      final double lit = _scale(tester);
+      await tester.tapAt(_empty(tester));
+      await _settle(tester);
+      expect(_pathLine(), findsNothing);
+      expect(_scale(tester), closeTo(lit, 1e-6));
+      expect(treeLevel, 3);
+
+      // Ja → Wanda needs level 1 from her (D50): the level stays where it is.
+      await connect(tester, 'wand', 'Wanda Przykładowa z d. Testowicz');
+      await untilBanner(tester);
+      expect(treeLevel, 3);
       await cleanUp(tester);
     },
   );

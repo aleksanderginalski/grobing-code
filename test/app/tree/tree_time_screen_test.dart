@@ -8,12 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/person/person_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
+import 'package:grobing/app/tree/tree_screen.dart' show treeLevel;
 import 'package:grobing/app/tree/tree_time.dart';
 import 'package:grobing/app/tree/tree_time_bar.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/dev/fictional_family.dart';
 
 import '../../support/a11y.dart';
+import '../../support/gestures.dart';
 
 // ISSUE-037 — the time row in the tree's card (05_DESIGN/drzewo.md v1.12, element 6; US-010), happy path per
 // AC on the made-up family: the row and its reader (element 6, D5) with tap targets and contrast (retro 3, R2)
@@ -43,11 +45,17 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
 
 bool _shown(Finder f) => f.evaluate().isNotEmpty;
 
-/// The people on the tree a touch can reach: a node says "w środek", the one in the middle "otwórz".
+/// A hard space, as the screens write it after "·" and between a number and its word (style-b.md rule 6).
+final String _nb = String.fromCharCode(0xA0);
+
+/// The people on the tree a touch can reach: a node says "w środek", the one in the middle "otwórz" — every one
+/// "przybliż" on a tree too small to choose (ISSUE-049, D52).
 Finder _people() => find.byWidgetPredicate(
   (w) =>
       w is Semantics &&
-      (w.properties.hint == 'w środek' || w.properties.hint == 'otwórz'),
+      (w.properties.hint == 'w środek' ||
+          w.properties.hint == 'otwórz' ||
+          w.properties.hint == 'przybliż'),
 );
 
 Future<void> _afterMove(WidgetTester tester) async {
@@ -77,8 +85,9 @@ void main() {
 
   setUp(() {
     db = GrobingDatabase(NativeDatabase.memory());
-    // The tempo is the app's while it runs (D41): each test starts from the default.
+    // The tempo is the app's while it runs (D41): each test starts from the default. The level too (ISSUE-049, D57).
     treeTempo = TreeTempo.medium;
+    treeLevel = 1;
   });
 
   Future<void> cleanUp(WidgetTester tester) async {
@@ -138,7 +147,8 @@ void main() {
       expect(find.byTooltip('Odtwórz historię'), findsOneWidget);
       expect(find.text('1860'), findsOneWidget);
       expect(_slider(tester).value, 'dziś');
-      expect(_people(), findsNWidgets(20));
+      // "Linia krwi" from "Ja" (ISSUE-049, D50).
+      expect(_people(), findsNWidgets(91));
       SemanticsProperties s = _slider(tester);
       expect(s.slider, isTrue);
       expect(s.value, 'dziś');
@@ -167,15 +177,15 @@ void main() {
   );
 
   testWidgets(
-    'US-010 AC-1, C1, D37 — 1950: 5 of 20 on the tree, "Ja" an empty ring the reader calls '
-    '"przed narodzinami", the card as before; the pill counts the year; a touch keeps the year',
+    'US-010 AC-1, C1, D37 — 1950: 32 of the 91 of "Linia krwi" on the tree, "Ja" an empty ring the reader calls '
+    '"przed narodzinami", the card as before; the pill of a level counts the year (ISSUE-049); a touch keeps the year',
     (tester) async {
       await pumpTree(tester);
       final SemanticsHandle semantics = tester.ensureSemantics();
       await _year(tester, 1950);
 
       expect(find.text('1950'), findsOneWidget);
-      expect(_people(), findsNWidgets(5));
+      expect(_people(), findsNWidgets(32));
       expect(
         find.bySemanticsLabel(
           RegExp(r'^Mateusz Wymyślony, ur\. 1983, to ja — przed narodzinami$'),
@@ -184,15 +194,40 @@ void main() {
       );
       expect(find.text('ur. 1983 · to ja'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Oddal — dalsza rodzina'));
+      // A level and back with + / − (D58): the pill counts the people of 1950 only (D37).
+      await tester.tap(find.byTooltip('Dalsza rodzina'));
       await _afterMove(tester);
-      expect(find.text('Poziom 3 · 25 osób'), findsOneWidget);
-      await tester.tap(find.byTooltip('Przybliż — bliższa rodzina'));
+      final Finder up = find.textContaining(
+        RegExp(r'^Przez 1 związek ·\s\d+\sosób\s\(\+\d+\)$'),
+      );
+      expect(up, findsOneWidget);
+      final int people = int.parse(
+        RegExp(
+          r'·\s(\d+)\sosób',
+        ).firstMatch(tester.widget<Text>(up).data!)!.group(1)!,
+      );
+      expect(people, _people().evaluate().length);
+      await tester.tap(find.byTooltip('Bliższa rodzina'));
       await _afterMove(tester);
-      expect(find.text('Poziom 2 · 5 osób'), findsOneWidget);
+      expect(
+        find.text('Linia krwi ·${_nb}32${_nb}osoby$_nb(−${people - 32})'),
+        findsOneWidget,
+      );
 
-      // A touch of a person keeps the year (D37): Henryk, born 1930, in the middle.
-      await tester.tap(find.text('Henryk'));
+      // A touch of a person keeps the year (D37): Henryk, born 1930, in the middle — by his node, two fingers out a
+      // step when "Linia krwi" leaves him off the area (ISSUE-049; no zoom buttons since v1.25, D58).
+      final Finder henryk = find.byWidgetPredicate(
+        (w) =>
+            w is Semantics &&
+            w.container &&
+            (w.properties.label?.startsWith('Henryk Zmyślony') ?? false),
+      );
+      final Rect area = tester.getRect(find.byType(InteractiveViewer));
+      if (!area.deflate(8).contains(tester.getCenter(henryk))) {
+        await pinch(tester, find.byType(InteractiveViewer), 1 / 1.45);
+        await _afterMove(tester);
+      }
+      await tester.tapAt(tester.getCenter(henryk));
       await _afterMove(tester);
       expect(find.text('Henryk Zmyślony'), findsOneWidget);
       expect(find.text('1950'), findsOneWidget);
