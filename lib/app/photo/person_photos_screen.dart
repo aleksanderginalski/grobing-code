@@ -2,34 +2,78 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../data/photos.dart' show PhotoCrop;
+import '../../data/photos.dart' show PersonPhoto, PersonPhotoEdits, PhotoCrop;
 import '../polish.dart';
 import '../theme.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
+import 'app_photos_screen.dart';
 import 'person_photo_viewer_screen.dart';
 import 'person_photos_draft.dart';
+import 'photo_cell.dart';
 import 'photo_picker.dart';
 import 'photo_source_sheet.dart';
 import 'photo_viewer_screen.dart';
 import 'profile_circle.dart';
+import 'profile_crop_screen.dart';
 
-/// Picks a person's photos — several from the gallery, one with the camera (05_DESIGN/zdjecie.md v1.3,
-/// A) — and hands them to [draft] to prepare. Shared by the form's element 1a and the tile here.
+/// Picks a person's photos (05_DESIGN/zdjecie.md A, the person's mode) and hands them to [draft]: several
+/// from the gallery or one with the camera, to prepare — or, on "Ze zdjęć w aplikacji" (v1.7, A4), photos
+/// already in the app on someone else (zdjecia-w-aplikacji.md). A4 is in the sheet only when there is a
+/// photo to choose (D10). Shared by the form's element 1a, the tile of the person's photos, "Zdjęcie
+/// profilowe" and the person's view. [personName] without "z d." and [firstName] are for the screen of A4.
 Future<void> addPersonPhotos(
   BuildContext context,
-  PersonPhotosDraft draft,
-) async {
-  final PhotoSource? source = await showPhotoSourceSheet(
+  PersonPhotosDraft draft, {
+  required String personName,
+  String? firstName,
+}) async {
+  final bool fromApp = await hasAppPhotos(draft);
+  if (!context.mounted) return;
+  final PersonPhotoSource? source = await showPersonPhotoSourceSheet(
     context,
-    title: 'Zdjęcia osoby',
+    fromApp: fromApp,
   );
-  if (source == null) return;
-  final List<File> picked = switch (source) {
-    PhotoSource.gallery => await draft.photos.pickMany(),
-    PhotoSource.camera => [?await draft.photos.pick(PhotoSource.camera)],
-  };
-  await draft.addPicked(picked);
+  if (source == null || !context.mounted) return;
+  switch (source) {
+    case PersonPhotoSource.gallery:
+      await draft.addPicked(await draft.photos.pickMany());
+    case PersonPhotoSource.camera:
+      await draft.addPicked([?await draft.photos.pick(PhotoSource.camera)]);
+    case PersonPhotoSource.app:
+      final AppPhotos inApp = await loadAppPhotos(draft);
+      if (!context.mounted) return;
+      final List<PersonPhoto>? chosen = await Navigator.of(context)
+          .push<List<PersonPhoto>>(
+            MaterialPageRoute(
+              builder: (_) => AppPhotosScreen(
+                photos: inApp,
+                fileOf: draft.photos.fileOf,
+                personName: personName,
+                firstName: firstName,
+              ),
+            ),
+          );
+      for (final PersonPhoto p in chosen ?? const <PersonPhoto>[]) {
+        draft.addSaved(p.mediaId, draft.photos.fileOf(p.relativePath));
+      }
+  }
+}
+
+/// Writes [draft]'s changes at once — from the person's view, where choosing or adding a picture is not a
+/// correction of the entry (05_DESIGN/osoba.md D21, D24) — and reads the draft again, so a screen that
+/// stays open works on what is saved. Nothing changed, nothing written. Throws when the write fails; the
+/// draft keeps its changes then, to try again.
+Future<void> savePersonPhotosNow(PersonPhotosDraft draft) async {
+  final int personId = draft.personId!;
+  final PersonPhotoEdits? edits = draft.edits();
+  if (edits == null) return;
+  await draft.photos.writeWithPersonPhotos<void>(
+    draft.database,
+    edits,
+    (alsoWrite) => draft.database.transaction(() => alsoWrite!(personId)),
+  );
+  await draft.reload();
 }
 
 /// What "Zdjęcie w tle" gives back (zdjecia-osoby.md v1.4): the photo chosen — one of the draft's, or one
@@ -42,22 +86,35 @@ class BackgroundChoice {
 
 /// A person's photos (05_DESIGN/zdjecia-osoby.md): the profile photo in a circle, every photo in a grid
 /// of squares, "Dodaj zdjęcie" as the last cell. Nothing here is written: back returns to the form, whose
-/// "Zapisz" writes the changes (D1). From the person's view only to look at ([readOnly], v1.2), or to
+/// "Zapisz" writes the changes (D1). From the person's view only to look at ([readOnly], v1.2), to
 /// choose the background ([chooseBackground], v1.4) — the screen pops a [BackgroundChoice] and the view
-/// writes it.
+/// writes it — or to choose the profile photo and add photos ([chooseProfile], v1.5), written at once
+/// here.
 class PersonPhotosScreen extends StatefulWidget {
   const PersonPhotosScreen({
     super.key,
     required this.draft,
     required this.personName,
     required this.shortName,
+    this.firstName,
     this.readOnly = false,
     this.chooseBackground = false,
+    this.chooseProfile = false,
   });
 
   /// "Zdjęcie w tle" from the band of the person's view (zdjecia-osoby.md v1.4; osoba.md D21): a tap on a
   /// photo chooses it, the tile adds one photo and chooses it, "Bez zdjęcia w tle" takes it off.
   final bool chooseBackground;
+
+  /// "Zdjęcie profilowe" from the portrait of the person's view (zdjecia-osoby.md v1.5, P1–P6; osoba.md
+  /// D23): "Obejrzyj zdjęcie", a tap on a photo → the crop → "Gotowe" makes it the profile photo, written
+  /// at once, and the screen pops back to the view; the tile adds photos, written at once, and the screen
+  /// stays with them (D7).
+  final bool chooseProfile;
+
+  /// The person's first given name, for "Zdjęcia w aplikacji" (zdjecia-w-aplikacji.md 3); null — "ta
+  /// osoba".
+  final String? firstName;
 
   /// From the person's view (zdjecia-osoby.md v1.2; osoba.md W2): no "Dodaj zdjęcie" tile, no line about
   /// saving, and the photo opens without actions.
@@ -90,6 +147,79 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
 
   void _changed() {
     if (mounted) setState(() {});
+  }
+
+  /// "Zdjęcie profilowe": a write that failed ("Zapis — błąd", v1.5) — the draft is back to what is saved,
+  /// and the line stays until the next try.
+  bool _saveFailed = false;
+
+  /// A write at once in progress — the photos and the tile wait for it.
+  bool _saving = false;
+
+  /// P2 "Obejrzyj zdjęcie": the profile photo whole, only to look at (zdjecie.md B, viewing mode).
+  Future<void> _look() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => PersonPhotoViewerScreen(
+        draft: widget.draft,
+        initialIndex: 0,
+        personName: widget.shortName,
+        readOnly: true,
+      ),
+    ),
+  );
+
+  /// P5: a photo → the crop → "Gotowe" — the profile photo with that crop, written at once, and back to the
+  /// person's view with the new portrait (kadr-profilowego.md v1.3). Back from the crop changes nothing.
+  Future<void> _chooseProfile(DraftPhoto photo) async {
+    final PersonPhotosDraft draft = widget.draft;
+    final PhotoCrop? crop = await Navigator.of(context).push<PhotoCrop>(
+      MaterialPageRoute(
+        builder: (_) => ProfileCropScreen(
+          file: photo.file,
+          personName: widget.shortName,
+          initial: draft.cropOf(photo),
+        ),
+      ),
+    );
+    if (crop == null || !mounted) return;
+    draft.setProfile(photo, crop: crop);
+    if (await _saveNow() && mounted) Navigator.of(context).pop();
+  }
+
+  /// P6: the tile — photos added, several from the gallery or from the app, written at once; the screen
+  /// stays with them in the grid, so one of them becomes the profile photo with one more tap (D7).
+  Future<void> _addPhotosNow() async {
+    setState(() => _saveFailed = false);
+    await addPersonPhotos(
+      context,
+      widget.draft,
+      personName: widget.shortName,
+      firstName: widget.firstName,
+    );
+    if (mounted) await _saveNow();
+  }
+
+  /// The write at once (osoba.md D24). On a failure the draft goes back to what is saved and the line
+  /// says it (v1.5, "Zapis — błąd"); true when written.
+  Future<bool> _saveNow() async {
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    try {
+      await savePersonPhotosNow(widget.draft);
+      return true;
+    } on Object {
+      try {
+        await widget.draft.reload();
+      } on Object {
+        // The line below says it; the view reads the database again anyway.
+      }
+      if (mounted) setState(() => _saveFailed = true);
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _open(int index) => Navigator.of(context).push(
@@ -127,6 +257,9 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
     final ({int failed, int of})? failure = draft.failure;
     if (widget.chooseBackground) {
       return _backgroundChooser(draft, items, failure);
+    }
+    if (widget.chooseProfile) {
+      return _profileChooser(draft, items, failure);
     }
     return Scaffold(
       backgroundColor: GrobingColors.background,
@@ -251,8 +384,73 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
     ),
   );
 
+  /// "Zdjęcie profilowe" (v1.5, P1–P6): the profile photo with "Obejrzyj zdjęcie", the line, the grid with
+  /// the profile photo framed in amber, the tile "Dodaj zdjęcia".
+  Widget _profileChooser(
+    PersonPhotosDraft draft,
+    List<DraftPhoto> items,
+    ({int failed, int of})? failure,
+  ) => Scaffold(
+    backgroundColor: GrobingColors.background,
+    body: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // P1.
+          PhotoViewerBar(
+            title: 'Zdjęcie profilowe',
+            subtitle: widget.personName,
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+              children: [
+                // P2.
+                if (draft.profile case final DraftPhoto profile)
+                  _ProfileHeader(
+                    photo: profile,
+                    crop: draft.cropOf(profile),
+                    onTap: _look,
+                    look: true,
+                  ),
+                const SizedBox(height: 8),
+                // P3.
+                const Text(
+                  'Dotknij zdjęcia, które ma być profilowym.',
+                  style: TextStyle(
+                    color: GrobingColors.textMuted,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // P4.
+                _SectionHeader(count: items.length),
+                const SizedBox(height: 12),
+                // P5, P6.
+                _grid(items),
+                if (failure != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: PhotoErrorLine(_failureText(failure)),
+                  ),
+                if (_saveFailed)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: PhotoErrorLine(
+                      'Nie udało się zapisać zdjęć. Spróbuj jeszcze raz.',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
   /// Elements 4–5: squares cut from the middle, then the cells of photos still being prepared, then the
-  /// tile. Choosing the background, a tap chooses the photo and the current one has a frame in amber.
+  /// tile. Choosing the background, a tap chooses the photo and the current one has a frame in amber; so
+  /// does the profile photo when choosing it (v1.5).
   Widget _grid(List<DraftPhoto> items) => LayoutBuilder(
     builder: (context, constraints) {
       const double gap = 8;
@@ -264,17 +462,19 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
         runSpacing: gap,
         children: [
           for (final (int i, DraftPhoto p) in items.indexed)
-            _Cell(
+            PhotoCell(
               size: cell,
-              selected: widget.chooseBackground && draft.isBackground(p),
+              selected: _chosen(i, p),
               child: Semantics(
                 button: true,
                 // A state of choice only where there is a choice (ui review: false is not "none").
-                selected: widget.chooseBackground
-                    ? draft.isBackground(p)
+                selected: widget.chooseBackground || widget.chooseProfile
+                    ? _chosen(i, p)
                     : null,
                 label: widget.chooseBackground
                     ? _chooseLabel(i, items.length, draft.isBackground(p))
+                    : widget.chooseProfile
+                    ? _profileLabel(i, items.length)
                     : _cellLabel(i, items.length, draft.isBackground(p)),
                 // The label replaces the cell's own semantics, so the tap is given here too, or a
                 // screen reader, Switch Access and Voice Access get a button they cannot press (ui
@@ -287,13 +487,13 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
                     p.file,
                     fit: BoxFit.cover,
                     cacheWidth: decode,
-                    errorBuilder: (_, _, _) => const _Unreadable(),
+                    errorBuilder: (_, _, _) => const UnreadableCell(),
                   ),
                 ),
               ),
             ),
           for (int i = 0; i < widget.draft.preparing; i++)
-            _Cell(
+            PhotoCell(
               size: cell,
               color: GrobingColors.surface,
               child: const Center(
@@ -306,24 +506,48 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
           if (!widget.readOnly)
             _AddTile(
               size: cell,
-              onTap: widget.draft.preparing > 0
+              // "Zdjęcie profilowe" adds several and stays (P6, D7).
+              label: widget.chooseProfile ? 'Dodaj zdjęcia' : 'Dodaj zdjęcie',
+              onTap: widget.draft.preparing > 0 || _saving
                   ? null
                   : widget.chooseBackground
                   ? _addBackground
-                  : () => addPersonPhotos(context, widget.draft),
+                  : widget.chooseProfile
+                  ? _addPhotosNow
+                  : () => addPersonPhotos(
+                      context,
+                      widget.draft,
+                      personName: widget.shortName,
+                      firstName: widget.firstName,
+                    ),
             ),
         ],
       );
     },
   );
 
+  /// The frame of the current choice: the background in "Zdjęcie w tle", the profile photo — the first —
+  /// in "Zdjęcie profilowe".
+  bool _chosen(int index, DraftPhoto photo) =>
+      (widget.chooseBackground && widget.draft.isBackground(photo)) ||
+      (widget.chooseProfile && index == 0);
+
   void _tapCell(int index, DraftPhoto photo) {
     if (widget.chooseBackground) {
       Navigator.of(context).pop(BackgroundChoice(photo));
+    } else if (widget.chooseProfile) {
+      // The photos still being prepared would be dropped with the draft when the screen pops after
+      // "Gotowe" (ui review, MAJOR): the photos wait for them, as the tile does.
+      if (!_saving && widget.draft.preparing == 0) _chooseProfile(photo);
     } else {
       _open(index);
     }
   }
+
+  /// In "Zdjęcie profilowe": what a tap does, and which is the profile photo now (v1.5, P5).
+  static String _profileLabel(int i, int count) => i == 0
+      ? 'Zdjęcie 1 z $count, profilowe, zaznaczone — popraw kadr'
+      : 'Zdjęcie ${i + 1} z $count — ustaw jako profilowe';
 
   /// In "Zdjęcie w tle": what a tap does, and which is the background now (v1.4).
   static String _chooseLabel(int i, int count, bool background) => background
@@ -344,42 +568,85 @@ class _PersonPhotosScreenState extends State<PersonPhotosScreen> {
 }
 
 /// Element 2: the profile photo in a 96 dp circle, in its crop (v1.1, ISSUE-018) — as the form and the
-/// grave view will show it — and "Profilowe" under it.
+/// grave view will show it — and "Profilowe" under it. In "Zdjęcie profilowe" ([look], v1.5, P2) the
+/// caption is the button "Obejrzyj zdjęcie" instead, and the circle opens the photo to look at too.
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.photo, this.crop, required this.onTap});
+  const _ProfileHeader({
+    required this.photo,
+    this.crop,
+    required this.onTap,
+    this.look = false,
+  });
 
   final DraftPhoto photo;
   final PhotoCrop? crop;
   final VoidCallback onTap;
+  final bool look;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Semantics(
-      button: true,
-      label: 'Zdjęcie profilowe — otwórz',
-      onTap: onTap,
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
+  Widget build(BuildContext context) {
+    final Widget circle = ProfileCircle(
+      file: photo.file,
+      crop: crop,
+      size: 96,
+      unreadable: const UnreadableCell(),
+    );
+    if (look) {
+      return Center(
         child: Column(
           children: [
-            ProfileCircle(
-              file: photo.file,
-              crop: crop,
-              size: 96,
-              unreadable: const _Unreadable(),
+            Semantics(
+              // Its own node, the circle's bounds — without it the label merged into the whole header,
+              // over "Obejrzyj zdjęcie" too (seen in the dump on the emulator).
+              container: true,
+              button: true,
+              label: 'Zdjęcie profilowe — obejrzyj',
+              onTap: onTap,
+              excludeSemantics: true,
+              child: InkWell(
+                onTap: onTap,
+                customBorder: const CircleBorder(),
+                child: circle,
+              ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Profilowe',
-              style: TextStyle(color: GrobingColors.textMuted, fontSize: 13),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: GrobingColors.amber,
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onPressed: onTap,
+              child: const Text('Obejrzyj zdjęcie'),
             ),
           ],
         ),
+      );
+    }
+    return Center(
+      child: Semantics(
+        button: true,
+        label: 'Zdjęcie profilowe — otwórz',
+        onTap: onTap,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Column(
+            children: [
+              circle,
+              const SizedBox(height: 8),
+              const Text(
+                'Profilowe',
+                style: TextStyle(color: GrobingColors.textMuted, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Element 3: the section's icon in amber (a section header — rule 3), the count after a dot.
@@ -409,59 +676,20 @@ class _SectionHeader extends StatelessWidget {
   );
 }
 
-class _Cell extends StatelessWidget {
-  const _Cell({
-    required this.size,
-    required this.child,
-    this.color,
-    this.selected = false,
-  });
-
-  final double size;
-  final Widget child;
-  final Color? color;
-
-  /// The current background in "Zdjęcie w tle" (v1.4): a 2 dp frame in amber around the cell, then 2 dp
-  /// of the background, the photo smaller inside — as the crop's ring: amber against the background
-  /// 8.81:1 on any photo, and the photo's changed outline says it without colour (ui review, MAJOR:
-  /// drawn on the photo's edge, amber on a sepia photo was about 1:1).
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: selected
-        ? DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: GrobingColors.amber, width: 2),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Material(
-                color: color ?? Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                clipBehavior: Clip.antiAlias,
-                child: child,
-              ),
-            ),
-          )
-        : Material(
-            color: color ?? Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            clipBehavior: Clip.antiAlias,
-            child: child,
-          ),
-  );
-}
-
 /// Element 5: the place of a new photo as a button — an outline, the icon in amber, a caption — never a
 /// grey placeholder (rules 11 and 14).
 class _AddTile extends StatelessWidget {
-  const _AddTile({required this.size, required this.onTap});
+  const _AddTile({
+    required this.size,
+    required this.onTap,
+    required this.label,
+  });
 
   final double size;
   final VoidCallback? onTap;
+
+  /// "Dodaj zdjęcie", or "Dodaj zdjęcia" in "Zdjęcie profilowe" (v1.5, P6).
+  final String label;
 
   /// The width of a cell, and at least its height: with a large system font the caption makes the tile
   /// taller instead of being cut (style-b.md → Thresholds, SC 1.4.4; ui review).
@@ -473,7 +701,7 @@ class _AddTile extends StatelessWidget {
       child: Semantics(
         button: true,
         enabled: onTap != null,
-        label: 'Dodaj zdjęcie osoby',
+        label: '$label osoby',
         onTap: onTap,
         excludeSemantics: true,
         child: Material(
@@ -485,22 +713,22 @@ class _AddTile extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
-            child: const Padding(
-              padding: EdgeInsets.all(8),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  GrobingIcon(
+                  const GrobingIcon(
                     Glyphs.addPhotoAlternate,
                     size: 28,
                     color: GrobingColors.amber,
                     applyTextScaling: false,
                   ),
-                  SizedBox(height: 6),
+                  const SizedBox(height: 6),
                   Text(
-                    'Dodaj zdjęcie',
+                    label,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: GrobingColors.text,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
@@ -511,23 +739,6 @@ class _AddTile extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    ),
-  );
-}
-
-/// "Brak pliku": the cell without text, the icon in the muted colour.
-class _Unreadable extends StatelessWidget {
-  const _Unreadable();
-
-  @override
-  Widget build(BuildContext context) => const ColoredBox(
-    color: GrobingColors.surface,
-    child: Center(
-      child: GrobingIcon(
-        Glyphs.brokenImage,
-        color: GrobingColors.textMuted,
-        applyTextScaling: false,
       ),
     ),
   );

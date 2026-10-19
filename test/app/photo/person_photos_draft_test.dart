@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/photo/person_photos_draft.dart';
+import 'package:grobing/app/photo/person_photos_screen.dart'
+    show savePersonPhotosNow;
 import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/graves.dart';
 import 'package:grobing/data/photos.dart';
+import 'package:grobing/dev/fictional_photo.dart';
 
 import '../../support/photo_fakes.dart';
 
@@ -219,6 +222,111 @@ void main() {
 
       // Nothing of this reached the database.
       expect((await personPhotos(db, jan)).map((p) => p.crop), [face, null]);
+      draft.dispose();
+    },
+  );
+
+  /// Anna's photos written as the form writes them: a portrait and a group photo (ISSUE-048).
+  Future<List<PersonPhoto>> annaWithTwo() async {
+    NewPhoto drawn(int n) => NewPhoto(
+      File('${photos.workDir.path}/narysowane-$n.png')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fictionalPeoplePng(n, heads: n)),
+    );
+    await photos.writeWithPersonPhotos<void>(
+      db,
+      PersonPhotoEdits(photos: [drawn(1), drawn(3)]),
+      (also) => db.transaction(() => also!(anna)),
+    );
+    return personPhotos(db, anna);
+  }
+
+  test(
+    'ISSUE-048 AC-4 — a photo already in the app joins Jan: addSaved at the end, written at once '
+    '(savePersonPhotosNow) — the first of his photos, so his profile; one file and one media row, Anna\'s '
+    'links unchanged; the draft read again has no changes; allPersonPhotos sees both',
+    () async {
+      final List<PersonPhoto> annas = await annaWithTwo();
+      final PersonPhoto group = annas[1];
+      final PersonPhotosDraft draft = PersonPhotosDraft(
+        database: db,
+        photos: photos,
+        personId: jan,
+        graveId: grave,
+      );
+      await draft.load();
+      expect(draft.savedMediaIds, isEmpty);
+
+      draft.addSaved(group.mediaId, photos.fileOf(group.relativePath));
+      draft.addSaved(group.mediaId, photos.fileOf(group.relativePath));
+      expect(draft.count, 1, reason: 'no duplicate');
+      await savePersonPhotosNow(draft);
+
+      final List<PersonPhoto> jans = await personPhotos(db, jan);
+      expect(jans.map((p) => p.mediaId), [group.mediaId]);
+      expect(
+        (await personPhotos(db, anna)).map((p) => (p.mediaId, p.crop)),
+        annas.map((p) => (p.mediaId, p.crop)),
+      );
+      expect(await db.select(db.media).get(), hasLength(2));
+      expect(
+        Directory(
+          photos.mediaDir.path,
+        ).listSync(recursive: true).whereType<File>(),
+        hasLength(2),
+      );
+      expect(draft.hasChanges, isFalse);
+      expect(draft.savedMediaIds, {group.mediaId});
+      expect(
+        (await allPersonPhotos(
+          db,
+        )).map((id, list) => MapEntry(id, list.map((p) => p.mediaId).toList())),
+        {
+          jan: [group.mediaId],
+          anna: [annas[0].mediaId, group.mediaId],
+        },
+      );
+      draft.dispose();
+    },
+  );
+
+  test(
+    'ISSUE-048 AC-2 — the profile from the portrait: setProfile with the crop and savePersonPhotosNow write it at '
+    'once; a photo added in the same draft is written with it; nothing changed — nothing written',
+    () async {
+      final List<PersonPhoto> annas = await annaWithTwo();
+      final PersonPhotosDraft draft = PersonPhotosDraft(
+        database: db,
+        photos: photos,
+        personId: anna,
+        graveId: grave,
+      );
+      await draft.load();
+      await savePersonPhotosNow(draft); // no changes
+      expect(
+        (await personPhotos(db, anna)).map((p) => p.mediaId),
+        annas.map((p) => p.mediaId),
+      );
+
+      await draft.addPicked([picked(5)]);
+      const PhotoCrop face = PhotoCrop(
+        left: 10,
+        top: 20,
+        width: 100,
+        height: 100,
+      );
+      draft.setProfile(draft.items[1], crop: face);
+      await savePersonPhotosNow(draft);
+
+      final List<PersonPhoto> after = await personPhotos(db, anna);
+      expect(after.map((p) => p.mediaId).take(2), [
+        annas[1].mediaId,
+        annas[0].mediaId,
+      ]);
+      expect(after.first.crop, face);
+      expect(after, hasLength(3), reason: 'the photo added is written too');
+      expect(work(), isEmpty, reason: 'its prepared file moved to media');
+      expect(draft.hasChanges, isFalse);
       draft.dispose();
     },
   );

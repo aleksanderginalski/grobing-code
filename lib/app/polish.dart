@@ -50,6 +50,12 @@ String personName(String? givenNames, String? surname, {String? birthSurname}) {
   return birthSurname == null ? shown : '$shown z d. $birthSurname';
 }
 
+/// The first of [givenNames] — "Jan" of "Jan Józef"; null when none is written.
+String? firstGivenName(String? givenNames) {
+  final String trimmed = givenNames?.trim() ?? '';
+  return trimmed.isEmpty ? null : trimmed.split(RegExp(r'\s+')).first;
+}
+
 /// The manager's address in full words: "Kwatera B · Rząd 4 · Miejsce 12" (style-b.md rule 6); null
 /// when the grave has none.
 String? graveAddress(String? sector, String? row, String? plot) {

@@ -218,12 +218,16 @@ class PeopleSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: 16, bottom: 2),
-    child: Text(
-      text,
-      style: const TextStyle(
-        color: GrobingColors.textMuted,
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
+    // A heading for a screen reader, to jump between sections (ui review of ISSUE-048; WCAG 2.2 SC 1.3.1).
+    child: Semantics(
+      header: true,
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: GrobingColors.textMuted,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
   );

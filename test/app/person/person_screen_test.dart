@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -7,9 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/grave/cemetery_screen.dart';
 import 'package:grobing/app/grave/person_form_screen.dart';
 import 'package:grobing/app/person/person_screen.dart';
+import 'package:grobing/app/photo/app_photos_screen.dart';
 import 'package:grobing/app/photo/person_photo_viewer_screen.dart';
 import 'package:grobing/app/photo/person_photos_screen.dart';
 import 'package:grobing/app/photo/photos.dart';
+import 'package:grobing/app/photo/profile_crop_screen.dart';
 import 'package:grobing/app/tabs.dart';
 import 'package:grobing/app/theme.dart';
 import 'package:grobing/app/widgets/glyphs.dart';
@@ -523,37 +526,320 @@ void main() {
     },
   );
 
+  File galleryPhoto(int n, {int heads = 1}) =>
+      File('${tmp.path}/galeria/wymyslone-$n.png')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(fictionalPeoplePng(n, heads: heads));
+
+  Future<List<PersonPhoto>> photosOf(WidgetTester tester, int personId) async =>
+      (await tester.runAsync(() => personPhotos(db, personId)))!;
+
   testWidgets(
-    'D20 — without photos: "Ta osoba nie ma jeszcze zdjęć." and "Dodaj zdjęcie" → the correction with the '
-    'sheet "Zdjęcia osoby" over it → a photo from the gallery → "Zapisz" → the view with "Zdjęcia · 1"',
+    'ISSUE-048 AC-3, D24 (osoba.md v2.9) — without photos the circle of initials is a button with a badge '
+    '("Zdjęcie profilowe: brak", tooltip "Dodaj zdjęcie") → the sheet "Zdjęcia osoby" at once, no form, no '
+    '"Ze zdjęć w aplikacji" (no photo in the app) → a photo from the gallery → written at once: the portrait '
+    'and "Zdjęcia · 1"; "Dodaj zdjęcie" at the bottom does the same for Jan (replaces D20\'s way through '
+    '"Zapisz")',
     (tester) async {
       await withFamily(tester, mariaPhotos: false);
-      picker.manyAnswers.add([
-        File('${tmp.path}/galeria/wymyslone.jpg')
-          ..createSync(recursive: true)
-          ..writeAsBytesSync(fictionalPeoplePng(3, heads: 1)),
-      ]);
+      picker.manyAnswers.add([galleryPhoto(3)]);
       await pumpView(tester, maria);
       // The band is there without a background too — a plain one (v2.3, D21).
       expect(find.bySemanticsLabel('Zdjęcie w tle: brak'), findsOneWidget);
-      await scrollTo(tester, find.text('Dodaj zdjęcie'));
-      expect(find.text('Ta osoba nie ma jeszcze zdjęć.'), findsOneWidget);
+      expect(find.bySemanticsLabel('Zdjęcie profilowe: brak'), findsOneWidget);
+      expect(find.byTooltip('Dodaj zdjęcie'), findsOneWidget);
+      expect(findGlyph(Glyphs.addPhotoAlternate), findsWidgets);
 
-      await tester.tap(find.text('Dodaj zdjęcie'));
-      await _pumpUntil(tester, () => _shown(find.text('Zdjęcia osoby')));
+      await tester.tap(find.bySemanticsLabel('Zdjęcie profilowe: brak'));
+      await _pumpUntil(tester, () => _shown(find.text('Wybierz z galerii')));
       await _settle(tester);
-      expect(find.byType(PersonFormScreen), findsOneWidget);
+      expect(find.text('Zdjęcia osoby'), findsOneWidget);
+      expect(find.text('Ze zdjęć w\u00A0aplikacji'), findsNothing);
+      expect(find.byType(PersonFormScreen), findsNothing);
       await tester.tap(find.text('Wybierz z galerii'));
       await _pumpUntil(
         tester,
-        () => _shown(find.bySemanticsLabel(RegExp('^Zdjęcia osoby: 1'))),
+        () => _shown(find.bySemanticsLabel('Zdjęcie profilowe')),
       );
-      await tester.tap(find.widgetWithText(FilledButton, 'Zapisz'));
-      await _pumpUntil(tester, () => !_shown(find.byType(PersonFormScreen)));
-      await _pumpUntil(tester, () => _shown(find.text('Zdjęcia · 1')));
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
       await _settle(tester);
-      expect(find.bySemanticsLabel('Zdjęcie profilowe'), findsOneWidget);
+      expect(find.byType(PersonFormScreen), findsNothing);
+      await scrollTo(tester, find.text('Zdjęcia · 1'));
+      expect(find.text('Zdjęcia · 1'), findsOneWidget);
+      await leaveScreen(tester);
+      expect(await photosOf(tester, maria), hasLength(1));
+
+      // Jan: "Dodaj zdjęcie" in the empty section — the same sheet, now with "Ze zdjęć w aplikacji"
+      // (Maria has a photo), the camera, written at once.
+      picker.answers.add(galleryPhoto(4));
+      await pumpView(tester, jan);
+      await scrollTo(tester, find.text('Ta osoba nie ma jeszcze zdjęć.'));
+      await tester.tap(find.text('Dodaj zdjęcie'));
+      await _pumpUntil(tester, () => _shown(find.text('Zrób zdjęcie')));
+      await _settle(tester);
+      expect(find.text('Ze zdjęć w\u00A0aplikacji'), findsOneWidget);
+      await tester.tap(find.text('Zrób zdjęcie'));
+      await _pumpUntil(tester, () => _shown(find.text('Zdjęcia · 1')));
+      expect(find.byType(PersonFormScreen), findsNothing);
+      await leaveScreen(tester);
+      expect(await photosOf(tester, jan), hasLength(1));
+      await tester.runAsync(db.close);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-048, ui review MAJOR — while the picked photos are prepared and written, the circle shows the '
+    'progress and is inactive ("Zdjęcie profilowe: zapisuję zdjęcia"), "Dodaj zdjęcie" too: a second tap '
+    'opens no second sheet; after the write both photos are there',
+    (tester) async {
+      await withFamily(tester, mariaPhotos: false);
+      final _GatedPreparer gated = _GatedPreparer();
+      photos = fakePhotos(tmp, picker: picker, preparer: gated);
+      picker.manyAnswers.add([galleryPhoto(5), galleryPhoto(6, heads: 2)]);
+      await pumpView(tester, maria);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie profilowe: brak'));
+      await _pumpUntil(tester, () => _shown(find.text('Wybierz z galerii')));
+      await _settle(tester);
+      await tester.tap(find.text('Wybierz z galerii'));
+      await _pumpUntil(
+        tester,
+        () => _shown(
+          find.bySemanticsLabel('Zdjęcie profilowe: zapisuję zdjęcia'),
+        ),
+      );
+      expect(
+        tester.getSemantics(
+          find.bySemanticsLabel('Zdjęcie profilowe: zapisuję zdjęcia'),
+        ),
+        isSemantics(isButton: true, isEnabled: false, hasEnabledState: true),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.tap(
+        find.bySemanticsLabel('Zdjęcie profilowe: zapisuję zdjęcia'),
+        warnIfMissed: false,
+      );
+      await _settle(tester);
+      expect(find.text('Wybierz z galerii'), findsNothing);
+      await scrollTo(tester, find.text('Dodaj zdjęcie'));
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.ancestor(
+                of: find.text('Dodaj zdjęcie'),
+                matching: find.byType(OutlinedButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      gated.open.complete();
+      await _pumpUntil(tester, () => _shown(find.text('Zdjęcia · 2')));
+      await leaveScreen(tester);
+      expect(await photosOf(tester, maria), hasLength(2));
+      await tester.runAsync(db.close);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-048 AC-1, AC-2 (zdjecia-osoby.md v1.5) — the portrait opens "Zdjęcie profilowe": "Obejrzyj '
+    'zdjęcie", the line, the grid with the profile photo framed and selected, "Dodaj zdjęcia" — no ✎; '
+    '"Obejrzyj zdjęcie" → the photo only to look at; another photo → the crop → "Gotowe" → the view with the '
+    'new profile at once, its crop written, the background kept',
+    (tester) async {
+      await withFamily(tester);
+      final List<PersonPhoto> before = await photosOf(tester, maria);
+      await pumpView(tester, maria);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie profilowe'));
+      await _pumpUntil(tester, () => _shown(find.byType(PersonPhotosScreen)));
+      await _settle(tester);
+      expect(find.text('Zdjęcie profilowe'), findsOneWidget); // the bar
+      expect(find.text('Obejrzyj zdjęcie'), findsOneWidget);
+      expect(
+        find.text('Dotknij zdjęcia, które ma być profilowym.'),
+        findsOneWidget,
+      );
+      expect(find.text('Dodaj zdjęcia'), findsOneWidget);
+      expect(find.text('Zapisz'), findsNothing);
+      expect(
+        tester.getSemantics(
+          find.bySemanticsLabel(
+            'Zdjęcie 1 z 2, profilowe, zaznaczone — popraw kadr',
+          ),
+        ),
+        isSemantics(isSelected: true),
+      );
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+
+      await tester.tap(find.text('Obejrzyj zdjęcie'));
+      await _pumpUntil(
+        tester,
+        () => _shown(find.byType(PersonPhotoViewerScreen)),
+      );
+      await _settle(tester);
+      expect(find.text('Ustaw jako tło'), findsNothing);
+      expect(find.text('Usuń z tej osoby'), findsNothing);
+      await tester.pageBack();
+      await _pumpUntil(
+        tester,
+        () => !_shown(find.byType(PersonPhotoViewerScreen)),
+      );
+      await _settle(tester);
+
+      await tester.tap(
+        find.bySemanticsLabel('Zdjęcie 2 z 2 — ustaw jako profilowe'),
+      );
+      await _pumpUntil(
+        tester,
+        () =>
+            _shown(find.byType(ProfileCropScreen)) &&
+            tester
+                    .widget<FilledButton>(
+                      find.widgetWithText(FilledButton, 'Gotowe'),
+                    )
+                    .onPressed !=
+                null,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Gotowe'));
+      await _pumpUntil(tester, () => !_shown(find.byType(PersonPhotosScreen)));
+      await _pumpUntil(tester, () => _shown(find.byType(PersonScreen)));
+      await leaveScreen(tester);
+      final List<PersonPhoto> after = await photosOf(tester, maria);
+      expect(after.map((p) => p.mediaId), [
+        before[1].mediaId,
+        before[0].mediaId,
+      ]);
+      expect(after.first.crop, isNotNull, reason: 'the crop of "Gotowe"');
+      expect(after.map((p) => p.isBackground), [true, false]);
+      await tester.runAsync(db.close);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-048 AC-4 (zdjecia-w-aplikacji.md) — Jan without photos: the circle → "Ze zdjęć w aplikacji" → '
+    '"Najbliżsi" has his wife Maria with both her photos → one ticked → "Dodaj 1 zdjęcie" → Jan\'s view with '
+    'the portrait; the photo is Jan\'s and still Maria\'s, one media row',
+    (tester) async {
+      await withFamily(tester);
+      final List<PersonPhoto> marias = await photosOf(tester, maria);
+      await pumpView(tester, jan);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie profilowe: brak'));
+      await _pumpUntil(
+        tester,
+        () => _shown(find.text('Ze zdjęć w\u00A0aplikacji')),
+      );
+      await _settle(tester);
+      await tester.tap(find.text('Ze zdjęć w\u00A0aplikacji'));
+      await _pumpUntil(tester, () => _shown(find.byType(AppPhotosScreen)));
+      await _settle(tester);
+      final Finder screen = find.byType(AppPhotosScreen);
+      expect(find.text('dla: Jan Wymyślony'), findsOneWidget);
+      expect(
+        find.text('Bez zdjęć, które Jan już ma. Dotknij zdjęć, które dodać.'),
+        findsOneWidget,
+      );
+      expect(find.text('Najbliżsi'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: screen,
+          matching: find.text('Maria Wymyślona z d. Testowa'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Dodaj'))
+            .onPressed,
+        isNull,
+      );
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
+
+      await tester.tap(
+        find.bySemanticsLabel('Maria Wymyślona, zdjęcie 2 z 2 — zaznacz'),
+      );
+      await _settle(tester);
+      expect(
+        tester.getSemantics(
+          find.bySemanticsLabel(
+            'Maria Wymyślona, zdjęcie 2 z 2, zaznaczone — odznacz',
+          ),
+        ),
+        isSemantics(isSelected: true),
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Dodaj 1 zdjęcie'));
+      await _pumpUntil(tester, () => !_shown(find.byType(AppPhotosScreen)));
+      await _pumpUntil(
+        tester,
+        () => _shown(find.bySemanticsLabel('Zdjęcie profilowe')),
+      );
+      await leaveScreen(tester);
+      expect((await photosOf(tester, jan)).map((p) => p.mediaId), [
+        marias[1].mediaId,
+      ]);
+      expect(
+        (await photosOf(tester, maria)).map((p) => p.mediaId),
+        marias.map((p) => p.mediaId),
+      );
+      expect(
+        await tester.runAsync(() => db.select(db.media).get()),
+        hasLength(2),
+      );
+      await tester.runAsync(db.close);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-048 D25 — Maria\'s correction lies lower on the stack (her form → Jan\'s card → Jan\'s view → Maria '
+    'in his tree): her portrait and her band return to that form instead of writing over it; "Zdjęcie w tle" '
+    'has no "Ze zdjęć w aplikacji" (zdjecia-w-aplikacji.md D7)',
+    (tester) async {
+      await withFamily(tester);
+      await pumpView(tester, maria);
+      await tester.tap(find.byTooltip('Popraw wpis'));
+      await _pumpUntil(tester, () => _shown(find.text('Poprawa wpisu')));
+      await _settle(tester);
+      final Finder janCard = find.text('Jan Wymyślony');
+      await tester.ensureVisible(janCard);
+      await _settle(tester);
+      await tester.tap(janCard);
+      await _pumpUntil(
+        tester,
+        () => _shown(find.text('Żona')) && _shown(find.byType(PersonScreen)),
+      );
+      await _settle(tester);
+
+      // Jan's band (his correction is not open): "Zdjęcie w tle" → its tile → the sheet of one photo.
+      await tester.tap(find.bySemanticsLabel('Zdjęcie w tle: brak'));
+      await _pumpUntil(tester, () => _shown(find.byType(PersonPhotosScreen)));
+      await _settle(tester);
+      await tester.tap(find.text('Dodaj zdjęcie'));
+      await _pumpUntil(tester, () => _shown(find.text('Wybierz z galerii')));
+      await _settle(tester);
+      expect(find.text('Ze zdjęć w\u00A0aplikacji'), findsNothing);
+      await tester.tapAt(const Offset(20, 20)); // closes the sheet
+      await _settle(tester);
+      await tester.pageBack();
+      await _pumpUntil(tester, () => !_shown(find.byType(PersonPhotosScreen)));
+      await _settle(tester);
+
+      await tester.tap(find.text('Maria'));
+      await _pumpUntil(
+        tester,
+        () => _shown(find.text('Maria Wymyślona z d. Testowa')),
+      );
+      await _settle(tester);
+      await tester.tap(find.bySemanticsLabel('Zdjęcie profilowe'));
+      await _pumpUntil(tester, () => _shown(find.text('Poprawa wpisu')));
+      await _settle(tester);
+      expect(find.byType(PersonPhotosScreen), findsNothing);
+      expect(find.byType(PersonFormScreen), findsOneWidget);
       await cleanUp(tester);
     },
   );
@@ -728,4 +1014,16 @@ void main() {
       FlutterError.onError = previous;
     },
   );
+}
+
+/// A preparer that waits until [open] completes — the photos stay "being prepared" for as long as the test
+/// needs (ui review of ISSUE-048, MAJOR).
+class _GatedPreparer extends FakePhotoPreparer {
+  final Completer<void> open = Completer<void>();
+
+  @override
+  Future<void> prepare(File source, File target) async {
+    await open.future;
+    return super.prepare(source, target);
+  }
 }

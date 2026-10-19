@@ -257,6 +257,34 @@ Future<List<PersonPhoto>> personPhotos(GrobingDatabase db, int personId) async {
   ];
 }
 
+/// Everyone's photos at once — person id → their photos in the order of their links — for choosing a
+/// photo that is already in the app (05_DESIGN/zdjecia-w-aplikacji.md, ISSUE-048). A person without a
+/// link is not in the map.
+Future<Map<int, List<PersonPhoto>>> allPersonPhotos(GrobingDatabase db) async {
+  final List<TypedResult> rows =
+      await (db.select(db.personMedia).join([
+            innerJoin(db.media, db.media.id.equalsExp(db.personMedia.mediaId)),
+          ])..orderBy([
+            OrderingTerm.asc(db.personMedia.personId),
+            OrderingTerm.asc(db.personMedia.position),
+            OrderingTerm.asc(db.personMedia.mediaId),
+          ]))
+          .get();
+  final Map<int, List<PersonPhoto>> photos = {};
+  for (final TypedResult r in rows) {
+    final PersonMediaData link = r.readTable(db.personMedia);
+    (photos[link.personId] ??= []).add(
+      PersonPhoto(
+        mediaId: link.mediaId,
+        relativePath: r.readTable(db.media).relativePath,
+        crop: PhotoCrop.of(link),
+        isBackground: link.isBackground,
+      ),
+    );
+  }
+  return photos;
+}
+
 /// The ids of the people linked to the photo [mediaId], in the order the links were written.
 Future<List<int>> photoPeopleIds(GrobingDatabase db, int mediaId) async => [
   for (final PersonMediaData l

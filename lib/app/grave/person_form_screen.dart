@@ -81,9 +81,9 @@ class Correction extends PersonFormMode {
 }
 
 /// The correction of [personId]'s entry — from ✎ in their view (05_DESIGN/osoba.md element 1; wpis-osoby.md
-/// v5.8), or from "Dodaj zdjęcie" there with the photo sheet over it at once ([pickPhotosAtStart],
-/// osoba.md D20). Their first grave, when they have one, is the form's subtitle and comes first in "Kto
-/// jest na zdjęciu?".
+/// v5.8). Their first grave, when they have one, is the form's subtitle and comes first in "Kto jest na
+/// zdjęciu?". ("Dodaj zdjęcie" in the view no longer opens it: since ISSUE-048 it adds at once — osoba.md
+/// D24.)
 ///
 /// One correction of a person at a time (osoba.md D15): when theirs lies lower on the stack — the form,
 /// a relative's chip, their mini tree, back to the same person — this returns to it instead of opening a
@@ -94,7 +94,6 @@ Future<void> openPersonEntry(
   int personId, {
   Photos? photos,
   AppTab tab = AppTab.map,
-  bool pickPhotosAtStart = false,
   bool addResidenceAtStart = false,
 }) async {
   if (PersonFormScreen.isCorrecting(personId)) {
@@ -126,7 +125,6 @@ Future<void> openPersonEntry(
         ),
         photos: photos,
         tab: tab,
-        pickPhotosAtStart: pickPhotosAtStart,
         addResidenceAtStart: addResidenceAtStart,
       ),
     ),
@@ -142,7 +140,6 @@ class PersonFormScreen extends StatefulWidget {
     required this.mode,
     this.photos,
     this.tab = AppTab.map,
-    this.pickPhotosAtStart = false,
     this.addResidenceAtStart = false,
     this.places,
   });
@@ -151,7 +148,7 @@ class PersonFormScreen extends StatefulWidget {
   final PersonFormMode mode;
 
   /// "Dodaj miejsce" in the person's view (05_DESIGN/zamieszkanie.md, element 4): the window "Miejsce
-  /// zamieszkania" opens over the form at once, as "Dodaj zdjęcie" opens the photo sheet.
+  /// zamieszkania" opens over the form at once.
   final bool addResidenceAtStart;
 
   /// The list of places for the residences' choice; the bundled one when null (tests give a made-up one).
@@ -164,10 +161,6 @@ class PersonFormScreen extends StatefulWidget {
   /// The tab of the stack the form was opened in — for the views it opens (a relative's, the grave
   /// after a new one): the bar keeps it active (style-b.md rule 12).
   final AppTab tab;
-
-  /// "Dodaj zdjęcie" in the person's view (osoba.md D20): the photo sheet opens over the form at once, as
-  /// element 1a would.
-  final bool pickPhotosAtStart;
 
   /// The route of [personId]'s correction (osoba.md D15).
   static String correctionRoute(int personId) => '/correction/$personId';
@@ -282,7 +275,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       }
     });
     _photos?.addListener(_photosChanged);
-    final Future<void>? loaded = _photos?.load();
+    _photos?.load();
     if (widget.mode case Correction(:final BuriedPerson person)) {
       PersonFormScreen._correcting.add(person.id);
       residencesOf(widget.database, person.id).then((stored) {
@@ -297,13 +290,6 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     } else if (widget.addResidenceAtStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _editResidence(null);
-      });
-    }
-    if (widget.pickPhotosAtStart) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await loaded;
-        final PersonPhotosDraft? photos = _photos;
-        if (mounted && photos != null) await addPersonPhotos(context, photos);
       });
     }
   }
@@ -433,6 +419,9 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       birthSurname: withBirthSurname ? t(_birthSurname) : null,
     );
   }
+
+  /// The first given name as typed now — "Bez zdjęć, które Jan już ma." (zdjecia-w-aplikacji.md 3).
+  String? _firstName() => firstGivenName(_given.text);
 
   String get _title => switch (widget.mode) {
     Correction() => 'Poprawa wpisu',
@@ -702,13 +691,19 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         if (_photos case final PersonPhotosDraft photos) ...[
           _PhotoField(
             draft: photos,
-            onAdd: () => addPersonPhotos(context, photos),
+            onAdd: () => addPersonPhotos(
+              context,
+              photos,
+              personName: _nameNow(),
+              firstName: _firstName(),
+            ),
             onOpen: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => PersonPhotosScreen(
                   draft: photos,
                   personName: _nameNow(withBirthSurname: true),
                   shortName: _nameNow(),
+                  firstName: _firstName(),
                 ),
               ),
             ),

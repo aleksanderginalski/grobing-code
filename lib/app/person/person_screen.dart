@@ -6,14 +6,13 @@ import '../../data/database.dart';
 import '../../data/families.dart';
 import '../../data/graves.dart' show QualifiedDate;
 import '../../data/person_view.dart';
-import '../../data/photos.dart' show PersonPhotoEdits, ProfilePhoto;
+import '../../data/photos.dart' show ProfilePhoto;
 import '../../data/residences.dart' show Residence, impliedEnds;
 import '../dates.dart';
 import '../grave/cemetery_screen.dart';
 import '../grave/person_form_screen.dart';
 import '../people/me_picker_screen.dart';
 import '../people/people_list.dart' show InitialsCircle;
-import '../photo/person_photo_viewer_screen.dart';
 import '../photo/person_photos_draft.dart';
 import '../photo/person_photos_screen.dart';
 import '../photo/photo_viewer_screen.dart' show coverDecodeWidth;
@@ -87,18 +86,16 @@ class _PersonScreenState extends State<PersonScreen> {
     tab: widget.tab,
   );
 
-  /// ✎ (element 1) — and "Dodaj zdjęcie" (element 10, D20), which opens the same correction with the
-  /// photo sheet over it at once.
-  Future<void> _correct({bool pickPhotos = false, bool addResidence = false}) =>
-      openPersonEntry(
-        context,
-        widget.database,
-        widget.personId,
-        photos: widget.photos,
-        tab: widget.tab,
-        pickPhotosAtStart: pickPhotos,
-        addResidenceAtStart: addResidence,
-      );
+  /// ✎ (element 1) — and "Dodaj miejsce" (9a), which opens the same correction with the window of a
+  /// residence over it at once.
+  Future<void> _correct({bool addResidence = false}) => openPersonEntry(
+    context,
+    widget.database,
+    widget.personId,
+    photos: widget.photos,
+    tab: widget.tab,
+    addResidenceAtStart: addResidence,
+  );
 
   /// Pochówek (element 9): the cemetery with this grave marked — on the map when it has a pin, on the list
   /// without one (05_DESIGN/cmentarz.md D23; D17 holds until pins can be set, US-008).
@@ -121,8 +118,9 @@ class _PersonScreenState extends State<PersonScreen> {
     ),
   );
 
-  /// The person's photos only to look at (W2): a draft read from the database, never written.
-  Future<void> _lookAt(PersonView v, {required bool grid}) async {
+  /// The person's photos only to look at (W2, element 10): a draft read from the database, never written.
+  /// The profile photo alone opens from "Zdjęcie profilowe" since v2.9.
+  Future<void> _lookAt(PersonView v) async {
     final Photos? photos = widget.photos;
     if (photos == null) return;
     final PersonPhotosDraft draft = PersonPhotosDraft(
@@ -139,36 +137,75 @@ class _PersonScreenState extends State<PersonScreen> {
     final String short = personName(v.givenNames, v.surname);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => grid
-            ? PersonPhotosScreen(
-                draft: draft,
-                personName: _fullName(v),
-                shortName: short,
-                readOnly: true,
-              )
-            : PersonPhotoViewerScreen(
-                draft: draft,
-                initialIndex: 0,
-                personName: short,
-                readOnly: true,
-              ),
+        builder: (_) => PersonPhotosScreen(
+          draft: draft,
+          personName: _fullName(v),
+          shortName: short,
+          readOnly: true,
+        ),
       ),
     );
     draft.dispose();
   }
 
+  /// A draft of the person's photos for a change made here and written at once (osoba.md D24).
+  PersonPhotosDraft _draftOf(PersonView v, Photos photos) => PersonPhotosDraft(
+    database: widget.database,
+    photos: photos,
+    personId: v.id,
+    graveId: v.burial?.graveId,
+  );
+
+  /// D25: the band, the portrait, the initials and "Dodaj zdjęcie" write at once — but when this person's
+  /// correction lies lower on the stack, its "Zapisz" would write its older list of photos over theirs
+  /// (a photo missing from it goes). So they return to that correction, as ✎ does (D15). True when they
+  /// did.
+  bool _toOpenCorrection() {
+    if (!PersonFormScreen.isCorrecting(widget.personId)) return false;
+    _correct();
+    return true;
+  }
+
+  void _saveFailed(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// A change of the person's photos started here and not yet written (ui review of ISSUE-048, MAJOR):
+  /// meanwhile the band, the portrait, the initials and "Dodaj zdjęcie" are inactive. A second draft would
+  /// write the whole list again and take off the photos the first one adds — the loss D25 guards against.
+  bool _busy = false;
+
+  /// Photos being prepared or written after the sheet: the circle of initials shows the progress in amber
+  /// (style-b.md → Token roles, an action in progress) instead of the letters.
+  bool _working = false;
+
+  /// Runs [task] as the one change of photos at a time ([_busy]).
+  Future<void> _photosTask(Future<void> Function() task) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await task();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _working = false;
+        });
+      }
+    }
+  }
+
   /// The band (element 2, osoba.md D21): "Zdjęcie w tle" over the person's photos; the choice is written at
   /// once, as the gravestone's photo is (grob.md) — it chooses a picture, it corrects no entry — and the
   /// view shows it (rule 10).
-  Future<void> _chooseBackground(PersonView v) async {
+  Future<void> _chooseBackground(PersonView v) =>
+      _photosTask(() => _writeBackground(v));
+
+  Future<void> _writeBackground(PersonView v) async {
     final Photos? photos = widget.photos;
-    if (photos == null) return;
-    final PersonPhotosDraft draft = PersonPhotosDraft(
-      database: widget.database,
-      photos: photos,
-      personId: v.id,
-      graveId: v.burial?.graveId,
-    );
+    if (photos == null || _toOpenCorrection()) return;
+    final PersonPhotosDraft draft = _draftOf(v, photos);
     try {
       await draft.load();
       if (!mounted) return;
@@ -189,24 +226,85 @@ class _PersonScreenState extends State<PersonScreen> {
       } else {
         draft.clearBackground();
       }
-      final PersonPhotoEdits? edits = draft.edits();
-      if (edits == null) return;
-      await photos.writeWithPersonPhotos<void>(
-        widget.database,
-        edits,
-        (alsoWrite) => widget.database.transaction(() => alsoWrite!(v.id)),
+      await savePersonPhotosNow(draft);
+    } on Object {
+      _saveFailed('Nie udało się zapisać zdjęcia w tle. Spróbuj jeszcze raz.');
+    } finally {
+      draft.dispose();
+    }
+  }
+
+  /// The portrait (element 3, osoba.md D23 — P2): "Zdjęcie profilowe" — look at it, choose another, add
+  /// photos; that screen writes at once (zdjecia-osoby.md v1.5), and the view follows the database.
+  Future<void> _chooseProfile(PersonView v) =>
+      _photosTask(() => _openProfile(v));
+
+  Future<void> _openProfile(PersonView v) async {
+    final Photos? photos = widget.photos;
+    if (photos == null || _toOpenCorrection()) return;
+    final PersonPhotosDraft draft = _draftOf(v, photos);
+    try {
+      await draft.load();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => PersonPhotosScreen(
+            draft: draft,
+            personName: _fullName(v),
+            shortName: personName(v.givenNames, v.surname),
+            firstName: firstGivenName(v.givenNames),
+            chooseProfile: true,
+          ),
+        ),
       );
     } on Object {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Nie udało się zapisać zdjęcia w tle. Spróbuj jeszcze raz.',
-            ),
-          ),
+      _saveFailed('Nie udało się odczytać zdjęć. Spróbuj jeszcze raz.');
+    } finally {
+      draft.dispose();
+    }
+  }
+
+  /// The circle of initials (element 3) and "Dodaj zdjęcie" (element 10) — osoba.md v2.9, D24: the sheet
+  /// at once, the photos written at once; the first is the profile photo (ADR-009), and the view shows it.
+  Future<void> _addPhotosNow(PersonView v) =>
+      _photosTask(() => _writeNewPhotos(v));
+
+  Future<void> _writeNewPhotos(PersonView v) async {
+    final Photos? photos = widget.photos;
+    if (photos == null || _toOpenCorrection()) return;
+    final PersonPhotosDraft draft = _draftOf(v, photos);
+    // From the moment the picked photos are being prepared — the sheet is closed — to the end of the write.
+    void working() {
+      if (mounted && !_working && draft.preparing > 0) {
+        setState(() => _working = true);
+      }
+    }
+
+    draft.addListener(working);
+    try {
+      await draft.load();
+      if (!mounted) return;
+      await addPersonPhotos(
+        context,
+        draft,
+        personName: personName(v.givenNames, v.surname),
+        firstName: firstGivenName(v.givenNames),
+      );
+      if (mounted && draft.hasChanges) setState(() => _working = true);
+      await savePersonPhotosNow(draft);
+      if (draft.failure case (failed: final int failed, of: final int of)) {
+        _saveFailed(
+          of == 1
+              ? 'Nie udało się wczytać zdjęcia. Spróbuj jeszcze raz.'
+              : 'Nie udało się wczytać $failed '
+                    '${plural(failed, 'zdjęcia', 'zdjęć', 'zdjęć')} z\u00A0$of. '
+                    'Spróbuj jeszcze raz.',
         );
       }
+    } on Object {
+      _saveFailed('Nie udało się zapisać zdjęć. Spróbuj jeszcze raz.');
     } finally {
+      draft.removeListener(working);
       draft.dispose();
     }
   }
@@ -326,7 +424,7 @@ class _PersonScreenState extends State<PersonScreen> {
                   height: 140,
                   child: _Background(
                     file: background == null ? null : photos.fileOf(background),
-                    onTap: () => _chooseBackground(v),
+                    onTap: _busy ? null : () => _chooseBackground(v),
                   ),
                 ),
                 // Over the band, under the portrait; touches go through to the band (IgnorePointer).
@@ -516,28 +614,69 @@ class _PersonScreenState extends State<PersonScreen> {
     child: child,
   );
 
-  /// Element 3: the profile photo in a 104 dp circle with a ring in amber; without a photo, the initials
-  /// in a circle with an outline — no action (W2), the place to add photos is element 10.
+  /// Element 3: the profile photo in a 104 dp circle with a ring in amber — a tap opens "Zdjęcie
+  /// profilowe" (v2.9, D23); without a photo, the initials in a circle with an outline and a badge that
+  /// says a photo is added here (v2.9, AC-3; style-b.md v1.43 rule 14).
   Widget _portrait(PersonView v) {
     final Photos? photos = widget.photos;
     final ProfilePhoto? profile = v.profile;
-    if (photos == null || profile == null) {
-      return ExcludeSemantics(
-        child: Container(
-          width: 104,
-          height: 104,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: GrobingColors.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: GrobingColors.outline, width: 2),
-          ),
-          child: Text(
-            _initials(v.givenNames, v.surname),
-            style: const TextStyle(
-              color: GrobingColors.textMuted,
-              fontSize: 34,
-              fontWeight: FontWeight.w600,
+    final Widget initials = Container(
+      width: 104,
+      height: 104,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: GrobingColors.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: GrobingColors.outline, width: 2),
+      ),
+      // While the photos are prepared and written, the progress in amber instead of the letters.
+      child: _working
+          ? const SizedBox.square(
+              dimension: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: GrobingColors.amber,
+              ),
+            )
+          : Text(
+              _initials(v.givenNames, v.surname),
+              style: const TextStyle(
+                color: GrobingColors.textMuted,
+                fontSize: 34,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+    );
+    // Without photos at all — only in tests of other features — the circle stays without an action.
+    if (photos == null) return ExcludeSemantics(child: initials);
+    if (profile == null) {
+      return Semantics(
+        container: true,
+        button: true,
+        enabled: !_busy,
+        label: _working
+            ? 'Zdjęcie profilowe: zapisuję zdjęcia'
+            : 'Zdjęcie profilowe: brak',
+        hint: _busy ? null : 'dodaj zdjęcie',
+        excludeSemantics: true,
+        onTap: _busy ? null : () => _addPhotosNow(v),
+        child: Tooltip(
+          message: 'Dodaj zdjęcie',
+          excludeFromSemantics: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _busy ? null : () => _addPhotosNow(v),
+            child: SizedBox.square(
+              dimension: 104,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  initials,
+                  // The badge at 45° on the outline, its middle on the circle's edge: 52 + 52 × cos 45° −
+                  // 16 = 72.8 dp from the corner.
+                  const Positioned(left: 72.8, top: 72.8, child: _AddBadge()),
+                ],
+              ),
             ),
           ),
         ),
@@ -546,12 +685,13 @@ class _PersonScreenState extends State<PersonScreen> {
     return Semantics(
       container: true,
       button: true,
+      enabled: !_busy,
       label: 'Zdjęcie profilowe',
-      hint: 'otwórz',
+      hint: _busy ? null : 'zmień albo obejrzyj',
       excludeSemantics: true,
-      onTap: () => _lookAt(v, grid: false),
+      onTap: _busy ? null : () => _chooseProfile(v),
       child: GestureDetector(
-        onTap: () => _lookAt(v, grid: false),
+        onTap: _busy ? null : () => _chooseProfile(v),
         // The ring over the photo: under it, the opaque circle of the same size would hide it (ui review). The
         // glow under the photo: over it, it toned the portrait amber (ui review of ISSUE-033; style-b.md rule 14
         // — no filters, nothing on the photo; author's "ok" at its stop #2).
@@ -776,7 +916,7 @@ class _PersonScreenState extends State<PersonScreen> {
             style: secondaryButtonStyle.copyWith(
               minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
             ),
-            onPressed: photos == null ? null : () => _correct(pickPhotos: true),
+            onPressed: photos == null || _busy ? null : () => _addPhotosNow(v),
             icon: const GrobingIcon(Glyphs.addPhotoAlternate),
             label: const Text('Dodaj zdjęcie'),
           ),
@@ -790,10 +930,10 @@ class _PersonScreenState extends State<PersonScreen> {
       label: 'Zdjęcia osoby, ${v.photoCount}',
       hint: 'otwórz',
       excludeSemantics: true,
-      onTap: () => _lookAt(v, grid: true),
+      onTap: () => _lookAt(v),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => _lookAt(v, grid: true),
+        onTap: () => _lookAt(v),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 56),
           child: Row(
@@ -865,7 +1005,9 @@ class _Background extends StatelessWidget {
 
   /// The background's file; null — none.
   final File? file;
-  final VoidCallback onTap;
+
+  /// Null while a change of the person's photos is being written (ui review of ISSUE-048).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -873,6 +1015,7 @@ class _Background extends StatelessWidget {
     return Semantics(
       container: true,
       button: true,
+      enabled: onTap != null,
       // Without one, the reader hears that there is none (ui review).
       label: f == null ? 'Zdjęcie w tle: brak' : 'Zdjęcie w tle',
       hint: 'wybierz',
@@ -937,6 +1080,31 @@ class _Unreadable extends StatelessWidget {
       Glyphs.brokenImage,
       size: 20,
       color: GrobingColors.textMuted,
+      applyTextScaling: false,
+    ),
+  );
+}
+
+/// The badge on the circle of initials (osoba.md v2.9, element 3): 32 dp, the background's colour with an
+/// outline of 1 dp, the icon of adding a photo in amber (an action — style-b.md rule 3). Beside a photo,
+/// never on one: the circle of initials has none (rule 14). Fixed in size, as a portrait (rule 3, v1.39).
+class _AddBadge extends StatelessWidget {
+  const _AddBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 32,
+    height: 32,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: GrobingColors.background,
+      shape: BoxShape.circle,
+      border: Border.all(color: GrobingColors.outline),
+    ),
+    child: const GrobingIcon(
+      Glyphs.addPhotoAlternate,
+      size: 20,
+      color: GrobingColors.amber,
       applyTextScaling: false,
     ),
   );

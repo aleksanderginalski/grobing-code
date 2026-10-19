@@ -108,6 +108,37 @@ class PersonPhotosDraft extends ChangeNotifier {
     _notify();
   }
 
+  /// The saved photos the person has in this edit — what "Zdjęcia w aplikacji" leaves out
+  /// (zdjecia-w-aplikacji.md D3).
+  Set<int> get savedMediaIds => {
+    for (final DraftPhoto p in _items)
+      if (p.ref case data.SavedPhoto(:final int mediaId)) mediaId,
+  };
+
+  /// A photo already in the app, on someone else, joins this person at the end of their order
+  /// (zdjecia-w-aplikacji.md 7; ADR-009): one file, a new link. With no photos before, it is the profile
+  /// photo.
+  void addSaved(int mediaId, File file) {
+    final data.SavedPhoto ref = data.SavedPhoto(mediaId);
+    if (_items.any((p) => p.ref == ref)) return;
+    _items.add(DraftPhoto(ref, file));
+    _notify();
+  }
+
+  /// After the changes were written at once, from the person's view (osoba.md D24): what is saved now is
+  /// the start again, so a screen that stays open works on it. The prepared files moved into the media
+  /// directory with the write; any left behind go.
+  Future<void> reload() async {
+    for (final data.NewPhoto p in _created) {
+      await photos.discard(p);
+    }
+    _created.clear();
+    _crops.clear();
+    _others.clear();
+    _savedOthers.clear();
+    await load();
+  }
+
   /// "Ustaw jako tło" (zdjecie.md B4''): one background per person, so it replaces the one before.
   void setBackground(DraftPhoto photo) {
     if (!_items.contains(photo)) return;

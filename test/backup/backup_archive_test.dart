@@ -5,6 +5,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/app/photo/person_photos_draft.dart';
+import 'package:grobing/app/photo/person_photos_screen.dart'
+    show savePersonPhotosNow;
+import 'package:grobing/app/photo/photos.dart';
 import 'package:grobing/backup/age/age.dart';
 import 'package:grobing/backup/backup_archive.dart';
 import 'package:grobing/backup/tar_writer.dart';
@@ -16,6 +20,8 @@ import 'package:grobing/data/photos.dart';
 import 'package:grobing/dev/fictional_data.dart';
 import 'package:grobing/dev/fictional_photo.dart';
 import 'package:sqlite3/sqlite3.dart';
+
+import '../support/photo_fakes.dart';
 
 // ISSUE-008 AC-1 (the backup's content) and D2 (format v1): made-up data → `VACUUM INTO` snapshot →
 // encrypted backup → opened again: the archive holds the database, the photos and the manifest last,
@@ -302,6 +308,113 @@ void main() {
           (c) => c.id == ksenia,
         );
         expect((kseniaBack.graveName, kseniaBack.cemeteryName), (null, null));
+      } finally {
+        await opened.close();
+      }
+    },
+  );
+
+  test(
+    'ISSUE-048 — a photo joined from "Zdjęcia w aplikacji" and a profile chosen from the portrait with its crop, '
+    'both written at once, come back from the backup: one file, each person\'s links, order and crop',
+    () async {
+      final Photos photos = Photos(
+        mediaDir: live.mediaDir,
+        workDir: Directory('${tmp.path}/photo-work'),
+        picker: FakePhotoPicker(),
+        preparer: FakePhotoPreparer(),
+      );
+      final int cemetery = await addCemetery(db, name: 'Cmentarz Wymyślony');
+      final int grave = await addGrave(db, cemetery);
+      final int anna = await addPersonWithoutGrave(
+        db,
+        entry: const PersonEntry(givenNames: 'Anna', surname: 'Wymyślona'),
+      );
+      final int jan = await addPersonWithoutGrave(
+        db,
+        entry: const PersonEntry(givenNames: 'Jan', surname: 'Wymyślony'),
+      );
+      NewPhoto drawn(int n) => NewPhoto(
+        File('${photos.workDir.path}/narysowane-$n.png')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fictionalPeoplePng(n, heads: n)),
+      );
+      await photos.writeWithPersonPhotos<void>(
+        db,
+        PersonPhotoEdits(photos: [drawn(1), drawn(3)]),
+        (also) => db.transaction(() => also!(anna)),
+      );
+      final List<PersonPhoto> annas = await personPhotos(db, anna);
+      // Jan: Anna's group photo from the app (AC-4), then his own portrait made the profile with a crop (AC-2).
+      final PersonPhotosDraft draft = PersonPhotosDraft(
+        database: db,
+        photos: photos,
+        personId: jan,
+        graveId: grave,
+      );
+      await draft.load();
+      draft.addSaved(annas[1].mediaId, photos.fileOf(annas[1].relativePath));
+      await savePersonPhotosNow(draft);
+      await draft.addPicked([pickedPhoto(Directory('${tmp.path}/cache'), 2)]);
+      const PhotoCrop face = PhotoCrop(left: 4, top: 6, width: 60, height: 60);
+      draft.setProfile(draft.items[1], crop: face);
+      await savePersonPhotosNow(draft);
+      draft.dispose();
+      final List<PersonPhoto> jans = await personPhotos(db, jan);
+      final DataState liveState = await readDataState(
+        db,
+        mediaDir: live.mediaDir,
+      );
+
+      final File snapshot = File('${tmp.path}/work/grobing.db');
+      snapshot.parent.createSync();
+      await db.customStatement('VACUUM INTO ?', [snapshot.path]);
+      final X25519Identity identity = X25519Identity.generate();
+      final File output = File('${tmp.path}/kopia.age');
+      await writeEncryptedBackup(
+        snapshot: snapshot,
+        mediaDir: live.mediaDir,
+        recipient: identity.recipient,
+        output: output,
+        createdAt: DateTime.utc(2026, 10, 19, 12),
+      );
+      final BytesBuilder tar = BytesBuilder();
+      await for (final List<int> c in ageDecrypt(output.openRead(), [
+        identity,
+      ])) {
+        tar.add(c);
+      }
+      final List<_Entry> entries = _readTar(tar.takeBytes());
+      expect(
+        entries.where((e) => e.path.startsWith('media/')),
+        hasLength(3),
+        reason: 'two photos of Anna and Jan\'s own — the shared one once',
+      );
+
+      final File restored = File('${tmp.path}/restored/grobing.db');
+      restored.parent.createSync();
+      restored.writeAsBytesSync(entries.first.data);
+      final GrobingDatabase opened = GrobingDatabase(
+        NativeDatabase.opened(
+          sqlite3.open(restored.path, mode: OpenMode.readOnly),
+        ),
+      );
+      try {
+        expect(
+          (await readDataState(opened, mediaDir: live.mediaDir)).fingerprint,
+          liveState.fingerprint,
+        );
+        final List<PersonPhoto> jansBack = await personPhotos(opened, jan);
+        expect(
+          jansBack.map((p) => (p.mediaId, p.crop)),
+          jans.map((p) => (p.mediaId, p.crop)),
+        );
+        expect(jansBack.first.crop, face);
+        expect(jansBack[1].mediaId, annas[1].mediaId);
+        expect(
+          (await personPhotos(opened, anna)).map((p) => p.mediaId),
+          annas.map((p) => p.mediaId),
+        );
       } finally {
         await opened.close();
       }
