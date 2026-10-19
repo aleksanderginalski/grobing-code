@@ -91,6 +91,7 @@ abstract final class Glyphs {
   /// From the author's sheet (line and fill glyphs).
   static const Glyph settings = Glyph(0xf843, fill: 0xf83a);
   static const Glyph settingsBackupRestore = Glyph(0xe8ba);
+  static const Glyph skipNext = Glyph(0xe044);
   static const Glyph syncProblem = Glyph(0xe629);
   static const Glyph undo = Glyph(0xe166);
   static const Glyph wallpaper = Glyph(0xe1bc);

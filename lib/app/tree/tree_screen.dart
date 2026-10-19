@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsService;
@@ -32,6 +33,7 @@ import 'connect_dialog.dart';
 import 'migration_map.dart';
 import 'migration_year.dart';
 import 'presentation_mode.dart';
+import 'tree_events.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
 import 'tree_painter.dart';
@@ -151,6 +153,20 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// (D36, D41).
   Timer? _play;
 
+  /// "Następne" (element 6a; ISSUE-050): the family's events, and the caption of the year ⏭ went to — it stands
+  /// while that year does (D69).
+  TreeEvents? _events;
+  _Caption? _caption;
+
+  /// The caption's people glow (D73–D75): three soft pulses, then steady while the caption stands; a couple's line
+  /// grows in the first 0.45 s. With the system's animations off — steady at once.
+  late final AnimationController _shine;
+  late final Animation<double> _shineLevel = _shine.drive(const _ShineLevel());
+  late final Animation<double> _pairRun = _shine.drive(
+    // 0.45 s of the 3.6 s.
+    CurveTween(curve: const Interval(0, 0.125, curve: Curves.easeOut)),
+  );
+
   /// People who appear and leave with the year: one layer for each group, faded together in 150 ms — an
   /// opacity on every person is a layer each, in every frame (measured on the emulator, ISSUE-037 Dev report).
   late final AnimationController _fade;
@@ -265,6 +281,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _pathRun = AnimationController(vsync: this)
       ..addListener(_onPathRun)
       ..addStatusListener(_onPathRunStatus);
+    _shine = AnimationController(
+      vsync: this,
+      duration: _ShineLevel.time,
+      value: 1,
+    );
     _view.addListener(_onView);
     _listen();
     if (_part == _Part.map) _openMap();
@@ -321,7 +342,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   void _setPart(_Part part) {
     if (part == _part) return;
     _endPath();
-    setState(() => _part = part);
+    setState(() {
+      _part = part;
+      // The tree's events and the map's moves are not the same: the caption goes, the year stays (D69).
+      _caption = null;
+    });
     if (part == _Part.map) _openMap();
     _armControls();
   }
@@ -394,6 +419,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _play?.cancel();
     _bannerTimer?.cancel();
     _pathRun.dispose();
+    _shine.dispose();
     _fade.dispose();
     _castReturn?.dispose();
     // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
@@ -436,6 +462,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       }
       final TreeTime time = TreeTime(data, now: DateTime.now().year);
       _time = time;
+      _events = TreeEvents(data);
+      // A caption of the old family could name what is no longer so.
+      _caption = null;
       _migration = _migrationOf(data, time);
       _kinAll = null;
       if (_year case final int y? when y < time.start) _year = time.start;
@@ -907,6 +936,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final int before = _onTreeCount;
     setState(() {
       treeLevel = level;
+      // Other people, other events (K1 — D59): the caption goes (D69).
+      _caption = null;
       _relayout(keep: _focus, animate: true);
       _showPill(before);
     });
@@ -963,6 +994,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _endPath();
     setState(() {
       _stopPlaying();
+      _caption = null;
       if (year != _year) _setYear(year);
     });
   }
@@ -980,6 +1012,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       return;
     }
     setState(() {
+      // ▶ runs the years on: the caption of ⏭ goes (D69).
+      _caption = null;
       if (_year == null) _setYear(time.start);
       _nextLater();
     });
@@ -1050,6 +1084,251 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     });
   }
 
+  // ---- "Następne" (element 6a; ISSUE-050) ----
+
+  /// The people whose events ⏭ goes to: on the tree, those of the level shown (K1 — D59); the map's moves are the
+  /// whole family's, as its pill (mapa-migracji.md element 15, D28).
+  Set<int> get _eventPeople => {...?_layout?.positions.keys};
+
+  /// The years ⏭ goes to, in the part shown, from the slider's start and before this year.
+  List<int> _eventYears() {
+    final TreeTime? time = _time;
+    if (time == null) return const [];
+    if (_part == _Part.map) {
+      return _migration?.moveYears(time.start) ?? const [];
+    }
+    return _events?.yearsOf(_eventPeople, start: time.start, now: time.now) ??
+        const [];
+  }
+
+  /// [year]'s caption in the part shown: its lines, and whose each one is — they glow while it stands (D73;
+  /// mapa-migracji.md D30).
+  _Caption _captionFor(int year) {
+    final bool map = _part == _Part.map;
+    final FamilyTreeData? family = _family;
+    if (family == null) {
+      return _Caption(year: year, lines: const [], who: const [], map: map);
+    }
+    if (map) {
+      final MigrationYear? migration = _migration;
+      return _Caption(
+        year: year,
+        lines: migration?.moveLines(year, family.people) ?? const [],
+        who: [
+          for (final List<int> people
+              in migration?.movePeople(year) ?? const <List<int>>[])
+            (people: people, pair: false),
+        ],
+        map: true,
+      );
+    }
+    final TreeEvents? events = _events;
+    if (events == null) {
+      return _Caption(year: year, lines: const [], who: const [], map: false);
+    }
+    final List<TreeEvent> all = events.inYear(year, _eventPeople);
+    return _Caption(
+      year: year,
+      lines: [for (final TreeEvent e in all) events.line(e)],
+      who: [
+        for (final TreeEvent e in all)
+          (
+            people: e.people,
+            pair:
+                e.kind == TreeEventKind.together ||
+                e.kind == TreeEventKind.marriage,
+          ),
+      ],
+      map: false,
+    );
+  }
+
+  /// Who glows: the people of the caption's page shown (D73; on the map those who moved — mapa-migracji.md D30).
+  Set<int> get _shining {
+    final _Caption? c = _caption;
+    if (!_captionShown || c == null) return const {};
+    return {for (final _Who w in c.shownWho) ...w.people};
+  }
+
+  /// A new page or year of the caption: its people pulse from the start — steady at once with the system's
+  /// animations off (D75, SC 2.3.3).
+  void _startShine() {
+    if (_noMotion) {
+      _shine.value = 1;
+    } else {
+      _shine.forward(from: 0);
+    }
+  }
+
+  /// The caption stands: ⏭ brought it, and its year and part are still those shown (D69).
+  bool get _captionShown {
+    final _Caption? c = _caption;
+    return c != null && c.year == _year && c.map == (_part == _Part.map);
+  }
+
+  /// ⏭ (element 6a, D62, D66, D67): ▶ stops; a year with more than 4 events goes on first; else the next later year
+  /// with an event — from "dziś" the first one, as ▶ starts from the slider's start (D34); after the last, "dziś" with
+  /// the caption of the end, and the next touch starts again. The caption is a live region: the reader hears it
+  /// instead of the year alone.
+  void _nextEvent() {
+    final TreeTime? time = _time;
+    if (time == null) return;
+    _endPath();
+    final _Caption? now = _caption;
+    if (_captionShown && now != null && now.year != null && now.hasMore) {
+      setState(() {
+        _stopPlaying();
+        _caption = now.nextPage();
+      });
+    } else {
+      final List<int> years = _eventYears();
+      if (years.isEmpty) return;
+      final int? from = _year;
+      int? next;
+      for (final int y in years) {
+        if (from == null || y > from) {
+          next = y;
+          break;
+        }
+      }
+      final bool map = _part == _Part.map;
+      setState(() {
+        _stopPlaying();
+        if (next == null) {
+          _setYear(null);
+          _caption = _Caption(
+            year: null,
+            lines: const [],
+            who: const [],
+            map: map,
+          );
+        } else {
+          if (next != _year) _setYear(next);
+          _caption = _captionFor(next);
+        }
+      });
+    }
+    _startShine();
+    _armControls();
+    // The caption's size is known after the frame: then the tree glides to its people, if they are off the screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _frameCaption());
+  }
+
+  final GlobalKey _captionKey = GlobalKey();
+  final GlobalKey _barKey = GlobalKey();
+
+  /// V2 (D63): someone of the caption's page off the tree's area left free by the caption (and the bar, while it
+  /// shows) — the view glides to the middle of them, or to the first when they do not fit, in 0.45 s as the middle's
+  /// move; at once with the system's animations off. The scale and the person in the middle stay. On the map
+  /// nothing moves: its frame is yours (R4 — mapa-migracji.md D29).
+  void _frameCaption() {
+    final _Caption? c = _caption;
+    final TreeLayout? layout = _layout;
+    final Size? v = _viewport;
+    if (!mounted || c == null || c.year == null || c.map || !_captionShown) {
+      return;
+    }
+    if (layout == null || v == null) return;
+    // The people of the page shown — the events of the caption were worked out for them (K1).
+    final List<int> page = [
+      for (final _Who w in c.shownWho)
+        for (final int n in w.people)
+          if (layout.positions.containsKey(n)) n,
+    ];
+    if (page.isEmpty) return;
+    const double margin = 24;
+    final RenderBox? box =
+        _captionKey.currentContext?.findRenderObject() as RenderBox?;
+    // In presentation nothing stands under the year (B — D72): the area starts under its plate and ends over the bar,
+    // which carries the caption's line.
+    final double captionBottom = _presenting
+        ? PresentationYear.bottom(context)
+        : box == null || !box.hasSize
+        ? margin
+        : 10 + box.size.height;
+    final RenderBox? bar =
+        _barKey.currentContext?.findRenderObject() as RenderBox?;
+    final double barTop = _presenting && bar != null && bar.hasSize
+        ? v.height - PresentationBar.margin - bar.size.height
+        : v.height;
+    final Rect free = Rect.fromLTRB(
+      margin,
+      captionBottom + 12,
+      v.width - margin,
+      math.max(captionBottom + 12 + 1, barTop - margin),
+    );
+    // The level's + / − in the corner of the phone (in presentation they stand on the bar).
+    final Rect? buttons = _presenting
+        ? null
+        : Rect.fromLTRB(
+            v.width - _buttonColumn + 4,
+            v.height - 12 - 104 - 8,
+            v.width,
+            v.height,
+          );
+    final double s = _scale;
+    final double half = _metrics.slot / 2;
+    Rect place(int n, Offset shift) {
+      final Offset p = shift + layout.positions[n]! * s;
+      return Rect.fromLTWH(
+        p.dx - half * s,
+        p.dy,
+        _metrics.slot * s,
+        _metrics.labelBottom * s,
+      );
+    }
+
+    bool clear(Rect r) =>
+        r.left >= free.left &&
+        r.right <= free.right &&
+        r.top >= free.top &&
+        r.bottom <= free.bottom &&
+        !(buttons?.overlaps(r) ?? false);
+    if (page.every((n) => clear(place(n, _offset)))) return;
+    final Iterable<Offset> places = page.map((n) => layout.positions[n]!);
+    final Rect group = Rect.fromLTRB(
+      places.map((p) => p.dx).reduce(math.min) - half,
+      places.map((p) => p.dy).reduce(math.min),
+      places.map((p) => p.dx).reduce(math.max) + half,
+      places.map((p) => p.dy).reduce(math.max) + _metrics.labelBottom,
+    );
+    final Offset first = layout.positions[page.first]!;
+    // Under the caption, not in the middle of the area: the people then stand by the words about them, and above the
+    // + / − in the corner, which the middle of the area met at 200 % (found on the emulator). Across, the group in the
+    // middle; too wide — the first person inside all the same; too tall — the first person's row at the top.
+    double dx = free.center.dx - group.center.dx * s;
+    final double dy =
+        free.top +
+        8 -
+        (group.height * s <= free.height - 8 ? group.top : first.dy) * s;
+    if (group.width * s > free.width) {
+      final double left = (first.dx - half) * s + dx;
+      final double right = (first.dx + half) * s + dx;
+      if (left < free.left) dx += free.left - left;
+      if (right > free.right) dx -= right - free.right;
+    }
+    // Someone on the + / − still: the group goes left, as long as the first person stays inside.
+    final Rect? corner = buttons;
+    if (corner != null) {
+      double over = 0;
+      for (final int n in page) {
+        final Rect r = place(n, Offset(dx, dy));
+        if (r.overlaps(corner)) over = math.max(over, r.right - corner.left);
+      }
+      final double room = (first.dx - half) * s + dx - free.left;
+      dx -= math.min(over, math.max(0, room));
+    }
+    final Matrix4 target = _matrix(s, Offset(dx, dy));
+    if (_noMotion) {
+      _view.value = target;
+      return;
+    }
+    _glideTo = Matrix4Tween(begin: _view.value.clone(), end: target);
+    _glide
+      ..value = 0
+      ..animateTo(1, duration: _moveTime);
+  }
+
   /// The pill at the top of the tree for [time]: the level after a change, the hint on entering presentation.
   void _flash(String text, Duration time) {
     _pill = text;
@@ -1110,6 +1389,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     final int? before = _focus;
     setState(() {
       _stopPlaying();
+      _caption = null;
       if (_year != null) _setYear(null);
       _path = TreePath(from: from, to: to, steps: steps, also: at.also);
       _banner = banner;
@@ -1611,6 +1891,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                   onYear: _chooseYear,
                   tempo: treeTempo,
                   onTempo: _nextTempo,
+                  onNext: _eventYears().isEmpty ? null : _nextEvent,
                 ),
                 null => null,
               },
@@ -1690,6 +1971,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               move.end = m;
             } else {
               _view.value = m;
+              // A caption that came along into presentation, or back from it: its people glow, so they come into
+              // view too (V2 — D63; found on the emulator: in presentation only the empty ring of "Ja" was there).
+              if (_captionShown) _frameCaption();
             }
           });
         }
@@ -1724,7 +2008,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               ),
           // L1 (D39): the year of the history in the corner, for the TV — when it is not "dziś", with the
           // controls, and for 3 s once ▶ has come to "dziś". Its own layer: it changes with every year of ▶.
-          if (_presenting && (_year != null || _controlsShown || _todayShown))
+          if (_presenting &&
+              (_year != null || _controlsShown || _todayShown || _captionShown))
             // It takes no touch, as the pill: a person under it and the empty space stay the tree's (qa's test, ui
             // review of ISSUE-038). The reader still hears it — IgnorePointer drops actions, not the label.
             Positioned(
@@ -1733,6 +2018,16 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               child: IgnorePointer(
                 child: RepaintBoundary(child: PresentationYear(year: _year)),
               ),
+            ),
+          // Element 6a: the caption of ⏭ — on the phone a bubble at the top (on the map in the pill's place); in
+          // presentation a small line on the bar (B — D72), and nothing under the year: the family reads the year and
+          // sees who glows (D73), the author reads the words from the phone in hand.
+          if (_captionShown && !_presenting)
+            Positioned(
+              top: 10,
+              left: 16,
+              right: 16,
+              child: _captionBubble(_caption!),
             ),
           if (!map) ...[
             // In presentation under the top row of the controls — 48 dp at any text size — which a level's change
@@ -1757,39 +2052,50 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 bottom: PresentationBar.margin,
                 child: RepaintBoundary(
                   child: PresentationBar(
+                    key: _barKey,
                     child: LayoutBuilder(
-                      builder: (context, bar) => Row(
+                      builder: (context, bar) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: TreeTimeBar(
-                              start: time.start,
-                              now: time.now,
-                              year: _year,
-                              playing: _playing,
-                              onPlay: () {
-                                _togglePlay();
-                                _armControls();
-                              },
-                              onYear: (year) {
-                                _chooseYear(year);
-                                _armControls();
-                              },
-                              tempo: treeTempo,
-                              onTempo: _nextTempo,
-                              oneRow: true,
-                              onSlide: _slide,
-                            ),
+                          if (_captionShown) _captionLine(_caption!),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TreeTimeBar(
+                                  start: time.start,
+                                  now: time.now,
+                                  year: _year,
+                                  playing: _playing,
+                                  onPlay: () {
+                                    _togglePlay();
+                                    _armControls();
+                                  },
+                                  onYear: (year) {
+                                    _chooseYear(year);
+                                    _armControls();
+                                  },
+                                  tempo: treeTempo,
+                                  onTempo: _nextTempo,
+                                  oneRow: true,
+                                  onSlide: _slide,
+                                  onNext: _eventYears().isEmpty
+                                      ? null
+                                      : _nextEvent,
+                                ),
+                              ),
+                              // T2 (D56): the level's − / + on the bar (v1.25, D58 — the label and the zoom went), on the tree's
+                              // part only — the map has no levels. Only on a bar of a phone held sideways (from 560 dp): a reader's
+                              // controls come before the phone has turned, and at 302 dp the time row had no room left (qa's
+                              // test, ISSUE-049).
+                              if (!map && bar.maxWidth >= 560) ...[
+                                const SizedBox(width: 8),
+                                _nearer(onBar: true),
+                                const SizedBox(width: 4),
+                                _further(onBar: true),
+                              ],
+                            ],
                           ),
-                          // T2 (D56): the level's − / + on the bar (v1.25, D58 — the label and the zoom went), on the tree's
-                          // part only — the map has no levels. Only on a bar of a phone held sideways (from 560 dp): a reader's
-                          // controls come before the phone has turned, and at 302 dp the time row had no room left (qa's
-                          // test, ISSUE-049).
-                          if (!map && bar.maxWidth >= 560) ...[
-                            const SizedBox(width: 8),
-                            _nearer(onBar: true),
-                            const SizedBox(width: 4),
-                            _further(onBar: true),
-                          ],
                         ],
                       ),
                     ),
@@ -1853,6 +2159,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       photos: widget.photos,
       presenting: _presenting,
       playing: _playing,
+      // Element 15: the caption of ⏭ stands in the pill's place, and the moves of that year glide as with ▶.
+      showPill: !_captionShown,
+      ride: _captionShown,
+      // Those who moved glow with it (D30).
+      shine: _shining,
+      shineLevel: _shineLevel,
       onTap: _mapTap,
       onEmptyTap: _presenting ? _toggleControls : null,
     );
@@ -1861,8 +2173,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// The tree's own area (element 4): the people of the slider's year, pinch and drag, the double tap.
   Widget _treeView(FamilyTreeData family, TreeLayout layout) {
     final Set<int> named = _visibleNames(family, layout);
-    // The people of a lit path the line has reached: the ring, as the middle's (element 8).
-    final Set<int> lit = {...?_path?.people.take(_reached)};
+    // The people of a lit path the line has reached: the ring, as the middle's (element 8); the people of the
+    // caption's page too (D73).
+    final Set<int> lit = {...?_path?.people.take(_reached), ..._shining};
     // In the slider's year only those on the tree, the middle (its empty ring before birth) and those
     // fading out (element 6, AC-1).
     final Map<int, Widget> nodes = {
@@ -1895,6 +2208,11 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// then fade in — no line is measured anew in each frame (SPIKE-002 M3).
   Widget _world(TreeLayout layout, Map<int, Widget> nodes, Set<int> named) {
     final double half = _metrics.slot / 2;
+    final List<_Glow> glows = _glows(layout, nodes);
+    // The couples' lines wait with the family's during a move.
+    final List<List<Offset>> pairs = _linesShown
+        ? _pairRuns(layout, nodes)
+        : const [];
     return SizedBox(
       width: layout.width,
       height: layout.height,
@@ -1925,6 +2243,39 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                       runs: _pathRuns,
                       progress: _pathRun,
                       scale: _scale,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // The caption's people glow (D73): one layer under them all, not a shadow in each node (style-b.md rule 2);
+          // over the family's lines, so a wreath shines on it.
+          if (glows.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _ShinePainter(
+                      glows: glows,
+                      level: _shineLevel,
+                      move: _move,
+                      reach: _labelScale,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // A couple of the caption: the line between them in amber, as a path's step (D73), both growing at once.
+          if (pairs.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: PathLinePainter(
+                      runs: pairs,
+                      progress: _pairRun,
+                      scale: _scale,
+                      together: true,
                     ),
                   ),
                 ),
@@ -2069,6 +2420,41 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  /// Where the caption's people glow (D73): under the circle — under the wreath, wider, when they have one — for those
+  /// on the tree in the year; from where a move started, as the people slide.
+  List<_Glow> _glows(TreeLayout layout, Map<int, Widget> nodes) {
+    final Set<int> people = _shining;
+    final FamilyTreeData? family = _family;
+    if (people.isEmpty || family == null) return const [];
+    const Offset down = Offset(0, TreeMetrics.node / 2);
+    return [
+      for (final int n in people)
+        if (layout.positions[n] case final Offset at? when nodes.containsKey(n))
+          (
+            from: (_from[n] ?? at) + down,
+            to: at + down,
+            // The wreath's leaves stand between the portrait and about 0.4 of its box from the centre.
+            radius: family.wreaths.of(n).isEmpty
+                ? TreeMetrics.node / 2
+                : _TreeNode._wreathBox * 0.4,
+          ),
+    ];
+  }
+
+  /// The couples of the caption's page shown, both on the tree: the line between them, as a path's step (D73).
+  List<List<Offset>> _pairRuns(TreeLayout layout, Map<int, Widget> nodes) {
+    final _Caption? c = _caption;
+    if (!_captionShown || c == null || c.map) return const [];
+    bool on(int n) => nodes.containsKey(n) && layout.positions.containsKey(n);
+    return [
+      for (final _Who w in c.shownWho)
+        if (w.pair && w.people.length == 2 && w.people.every(on))
+          ...layout.pathRoute(w.people.first, [
+            KinStep(personId: w.people.last, edge: KinEdge.partner),
+          ]),
+    ];
   }
 
   /// A person leaving the view in a move: just their circle and name, fading.
@@ -2256,6 +2642,158 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// The caption on the phone (element 6a): a bubble at the top of the tree's area, where the level's pill stands
+  /// — "W 1952" and the year's events, at most 4 at once; on the map in the pill's place (mapa-migracji.md 15). A
+  /// live region: after ⏭ the reader hears it instead of the year alone (D71).
+  Widget _captionBubble(_Caption c) {
+    final String head = _captionHead(c);
+    return IgnorePointer(
+      child: Center(
+        child: Semantics(
+          container: true,
+          liveRegion: true,
+          child: DecoratedBox(
+            key: _captionKey,
+            decoration: BoxDecoration(
+              color: GrobingColors.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    head,
+                    style: const TextStyle(
+                      color: GrobingColors.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  ..._captionTexts(c, fontSize: 14, height: 1.35),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The caption in presentation (B — D72): a small line on the bar, over ▶ ⏭ — the head, then the page's events
+  /// split by " · " (a hard space after the dot — style-b.md rule 6), "Jeszcze 2 w tym roku" at the end. The author
+  /// reads it from the phone in hand; it goes with the bar after 5 s, the year in the corner and the glow stay. A live
+  /// region: the reader hears "W 1868. Urodził się …" (D71).
+  Widget _captionLine(_Caption c) => Padding(
+    padding: const EdgeInsets.fromLTRB(6, 6, 8, 0),
+    child: Semantics(
+      container: true,
+      liveRegion: true,
+      label: _captionSpoken(c),
+      excludeSemantics: true,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: _captionHead(c),
+              style: const TextStyle(
+                color: GrobingColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const WidgetSpan(child: SizedBox(width: 12)),
+            if (c.year == null) TextSpan(text: _captionEnd(c)),
+            for (final (int i, List<CaptionPart> line) in c.shown.indexed) ...[
+              if (i > 0) const TextSpan(text: ' ·\u00A0'),
+              for (final CaptionPart part in line)
+                TextSpan(
+                  text: part.text,
+                  style: part.name
+                      ? const TextStyle(fontWeight: FontWeight.w600)
+                      : null,
+                ),
+            ],
+            if (c.rest > 0)
+              TextSpan(
+                text: ' ·\u00A0Jeszcze ${c.rest} w\u00A0tym roku',
+                style: const TextStyle(color: GrobingColors.textMuted),
+              ),
+          ],
+        ),
+        style: const TextStyle(
+          color: GrobingColors.text,
+          fontSize: 14,
+          height: 1.35,
+        ),
+      ),
+    ),
+  );
+
+  /// The caption as the reader says it: its head ("W 1955 · 1 z 2", "Dziś"), then each line.
+  String _captionSpoken(_Caption c) => [
+    _captionHead(c),
+    if (c.year == null)
+      c.map
+          ? 'To wszystkie przeprowadzki z datą.'
+          : 'To wszystkie zdarzenia z datą.',
+    for (final List<CaptionPart> line in c.shown)
+      line.map((p) => p.text).join(),
+    if (c.rest > 0) 'Jeszcze ${c.rest} w tym roku',
+  ].join('. ');
+
+  /// The caption after the last event (D67) — "z" holds the next word (rule 6).
+  static String _captionEnd(_Caption c) => c.map
+      ? 'To wszystkie przeprowadzki z\u00A0datą.'
+      : 'To wszystkie zdarzenia z\u00A0datą.';
+
+  /// "W 1952", "W 1955 · 1 z 2" with two pages, "Dziś" at the end — hard spaces by the one-letter words (rule 6).
+  String _captionHead(_Caption c) => c.year == null
+      ? 'Dziś'
+      : 'W\u00A0${c.year}${c.pages > 1 ? ' ·\u00A0${c.page + 1} z\u00A0${c.pages}' : ''}';
+
+  /// The caption's lines: the events of the page shown, names semibold (style-b.md rule 4); "Jeszcze 2 w tym roku"
+  /// when the year goes on with the next ⏭ (D66); at the end "To wszystkie zdarzenia z datą." (D67).
+  List<Widget> _captionTexts(
+    _Caption c, {
+    required double fontSize,
+    required double height,
+  }) {
+    final TextStyle base = TextStyle(
+      color: GrobingColors.text,
+      fontSize: fontSize,
+      height: height,
+    );
+    Widget text(String s, TextStyle style) =>
+        Text(s, style: style, textWidthBasis: TextWidthBasis.longestLine);
+    return [
+      if (c.year == null) text(_captionEnd(c), base),
+      for (final List<CaptionPart> line in c.shown)
+        Text.rich(
+          TextSpan(
+            children: [
+              for (final CaptionPart part in line)
+                TextSpan(
+                  text: part.text,
+                  style: part.name
+                      ? const TextStyle(fontWeight: FontWeight.w600)
+                      : null,
+                ),
+            ],
+          ),
+          style: base,
+          textWidthBasis: TextWidthBasis.longestLine,
+        ),
+      if (c.rest > 0)
+        text(
+          'Jeszcze ${c.rest} w\u00A0tym roku',
+          base.copyWith(color: GrobingColors.textMuted),
+        ),
+    ];
+  }
+
   /// "Przez 1 związek · 113 osób (+22)" for a moment after a change of level, in presentation too (D58); a screen
   /// reader hears the same (element 3, D57).
   /// In presentation, the hint about casting from the quick settings — only on a phone without the system's
@@ -2320,7 +2858,8 @@ class _TreeNode extends StatelessWidget {
   /// the node, so it fades and dims with the person's group, not on a layer of its own.
   final PersonWreath wreath;
 
-  /// Reached by the line of a lit path (element 8): the ring and the glow of the middle (style-b.md rule 2).
+  /// Reached by the line of a lit path (element 8), or of the caption's page shown (D73): the ring and the glow of the
+  /// middle (style-b.md rule 2).
   final bool lit;
   final bool isMe;
 
@@ -2782,6 +3321,119 @@ class _TreeCard extends StatelessWidget {
 /// right in its own width, and the "Drzewo" · "Mapa" switch in the middle of the room between the year and it — given
 /// that room, so it shows its icons alone where its words do not fit (qa, ISSUE-045: at 200 % the switch in the middle
 /// of the screen ran under the exit). Never less room than the icons: past that, as before, the two may overlap.
+/// The caption of a year after ⏭ (drzewo.md element 6a; ISSUE-050): its year — null after the last event, "dziś" —
+/// its lines, worked out when ⏭ came (a touch of a person keeps them — D69), the page of [captionPage] shown, and
+/// the part it belongs to.
+class _Caption {
+  const _Caption({
+    required this.year,
+    required this.lines,
+    required this.who,
+    required this.map,
+    this.page = 0,
+  });
+
+  final int? year;
+  final List<List<CaptionPart>> lines;
+
+  /// Whose each of [lines] is.
+  final List<_Who> who;
+  final bool map;
+  final int page;
+
+  int get pages => math.max(1, (lines.length / captionPage).ceil());
+
+  /// The year goes on with the next ⏭ (D66).
+  bool get hasMore => page + 1 < pages;
+
+  _Caption nextPage() =>
+      _Caption(year: year, lines: lines, who: who, map: map, page: page + 1);
+
+  List<List<CaptionPart>> get shown =>
+      lines.skip(page * captionPage).take(captionPage).toList();
+
+  /// Whose the lines shown are: they glow (D73).
+  List<_Who> get shownWho =>
+      who.skip(page * captionPage).take(captionPage).toList();
+
+  /// The events of the year after this page.
+  int get rest => math.max(0, lines.length - (page + 1) * captionPage);
+}
+
+/// Whose a caption's line is: they glow while it stands; a couple — with the line between them (D73).
+typedef _Who = ({List<int> people, bool pair});
+
+/// Where one of the caption's people glows: from where a move started to their place, and how far round the centre.
+typedef _Glow = ({Offset from, Offset to, double radius});
+
+/// The glow's opacity over the pulse (D73): up to 0.30 in the first 0.3 s, three soft pulses of 1.2 s up to 0.65, then
+/// 0.30 — the motion ends before 5 s (SC 2.2.2), under 3 changes a second (SC 2.3.1).
+class _ShineLevel extends Animatable<double> {
+  const _ShineLevel();
+
+  static const Duration time = Duration(milliseconds: 3600);
+  static const double steady = 0.30;
+
+  @override
+  double transform(double t) {
+    final double s = t * time.inMilliseconds / 1000;
+    final double pulse = math.sin(math.pi * s / 1.2);
+    return steady * math.min(1, s / 0.3) + 0.35 * pulse * pulse;
+  }
+}
+
+/// The glow under the caption's people (D73): a soft amber disc under each circle — under the wreath, wider — at
+/// [level]'s opacity, sliding with a move. Zoomed out it keeps its size on the screen ([reach]), as the names do (I2):
+/// from the sofa it shows where the people are, the whole level too.
+class _ShinePainter extends CustomPainter {
+  _ShinePainter({
+    required this.glows,
+    required this.level,
+    required this.move,
+    required this.reach,
+  }) : super(repaint: Listenable.merge([level, move]));
+
+  final List<_Glow> glows;
+  final Animation<double> level;
+  final Animation<double> move;
+  final double reach;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double a = level.value;
+    if (a <= 0) return;
+    final double t = Curves.easeInOut.transform(move.value);
+    final Color full = GrobingColors.amber.withValues(alpha: a);
+    final Color half = GrobingColors.amber.withValues(alpha: a * 0.45);
+    final Color none = GrobingColors.amber.withValues(alpha: 0);
+    // A radial gradient, not a blur: a blurred disc in every frame of the pulse made more slow frames on the emulator
+    // (measured against the build of round 1); the gradient draws the same soft edge — 20 dp past the circle on the
+    // screen, at least.
+    for (final _Glow g in glows) {
+      final Offset c = Offset.lerp(g.from, g.to, t)!;
+      final double outer = g.radius + 20 * reach;
+      canvas.drawCircle(
+        c,
+        outer,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            c,
+            outer,
+            [full, full, half, none],
+            [0, g.radius / outer, (g.radius + 6 * reach) / outer, 1],
+          ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ShinePainter old) =>
+      old.glows != glows ||
+      old.reach != reach ||
+      old.level != level ||
+      old.move != move;
+}
+
 class _ControlsTop extends MultiChildLayoutDelegate {
   _ControlsTop({required this.left});
 

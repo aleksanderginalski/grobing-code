@@ -1,8 +1,11 @@
 import '../../data/cemeteries.dart' show GeoPoint;
+import '../../data/database.dart' show DateQualifier;
+import '../../data/family_tree.dart' show TreePerson;
 import '../../data/graves.dart' show QualifiedDate;
 import '../../data/residences.dart';
 import '../person/residence_screen.dart' show residenceCardLine;
 import '../polish.dart' show peopleLabel;
+import 'tree_events.dart' show CaptionPart, captionName, captionQualifier;
 import 'tree_time.dart';
 
 // The migration map's time (05_DESIGN/mapa-migracji.md v1.1; ISSUE-045): who lives where in a year of the tree's
@@ -138,6 +141,88 @@ class MigrationYear {
       for (final _Stay s in stays) s.residence.place.point,
   ];
 
+  /// The family's moves (element 15, D28 — ISSUE-050), worked out once, in order of years.
+  late final List<MapMove> moves = _findMoves();
+
+  /// A move: in a year someone alive lives in another written place than the year before (the rule of [person] —
+  /// D4). The first place, the end at death and a residence without years are no move. A place changes only where a
+  /// stay begins or ends, so those years are all that is asked.
+  List<MapMove> _findMoves() {
+    final List<MapMove> found = [];
+    for (final MapEntry<int, List<_Stay>> e in _stays.entries) {
+      final Set<int> years = {
+        for (final _Stay s in e.value) ...[s.from, s.until],
+      };
+      for (final int y in years.toList()..sort()) {
+        if (y > now) continue;
+        final Residence? before = person(e.key, y - 1).residence;
+        final Residence? after = person(e.key, y).residence;
+        if (before == null || after == null || before.place == after.place) {
+          continue;
+        }
+        found.add(MapMove(y, e.key, before, after));
+      }
+    }
+    return found..sort((a, b) => a.year.compareTo(b.year));
+  }
+
+  /// The years with a move, from [start] and before this year — "dziś" (element 15).
+  List<int> moveYears(int start) => {
+    for (final MapMove m in moves)
+      if (m.year >= start && m.year < now) m.year,
+  }.toList()..sort();
+
+  /// The caption's lines of [year] (M2 — D27, D29): who, from where, to where — "Kazimierz Wymyślony: Zmyślin →
+  /// Francja"; those who went the same way that year in one line, in the order of their birth. The place as it was
+  /// called then when written, else its name; a whole country — the country's name.
+  List<List<CaptionPart>> moveLines(int year, Map<int, TreePerson> people) {
+    return [
+      for (final List<MapMove> way in _ways(year))
+        [
+          for (final (int i, MapMove m) in way.indexed) ...[
+            // The one-letter "i" holds the next name (style-b.md rule 6).
+            if (i > 0) CaptionPart(i == way.length - 1 ? ' i\u00A0' : ', '),
+            CaptionPart(captionName(people[m.person]), name: true),
+          ],
+          // The arrow goes with where to: a line never ends with it (rule 6).
+          CaptionPart(
+            ': ${_placeName(way.first.from)} →\u00A0${_placeName(way.first.to)}'
+            '${_movedOn(way.first)}',
+          ),
+        ],
+    ];
+  }
+
+  /// The people of each of [year]'s lines, in the lines' order: they glow while the caption stands (D30).
+  List<List<int>> movePeople(int year) => [
+    for (final List<MapMove> way in _ways(year))
+      [for (final MapMove m in way) m.person],
+  ];
+
+  /// [year]'s moves by their way, each way in the order of birth.
+  List<List<MapMove>> _ways(int year) {
+    final Map<(ResidencePlace, ResidencePlace), List<MapMove>> ways = {};
+    for (final MapMove m in moves) {
+      if (m.year != year) continue;
+      (ways[(m.from.place, m.to.place)] ??= []).add(m);
+    }
+    return [
+      for (final List<MapMove> way in ways.values)
+        way..sort((a, b) => _born(a.person).compareTo(_born(b.person))),
+    ];
+  }
+
+  static String _placeName(Residence r) =>
+      r.place.isCountry ? r.place.countryName : (r.nameThen ?? r.place.name);
+
+  /// "(ok. 1912)" when the stay begun by the move has an uncertain start in that year.
+  static String _movedOn(MapMove m) => switch (m.to.from) {
+    final QualifiedDate d
+        when d.from.year == m.year && d.qualifier != DateQualifier.exact =>
+      captionQualifier(d),
+    _ => '',
+  };
+
   int _born(int p) => _time.birthWindow(p)?.from ?? 1 << 30;
 
   /// The years each residence of [person] covers, `[from, until)` (D4): a typed "Do" counts its own year, so
@@ -165,6 +250,16 @@ class MigrationYear {
           ),
     ];
   }
+}
+
+/// One move of the map (element 15): in [year] [person] went from [from] to [to].
+class MapMove {
+  const MapMove(this.year, this.person, this.from, this.to);
+
+  final int year;
+  final int person;
+  final Residence from;
+  final Residence to;
 }
 
 class _Stay {

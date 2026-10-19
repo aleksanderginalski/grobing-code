@@ -12,6 +12,8 @@ import 'tree_time.dart';
 /// years and the tempo stand in a row above ▶ and the slider (D20), so nothing is cut at 200 % on 360 dp.
 /// [oneRow]: the bar of presentation mode (element 11, B2 — D40) — one row at any text size, and without the year,
 /// which stands in the corner of the screen there (L1 — D39).
+/// Since v1.26 (ISSUE-050, element 6a) ⏭ "Następne" stands right after ▶; in the card's single row the slider's first
+/// year gives it the room (U3 — D65): with ⏭ and the year the track would be ~25 dp.
 class TreeTimeBar extends StatelessWidget {
   const TreeTimeBar({
     super.key,
@@ -25,6 +27,7 @@ class TreeTimeBar extends StatelessWidget {
     required this.onTempo,
     this.oneRow = false,
     this.onSlide,
+    this.onNext,
   });
 
   /// The slider's first year (D34) and this year — its end, "dziś".
@@ -49,6 +52,10 @@ class TreeTimeBar extends StatelessWidget {
 
   /// A finger on the slider (true) and off it (false): presentation keeps its controls while it drags (D40).
   final ValueChanged<bool>? onSlide;
+
+  /// ⏭ — the next year with an event (element 6a); null: no event with a date to go to, and no ⏭ (D71 — an
+  /// inactive icon would differ from the active one by its colour only, SC 1.4.1).
+  final VoidCallback? onNext;
 
   /// The screen reader moves the slider by a decade: a year at a time is up to 166 gestures (element 6, D5).
   static const int readerStep = 10;
@@ -88,6 +95,16 @@ class TreeTimeBar extends StatelessWidget {
         ),
       ),
     );
+    // In amber, not filled: ▶ stays the only filled one (style-b.md rules 1 and 3; D71).
+    final VoidCallback? next = onNext;
+    final Widget? nextButton = next == null
+        ? null
+        : IconButton(
+            onPressed: next,
+            tooltip: 'Następne zdarzenie',
+            color: GrobingColors.amber,
+            icon: const GrobingIcon(Glyphs.skipNext, applyTextScaling: false),
+          );
     final Widget first = Text(
       '$start',
       style: const TextStyle(
@@ -183,6 +200,7 @@ class TreeTimeBar extends StatelessWidget {
       return Row(
         children: [
           play,
+          ?nextButton,
           const SizedBox(width: 4),
           first,
           Expanded(child: slider),
@@ -207,6 +225,7 @@ class TreeTimeBar extends StatelessWidget {
           Row(
             children: [
               play,
+              ?nextButton,
               Expanded(child: slider),
             ],
           ),
@@ -216,8 +235,10 @@ class TreeTimeBar extends StatelessWidget {
     return Row(
       children: [
         play,
-        const SizedBox(width: 4),
-        first,
+        // U3 (D65): with ⏭ the first year leaves the row — the bar of presentation keeps it, and the reader hears
+        // the slider's values.
+        ?nextButton,
+        if (nextButton == null) ...[const SizedBox(width: 4), first],
         Expanded(child: slider),
         shown,
         tempoButton,

@@ -138,14 +138,15 @@ void main() {
           .then((id) => id!);
 
   testWidgets(
-    'element 6 — ▶, 1860, the slider and "dziś" in the card; the reader: "Rok", a decade a '
-    'gesture (D5); tap targets and contrast (R2)',
+    'element 6 — ▶, ⏭, the slider and "dziś" in the card — the first year 1860 not in the row since ISSUE-050 (U3 — D65); '
+    'the reader: "Rok", a decade a gesture (D5); tap targets and contrast (R2)',
     (tester) async {
       await pumpTree(tester);
       final SemanticsHandle semantics = tester.ensureSemantics();
 
       expect(find.byTooltip('Odtwórz historię'), findsOneWidget);
-      expect(find.text('1860'), findsOneWidget);
+      expect(find.byTooltip('Następne zdarzenie'), findsOneWidget);
+      expect(find.text('1860'), findsNothing);
       expect(_slider(tester).value, 'dziś');
       // "Linia krwi" from "Ja" (ISSUE-049, D50).
       expect(_people(), findsNWidgets(91));
@@ -546,9 +547,10 @@ void main() {
         }
         await tester.tap(find.byTooltip('Odtwórz historię'));
         await tester.pump(step - const Duration(milliseconds: 50));
+        // The year shown only: the row has no first year beside ⏭ (U3 — ISSUE-050, D65).
         expect(
           find.text('1860'),
-          findsNWidgets(2),
+          findsOneWidget,
           reason: '${tempo.name}: not yet',
         );
         await tester.pump(const Duration(milliseconds: 50));

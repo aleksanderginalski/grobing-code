@@ -102,11 +102,15 @@ class PathLinePainter extends CustomPainter {
     required this.runs,
     required this.progress,
     required this.scale,
+    this.together = false,
   }) : super(repaint: progress);
 
   final List<List<Offset>> runs;
   final Animation<double> progress;
   final double scale;
+
+  /// Every run grows at once — the couples of a year's caption (drzewo.md D73), not the steps of a path.
+  final bool together;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -120,6 +124,10 @@ class PathLinePainter extends CustomPainter {
     double left = progress.value * runs.length;
     final Path path = Path();
     for (final List<Offset> run in runs) {
+      if (together) {
+        if (progress.value > 0) _addPart(path, run, progress.value);
+        continue;
+      }
       if (left <= 0) break;
       _addPart(path, run, math.min(1, left));
       left -= 1;
@@ -151,7 +159,10 @@ class PathLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(PathLinePainter old) =>
-      old.runs != runs || old.scale != scale || old.progress != progress;
+      old.runs != runs ||
+      old.scale != scale ||
+      old.progress != progress ||
+      old.together != together;
 }
 
 /// Elements 9 and 10: at the top of the tree, on the surface — "Od → Do" in muted text when the path is not

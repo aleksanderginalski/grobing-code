@@ -68,6 +68,7 @@ satellite_alt
 search
 settings
 settings_backup_restore
+skip_next
 sync_problem
 undo
 wallpaper

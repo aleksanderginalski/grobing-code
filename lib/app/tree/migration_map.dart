@@ -70,6 +70,10 @@ class MigrationMap extends StatefulWidget {
     this.presenting = false,
     this.playing = false,
     this.onEmptyTap,
+    this.showPill = true,
+    this.ride = false,
+    this.shine = const {},
+    this.shineLevel,
   });
 
   final WorldMapData world;
@@ -95,6 +99,17 @@ class MigrationMap extends StatefulWidget {
   /// ▶ runs: a move glides in 0.6 s (element 8); a year chosen by hand moves in 150 ms.
   final bool playing;
   final VoidCallback? onEmptyTap;
+
+  /// The pill (element 3) — not while the caption of ⏭ stands in its place (element 15, ISSUE-050).
+  final bool showPill;
+
+  /// The year came with ⏭: its moves glide in 0.6 s, as with ▶ (element 15) — the move is the event told.
+  final bool ride;
+
+  /// Those of the caption's page who moved: the ring and the glow, at [shineLevel]'s opacity (D30) — on the way and in
+  /// the new place, at the front of their stack; more than three of them in one — the "+N" glows too.
+  final Set<int> shine;
+  final Animation<double>? shineLevel;
 
   @override
   State<MigrationMap> createState() => _MigrationMapState();
@@ -276,7 +291,7 @@ class _MigrationMapState extends State<MigrationMap>
       _fade.value = 1;
       return;
     }
-    final bool playing = widget.playing;
+    final bool playing = widget.playing || widget.ride;
     final Duration now = _now;
     final Duration travel = Duration(milliseconds: playing ? 600 : 150);
     for (final MapEntry<int, _Mark> e in next.entries) {
@@ -433,7 +448,7 @@ class _MigrationMapState extends State<MigrationMap>
                 ),
               ),
             ),
-            if (!widget.presenting && !empty)
+            if (!widget.presenting && !empty && widget.showPill)
               Positioned(
                 top: 12,
                 left: 16,
@@ -682,6 +697,21 @@ class _PeopleLayer extends StatelessWidget {
       spot.places.add(place);
       spot.people.addAll(byPlace[place]!);
     }
+    // Those of the caption go to the front of their stack, so their own circles glow, not a "+N" (D30; found on the
+    // emulator — at the frame of a family on two continents a move ended in a cluster of 14).
+    final Set<int> shine = w.shine;
+    if (shine.isNotEmpty) {
+      for (final _Spot s in spots) {
+        if (!s.people.skip(3).any(shine.contains)) continue;
+        final List<int> order = [
+          ...s.people.where(shine.contains),
+          ...s.people.where((id) => !shine.contains(id)),
+        ];
+        s.people
+          ..clear()
+          ..addAll(order);
+      }
+    }
     return spots;
   }
 
@@ -746,6 +776,9 @@ class _PeopleLayer extends StatelessWidget {
     final List<Widget> labels = [];
     final List<Widget> boxes = [];
     final List<Widget> legs = [];
+    // Those of the caption glow on one layer under the people (D30; style-b.md rule 2 — not a shadow in each circle,
+    // redrawn in every frame of the pulse: the ui review of round 2): where each is drawn, and a "+N" hiding more.
+    final List<(Offset, double)> glows = [];
     for (final _Spot s in spots) {
       final int n = s.people.length;
       if (open(s)) {
@@ -755,13 +788,18 @@ class _PeopleLayer extends StatelessWidget {
         continue;
       }
       if (n > 3 && !s.people.any(moving)) {
+        // Someone of the caption is hidden in it still — more than three of them came (D30).
+        final bool shine = s.people.skip(3).any(w.shine.contains);
+        final double left =
+            s.anchor.dx - _stackWidth(n) / 2 + 2 * _stackStep + 16 + 3;
         labels.add(
           Positioned(
-            left: s.anchor.dx - _stackWidth(n) / 2 + 2 * _stackStep + 16 + 3,
+            left: left,
             top: s.anchor.dy - 10,
-            child: _PlusBadge(n - 3),
+            child: _PlusBadge(n - 3, shine: shine),
           ),
         );
+        if (shine) glows.add((Offset(left + 13, s.anchor.dy), 10));
       }
       if (n > 1 || s.cluster) {
         // The whole stack is one target and one node for the reader: "Zmyślin: 4 osoby — rozsuń", a cluster
@@ -844,9 +882,23 @@ class _PeopleLayer extends StatelessWidget {
       for (final _Spot s in spots)
         if (open(s)) s,
     ].firstOrNull;
+    final Animation<double>? level = w.shineLevel;
+    for (final int id in w.shine) {
+      if (marks.containsKey(id) && placed.containsKey(id) && visible(id)) {
+        glows.add((at(id), _circle / 2));
+      }
+    }
     return Stack(
       clipBehavior: Clip.none,
       children: [
+        if (level != null && glows.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(painter: _ShineLayer(glows, level)),
+              ),
+            ),
+          ),
         ExcludeSemantics(
           child: IgnorePointer(child: Stack(children: labels)),
         ),
@@ -923,6 +975,7 @@ class _PeopleLayer extends StatelessWidget {
       isFocus: isFocus,
       unsure: m.unsure,
       photos: w.photos,
+      shine: w.shine.contains(id),
     );
     return Positioned(
       left: at.dx - _target / 2,
@@ -1026,12 +1079,16 @@ class _PersonCircle extends StatelessWidget {
     required this.isFocus,
     required this.unsure,
     required this.photos,
+    this.shine = false,
   });
 
   final TreePerson person;
   final bool isFocus;
   final bool unsure;
   final Photos? photos;
+
+  /// One of the caption's who moved (D30): the ring of the middle; the glow under it is the layer's (_ShineLayer).
+  final bool shine;
 
   @override
   Widget build(BuildContext context) {
@@ -1068,14 +1125,15 @@ class _PersonCircle extends StatelessWidget {
     };
     // The outline on every circle, a photo too: the circle is the land's colour, so only the outline draws its edge
     // (element 4: 1.5 dp, 3.10:1 on the land). Over the photo, not under it; dashed in an uncertain year (N3).
-    final Color edge = isFocus ? GrobingColors.amber : GrobingColors.outline;
+    final bool ring = isFocus || shine;
+    final Color edge = ring ? GrobingColors.amber : GrobingColors.outline;
     circle = unsure
         ? CustomPaint(foregroundPainter: _DashedRing(edge), child: circle)
         : DecoratedBox(
             position: DecorationPosition.foreground,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: edge, width: isFocus ? 2.5 : 1.5),
+              border: Border.all(color: edge, width: ring ? 2.5 : 1.5),
             ),
             child: circle,
           );
@@ -1162,9 +1220,12 @@ class _LegPainter extends CustomPainter {
 
 /// "+N" after the third circle of a stack (element 4): 11 sp, the surface with the outline.
 class _PlusBadge extends StatelessWidget {
-  const _PlusBadge(this.more);
+  const _PlusBadge(this.more, {this.shine = false});
 
   final int more;
+
+  /// Someone of the caption is hidden in the stack (D30): the ring in amber; the glow under it is the layer's.
+  final bool shine;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1175,7 +1236,9 @@ class _PlusBadge extends StatelessWidget {
     decoration: BoxDecoration(
       color: GrobingColors.surface,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: GrobingColors.outline),
+      border: shine
+          ? Border.all(color: GrobingColors.amber, width: 2)
+          : Border.all(color: GrobingColors.outline),
     ),
     child: Text(
       '+$more',
@@ -1187,6 +1250,42 @@ class _PlusBadge extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The glow under those of the caption who moved (D30): a soft amber disc under each circle and under a "+N" hiding more
+/// of them, at [level]'s opacity — one layer, a radial gradient, as on the tree (drzewo.md D73; style-b.md rule 2).
+class _ShineLayer extends CustomPainter {
+  _ShineLayer(this.glows, this.level) : super(repaint: level);
+
+  final List<(Offset, double)> glows;
+  final Animation<double> level;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double a = level.value;
+    if (a <= 0) return;
+    final Color full = GrobingColors.amber.withValues(alpha: a);
+    final Color half = GrobingColors.amber.withValues(alpha: a * 0.45);
+    final Color none = GrobingColors.amber.withValues(alpha: 0);
+    for (final (Offset c, double r) in glows) {
+      final double outer = r + 20;
+      canvas.drawCircle(
+        c,
+        outer,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            c,
+            outer,
+            [full, full, half, none],
+            [0, r / outer, (r + 6) / outer, 1],
+          ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ShineLayer old) =>
+      old.glows != glows || old.level != level;
 }
 
 /// The pill at the top of the map (element 3): how many are on the map in the year, how many without a place. A live

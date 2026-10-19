@@ -55,6 +55,19 @@ class PresentationYear extends StatelessWidget {
     return left + _padding + widest + _padding;
   }
 
+  /// The plate's lower edge at this text size — the caption of ⏭ stands 8 dp under it (drzewo.md element 6a, P1).
+  static double bottom(BuildContext context) {
+    final TextPainter painter = TextPainter(
+      text: const TextSpan(text: '0000', style: _style),
+      textDirection: TextDirection.ltr,
+      textScaler: _scaler(context),
+      maxLines: 1,
+    )..layout();
+    final double height = painter.height;
+    painter.dispose();
+    return top + height;
+  }
+
   @override
   Widget build(BuildContext context) => Semantics(
     label: year == null ? 'dziś' : 'Rok $year',

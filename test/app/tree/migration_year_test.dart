@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/tree/migration_year.dart';
+import 'package:grobing/app/tree/tree_events.dart' show CaptionPart;
 import 'package:grobing/app/tree/tree_time.dart';
 import 'package:grobing/data/cemeteries.dart' show GeoPoint;
 import 'package:grobing/data/database.dart';
@@ -303,4 +304,147 @@ void main() {
       );
     },
   );
+
+  // ISSUE-050 — "Następne" on the map (mapa-migracji.md v1.5, element 15): the moves (D28) and the caption's lines (M2 —
+  // D27, D29).
+  group('ISSUE-050 — moves', () {
+    String text(List<CaptionPart> line) =>
+        line.map((p) => p.text).join().replaceAll('\u00A0', ' ');
+
+    test(
+      'D28 — a move: from one written place to another; the first place, the end at death and a residence without '
+      'years are no move; "dziś" is not a year to go to',
+      () {
+        final MigrationYear m = _map(
+          [_person(1, born: _y(1925), died: _y(1990))],
+          {
+            1: [
+              Residence(to: _y(1945), place: _zmyslin),
+              Residence(from: _y(1946), place: _wymyslowo),
+              Residence(from: _y(1970), place: _testowo),
+              const Residence(place: _lithuania),
+            ],
+          },
+        );
+        expect(m.moves.map((x) => (x.year, x.from.place, x.to.place)), [
+          (1946, _zmyslin, _wymyslowo),
+          (1970, _wymyslowo, _testowo),
+        ]);
+        expect(m.moveYears(1860), [1946, 1970]);
+        final MigrationYear today = _map(
+          [_person(2, born: _y(1980))],
+          {
+            2: [
+              Residence(to: _y(2025), place: _zmyslin),
+              Residence(from: _y(2026), place: _testowo),
+            ],
+          },
+        );
+        expect(today.moves.map((x) => x.year), [2026]);
+        expect(today.moveYears(1860), isEmpty);
+      },
+    );
+
+    test(
+      'D4, D28 — a stay inside another (the outer one with its own "Do": an empty one would end where the inner begins — '
+      'zamieszkanie.md D12): there in its first year, back the year after its "Do"',
+      () {
+        final MigrationYear m = _map(
+          [_person(1, born: _y(1890))],
+          {
+            1: [
+              Residence(from: _y(1900), to: _y(1960), place: _zmyslin),
+              Residence(from: _y(1920), to: _y(1930), place: _wymyslowo),
+            ],
+          },
+        );
+        expect(m.moves.map((x) => (x.year, x.to.place)), [
+          (1920, _wymyslowo),
+          (1931, _zmyslin),
+        ]);
+      },
+    );
+
+    test(
+      'M2, D29 — those who went the same way in a year in one line, in the order of their birth, the name of that time '
+      'when written; a whole country by its name; "(ok. 1946)" for an uncertain start',
+      () {
+        final MigrationYear m = _map(
+          [
+            _person(2, born: _y(1928)),
+            _person(1, born: _y(1925)),
+            _person(3, born: _y(1930)),
+          ],
+          {
+            for (final int id in [1, 2])
+              id: [
+                Residence(
+                  to: _y(1945),
+                  place: _zmyslin,
+                  nameThen: 'Zmyślin, Polska',
+                ),
+                Residence(from: _y(1946), place: _wymyslowo),
+              ],
+            3: [
+              Residence(to: _ok(1945), place: _lithuania),
+              Residence(from: _ok(1946), place: _wymyslowo),
+            ],
+          },
+        );
+        final Map<int, TreePerson> people = {
+          for (final int id in [1, 2, 3]) id: _person(id),
+        };
+        expect(
+          m.moveLines(1946, people).map(text),
+          unorderedEquals([
+            'Osoba1 Wymyślona i Osoba2 Wymyślona: Zmyślin, Polska → Wymyślowo',
+            'Osoba3 Wymyślona: Litwa → Wymyślowo (ok. 1946)',
+          ]),
+        );
+        // The arrow holds where to; the one-letter "i" the next name (style-b.md rule 6).
+        final String raw = m
+            .moveLines(1946, people)
+            .expand((l) => l)
+            .map((p) => p.text)
+            .join('|');
+        expect(raw, contains('→\u00A0Wymyślowo'));
+        expect(raw, contains(' i\u00A0'));
+      },
+    );
+
+    test(
+      'D30 — whose each line is: the people of a way, in the line\'s order (by birth) — they glow while the caption '
+      'stands; a year without a move has none',
+      () {
+        final MigrationYear m = _map(
+          [
+            _person(2, born: _y(1928)),
+            _person(1, born: _y(1925)),
+            _person(3, born: _y(1930)),
+          ],
+          {
+            for (final int id in [1, 2])
+              id: [
+                Residence(to: _y(1945), place: _zmyslin),
+                Residence(from: _y(1946), place: _wymyslowo),
+              ],
+            3: [
+              Residence(to: _y(1945), place: _lithuania),
+              Residence(from: _y(1946), place: _wymyslowo),
+            ],
+          },
+        );
+        final Map<int, TreePerson> people = {
+          for (final int id in [1, 2, 3]) id: _person(id),
+        };
+        final List<String> lines = m.moveLines(1946, people).map(text).toList();
+        final List<List<int>> who = m.movePeople(1946);
+        expect(who, hasLength(lines.length));
+        for (final (int i, String line) in lines.indexed) {
+          expect(who[i], line.startsWith('Osoba1') ? [1, 2] : [3]);
+        }
+        expect(m.movePeople(1950), isEmpty);
+      },
+    );
+  });
 }
