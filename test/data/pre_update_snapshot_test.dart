@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift_dev/api/migrations_native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/data/database.dart';
 import 'package:grobing/data/pre_update_snapshot.dart';
@@ -176,6 +177,37 @@ void main() {
         dir.listSync().map((e) => e.uri.pathSegments.last).toList()..sort(),
         ['grobing-v10.db', 'grobing-v11.db', 'grobing-v9.db'],
       );
+    },
+  );
+
+  test(
+    'ISSUE-032 (AC-2 on the phone): a snapshot writes one GROBING_SNAPSHOT line to the log — the versions '
+    'and the size, no path; no snapshot, no line',
+    () async {
+      final List<String?> lines = [];
+      final DebugPrintCallback original = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) => lines.add(message);
+      addTearDown(() => debugPrint = original);
+      final Directory dir = preUpdateSnapshotDir(tmp);
+
+      expect(
+        takePreUpdateSnapshot(database: File('${tmp.path}/none.db'), dir: dir),
+        isNull,
+      );
+      expect(lines, isEmpty);
+
+      final File database = await writeV11('grobing.db');
+      final File snapshot = takePreUpdateSnapshot(
+        database: database,
+        dir: dir,
+      )!;
+
+      expect(lines, [
+        'GROBING_SNAPSHOT v11 -> v${GrobingDatabase.currentSchemaVersion} '
+            '${snapshot.lengthSync()} B',
+      ]);
+      expect(lines.single, isNot(contains(tmp.path)));
+      expect(lines.single, isNot(contains('pre-update')));
     },
   );
 

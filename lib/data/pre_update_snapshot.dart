@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'database.dart';
@@ -32,6 +33,10 @@ final RegExp _snapshotName = RegExp(r'^grobing-v(\d+)\.db$');
 /// could see a half-written migration (https://www.sqlite.org/atomiccommit.html, 4.2). `VACUUM INTO`
 /// writes a temporary name first, so an interrupted snapshot never leaves a half file under the real one.
 ///
+/// One line in logcat after a snapshot — release builds too — so an update from the store can be checked
+/// on the phone, where the app's private storage is out of reach (ISSUE-032, AC-2). Versions and size
+/// only: no path, nothing from the data.
+///
 /// Returns the snapshot, or null when none was needed.
 File? takePreUpdateSnapshot({
   required File database,
@@ -53,6 +58,9 @@ File? takePreUpdateSnapshot({
     raw.execute('VACUUM INTO ?', [partial.path]);
     partial.renameSync(snapshot.path);
     _keepNewest(dir, keep);
+    debugPrint(
+      'GROBING_SNAPSHOT v$version -> v$currentVersion ${snapshot.lengthSync()} B',
+    );
     return snapshot;
   } finally {
     raw.close();
