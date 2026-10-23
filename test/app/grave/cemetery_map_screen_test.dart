@@ -391,8 +391,8 @@ void main() {
   );
 
   testWidgets(
-    '2a (a) and (c): "Pobieram plan cmentarza…" while it downloads, then the servers did not answer — the '
-    'fact and "Spróbuję znowu później"; a plan that comes is drawn at once',
+    '2a (a) and (c): "Pobieram plan cmentarza…" and where the plan will be while it downloads, then the '
+    'server overloaded — the fact and "Spróbuję sam" (ISSUE-052 v9, B1); a plan that comes is drawn at once',
     (tester) async {
       final int id = await cemeteryWithGraves(tester, plan: false, pins: false);
       final _Source source = _Source(const PlanServerError())
@@ -406,17 +406,76 @@ void main() {
         tester,
         () => _shown(find.text('Pobieram plan cmentarza…')),
       );
+      expect(
+        find.text(
+          'Plan zostanie w\u00A0telefonie — na cmentarzu zasięg nie będzie potrzebny.',
+        ),
+        findsOneWidget,
+      );
       source.gate!.complete();
       await _pumpUntil(
         tester,
-        () => _shown(
-          find.text('Nie udało się pobrać planu — serwer map nie odpowiada.'),
-        ),
+        () => _shown(find.text('Serwer map jest teraz przeciążony.')),
       );
       expect(
-        find.text('Spróbuję znowu później. Groby są na liście.'),
+        find.text(
+          'Spróbuję sam, także gdy zamkniesz aplikację. Groby są na liście.',
+        ),
         findsOneWidget,
       );
+      source
+        ..gate = null
+        ..answer = const PlanFound(
+          areas: _areas,
+          paths: _paths,
+          server: 'overpass.example',
+        );
+      await tester.tap(find.text('Pobierz teraz'));
+      await _pumpUntil(tester, () => _shown(find.text('Plan offline')));
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-052 AC-2 / D39 — a download past 15 s: one line says the server is slow today, the plan saves itself '
+    'and stays in the phone, the app may be closed; it is still (a), with no button',
+    (tester) async {
+      final int id = await cemeteryWithGraves(tester, plan: false, pins: false);
+      final _Source source = _Source(const PlanServerError())
+        ..gate = Completer<void>();
+      await pumpScreen(
+        tester,
+        CemeteryScreen(database: db, cemeteryId: id),
+        source: source,
+      );
+      await _pumpUntil(
+        tester,
+        () => _shown(find.text('Pobieram plan cmentarza…')),
+      );
+      expect(find.textContaining('odpowiada dziś wolno'), findsNothing);
+      await tester.pump(const Duration(seconds: 16));
+      expect(find.text('Pobieram plan cmentarza…'), findsOneWidget);
+      expect(
+        find.text(
+          'Serwer map odpowiada dziś wolno. Plan zapisze się sam i\u00A0zostanie '
+          'w\u00A0telefonie — możesz zamknąć aplikację.',
+        ),
+        findsOneWidget,
+      );
+      // One line in place of the "kept" one, not a third (Dev report → Deviations 1).
+      expect(
+        find.text(
+          'Plan zostanie w\u00A0telefonie — na cmentarzu zasięg nie będzie potrzebny.',
+        ),
+        findsNothing,
+      );
+      expect(find.text('Pobierz teraz'), findsNothing);
+      source.gate!.complete();
+      await _pumpUntil(
+        tester,
+        () => _shown(find.text('Serwer map jest teraz przeciążony.')),
+      );
+      // "Pobierz teraz" takes the place of the try waiting after (c) — no timer is left behind.
       source
         ..gate = null
         ..answer = const PlanFound(
@@ -539,8 +598,8 @@ void main() {
         ),
         (
           PlanGap.serverError,
-          'Nie udało się pobrać planu — serwer map nie odpowiada.',
-          'Spróbuję znowu później.',
+          'Serwer map jest teraz przeciążony.',
+          'Spróbuję sam, także gdy zamkniesz aplikację.',
         ),
       ]) {
         await tester.pumpWidget(

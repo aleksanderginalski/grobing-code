@@ -4,8 +4,10 @@ import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../backup/background.dart';
 import '../backup/backup_service.dart';
 import '../backup/restore_service.dart';
+import '../data/cemetery_plans.dart';
 import '../data/database.dart';
 import '../net/overpass_plan_source.dart';
 import 'data_state_screen.dart';
@@ -34,6 +36,7 @@ class GrobingApp extends StatefulWidget {
     this.reopen,
     this.photos,
     this.planSource,
+    this.backgroundPlans,
   });
 
   final GrobingDatabase database;
@@ -51,6 +54,9 @@ class GrobingApp extends StatefulWidget {
 
   /// Where cemeteries' plans come from (tests replace it); by default the Overpass API (ISSUE-027).
   final PlanSource? planSource;
+
+  /// The plans' downloads with the app closed (ISSUE-052 B1); null: none (tests of other screens).
+  final BackgroundPlans? backgroundPlans;
 
   @override
   State<GrobingApp> createState() => _GrobingAppState();
@@ -104,10 +110,47 @@ class _GrobingAppState extends State<GrobingApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       unawaited(_backup.requestBackgroundIfChanged());
+      unawaited(_leavePlans());
     }
     // Back in the app: a plan that waited for the internet gets its chance (ISSUE-027 D3) — the phone
     // may have found a network while the app was away.
-    if (state == AppLifecycleState.resumed) unawaited(_plans.downloadAll());
+    if (state == AppLifecycleState.resumed) unawaited(_returnToPlans());
+  }
+
+  /// How many cemeteries lacked a plan when the app was left; null: not counted.
+  int? _missingWhenLeft;
+
+  /// Leaving the app hands the missing plans to the background (ISSUE-052 B1): it downloads them with the
+  /// app closed, once the phone has a network.
+  Future<void> _leavePlans() async {
+    final BackgroundPlans? background = widget.backgroundPlans;
+    if (background == null) return;
+    try {
+      final int missing = (await cemeteriesWithoutPlan(_database)).length;
+      _missingWhenLeft = missing;
+      if (missing > 0) await background.requestPlans();
+    } on Object {
+      // The next leaving asks again; the app's own downloads go on when it comes back.
+    }
+  }
+
+  /// Plans the background stored while the app was away were written by another engine, so this one's
+  /// screens heard nothing: fewer missing than when left → the plans' table is marked as changed, the
+  /// screens read it again, and the backup hears of the new plans as of any write.
+  Future<void> _returnToPlans() async {
+    final int? left = _missingWhenLeft;
+    _missingWhenLeft = null;
+    if (left != null && left > 0) {
+      try {
+        final int missing = (await cemeteriesWithoutPlan(_database)).length;
+        if (missing < left) {
+          _database.markTablesUpdated([_database.cemeteryPlans]);
+        }
+      } on Object {
+        // Read again at the next return; the plan is on disk either way.
+      }
+    }
+    await _plans.downloadAll();
   }
 
   /// After a restore (or one interrupted after the old database was closed): the data on disk is

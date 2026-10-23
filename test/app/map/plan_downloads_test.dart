@@ -148,6 +148,141 @@ void main() {
     },
   );
 
+  group('ISSUE-052 — a slow server and trying again (cmentarz.md D39, D40)', () {
+    test(
+      'D39: a download running past slowAfter turns "slow" — for the one running and every one waiting '
+      'behind it; an empty queue starts quick again',
+      () async {
+        final int a = await cemetery(51.5);
+        final int b = await cemetery(51.6);
+        final _Source source = _Source(_found)..gate = Completer<void>();
+        final PlanDownloads plans = PlanDownloads(
+          database: db,
+          source: source,
+          slowAfter: const Duration(milliseconds: 40),
+        );
+        addTearDown(plans.close);
+        unawaited(plans.downloadAll());
+        await pumpEventQueue();
+        expect(plans.states.value, {
+          a: PlanDownload.downloading,
+          b: PlanDownload.downloading,
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(plans.states.value, {
+          a: PlanDownload.slow,
+          b: PlanDownload.slow,
+        });
+        source.gate!.complete();
+        await pumpEventQueue(times: 100);
+        expect(plans.states.value, isEmpty);
+        expect(await cemeteriesWithoutPlan(db), isEmpty);
+
+        // A new run of the queue says "downloading" again, not "slow".
+        final int c = await cemetery(51.7);
+        source.gate = Completer<void>();
+        unawaited(plans.download(c));
+        await pumpEventQueue();
+        expect(plans.states.value[c], PlanDownload.downloading);
+        source.gate!.complete();
+        await pumpEventQueue(times: 100);
+      },
+    );
+
+    test(
+      'D40 / AC-3: after (c) the cemetery is tried again by itself after the first wait, and its plan is '
+      'kept without a tap; the waits grow and the last repeats',
+      () async {
+        final int id = await cemetery(51.5);
+        int calls = 0;
+        final _Source source = _Source(
+          (point) => ++calls < 3 ? const PlanServerError() : _found(point),
+        );
+        final PlanDownloads plans = PlanDownloads(
+          database: db,
+          source: source,
+          retryDelays: const [
+            Duration(milliseconds: 30),
+            Duration(milliseconds: 60),
+          ],
+        );
+        addTearDown(plans.close);
+        expect(await plans.download(id), PlanDownload.serverError);
+        expect(plans.states.value[id], PlanDownload.serverError);
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+        expect(source.asked, hasLength(1), reason: 'not before the wait');
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        await pumpEventQueue(times: 50);
+        expect(source.asked, hasLength(2));
+        expect(plans.states.value[id], PlanDownload.serverError);
+        await Future<void>.delayed(const Duration(milliseconds: 90));
+        await pumpEventQueue(times: 50);
+        expect(source.asked, hasLength(3));
+        expect(plans.states.value[id], isNull);
+        expect((await watchCemeteryPlan(db, id).first)!.status, PlanStatus.ok);
+      },
+    );
+
+    test(
+      'D40: a plan kept meanwhile (the background, B1) is not asked for again when the wait ends',
+      () async {
+        final int id = await cemetery(51.5);
+        final _Source source = _Source((_) => const PlanServerError());
+        final PlanDownloads plans = PlanDownloads(
+          database: db,
+          source: source,
+          retryDelays: const [Duration(milliseconds: 30)],
+        );
+        addTearDown(plans.close);
+        await plans.download(id);
+        await savePlan(
+          db,
+          id,
+          forPoint: const GeoPoint(51.5, 19.5),
+          areas: _areas,
+          paths: const [],
+          server: 'overpass.example',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        await pumpEventQueue(times: 50);
+        expect(source.asked, hasLength(1));
+      },
+    );
+
+    test('close() cancels the waiting tries', () async {
+      final int id = await cemetery(51.5);
+      final _Source source = _Source((_) => const PlanServerError());
+      final PlanDownloads plans = PlanDownloads(
+        database: db,
+        source: source,
+        retryDelays: const [Duration(milliseconds: 30)],
+      );
+      await plans.download(id);
+      plans.close();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await pumpEventQueue(times: 50);
+      expect(source.asked, hasLength(1));
+    });
+
+    test(
+      'the defaults are the measured ones: "slow" after 15 s, tries after 2, 5, 10, then every 15 min',
+      () {
+        final PlanDownloads plans = PlanDownloads(
+          database: db,
+          source: _Source(_found),
+        );
+        addTearDown(plans.close);
+        expect(plans.slowAfter, const Duration(seconds: 15));
+        expect(plans.retryDelays, const [
+          Duration(minutes: 2),
+          Duration(minutes: 5),
+          Duration(minutes: 10),
+          Duration(minutes: 15),
+        ]);
+      },
+    );
+  });
+
   test(
     'a cemetery with its plan already kept: download asks nothing',
     () async {

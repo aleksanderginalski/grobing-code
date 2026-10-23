@@ -22,12 +22,16 @@ BaseCemetery _made(
   double lat = 52.0,
   double lon = 20.0,
   List<String> otherNames = const [],
+  String? district,
+  List<String> nearby = const [],
 }) => BaseCemetery(
   name: name,
   otherNames: otherNames,
   point: GeoPoint(lat, lon),
   locality: locality,
+  district: district,
   voivodeship: voivodeship,
+  nearby: nearby,
 );
 
 void main() {
@@ -134,6 +138,19 @@ void main() {
       },
     );
 
+    test(
+      'ISSUE-052 D36 — regressions on the real extract: "powazki" puts the Powązki cemetery in Warsaw first '
+      '(before the one in Marczów), "krakow" puts Kraków\'s cemeteries before "…Krakowcu"',
+      () {
+        final BaseCemetery powazki = _real.search('powazki').shown.first;
+        expect(
+          (powazki.name, powazki.locality),
+          ('Cmentarz Powązkowski', 'Warszawa'),
+        );
+        expect(_real.search('krakow').shown.first.locality, 'Kraków');
+      },
+    );
+
     test('a city shows its district in brackets: "Warszawa (Żoliborz)"', () {
       final BaseCemetery powazki = _real
           .search('powazki')
@@ -147,19 +164,99 @@ void main() {
   });
 
   group('search on made-up cemeteries', () {
-    test('D8: name hits first, then locality hits, each alphabetical', () {
-      final CemeteryBase base = CemeteryBase([
-        _made('Cmentarz Parafialny'),
-        _made('Cmentarz Wymyśliński', locality: 'Testowo'),
-        _made('Cmentarz Ewangelicki'),
-        _made('Cmentarz Leśny', locality: 'Próbna Wola'),
-      ]);
-      expect(base.search('wymyslin').shown.map((c) => c.name), [
-        'Cmentarz Wymyśliński',
-        'Cmentarz Ewangelicki',
-        'Cmentarz Parafialny',
-      ]);
-    });
+    test(
+      'D36 (replaces D8): a word typed in full that is a whole word comes first — the locality "Wymyślin" '
+      'before the name "Wymyśliński" — each group alphabetical',
+      () {
+        final CemeteryBase base = CemeteryBase([
+          _made('Cmentarz Parafialny'),
+          _made('Cmentarz Wymyśliński', locality: 'Testowo'),
+          _made('Cmentarz Ewangelicki'),
+          _made('Cmentarz Leśny', locality: 'Próbna Wola'),
+        ]);
+        expect(base.search('wymyslin').shown.map((c) => c.name), [
+          'Cmentarz Ewangelicki',
+          'Cmentarz Parafialny',
+          'Cmentarz Wymyśliński',
+        ]);
+      },
+    );
+
+    test(
+      'ISSUE-052 AC-1 / D36: the name, then the place on the card, then a nearby place, then inside a word — '
+      'the set of hits is D3\'s, only the order changes',
+      () {
+        final CemeteryBase base = CemeteryBase([
+          _made('Cmentarz A', locality: 'Testowo', nearby: ['Wymyślówek']),
+          _made('Cmentarz B', locality: 'Wymyślówek'),
+          _made('Cmentarz Wymyślówecki', locality: 'Testowo'),
+          _made('Cmentarz C', locality: 'Przezwymyślówek'),
+        ]);
+        expect(base.search('wymyslowek').shown.map((c) => c.name), [
+          'Cmentarz B', // the locality "Wymyślówek" — the whole word
+          'Cmentarz A', // a nearby place "Wymyślówek" — the whole word, but further
+          'Cmentarz Wymyślówecki', // the name — a stem only
+          'Cmentarz C', // inside a word only
+        ]);
+        expect(base.search('wymyslowek').total, 4);
+      },
+    );
+
+    test(
+      'ISSUE-052 AC-1 / D36: a nearby place holding all the words before words scattered over several — '
+      '"Przykładowa Zmyślonka" before "Przykładowa Wola" + "Zmyślonka Mała"',
+      () {
+        final CemeteryBase base = CemeteryBase([
+          _made(
+            'Cmentarz parafialny',
+            locality: 'Testowo',
+            nearby: ['Przykładowa Wola', 'Zmyślonka Mała'],
+          ),
+          _made(
+            'Cmentarz parafialny',
+            locality: 'Wymyślin',
+            nearby: ['Przykładowe Pole', 'Przykładowa Zmyślonka'],
+          ),
+        ]);
+        expect(
+          base.search('przykladowa zmyslonka').shown.map((c) => c.locality),
+          ['Wymyślin', 'Testowo'],
+        );
+      },
+    );
+
+    test(
+      'ISSUE-052 AC-1 / D35: "przy:" names the nearby place the words were found through — the one holding '
+      'the most of them, not the first a stem starts; none when the card holds every word',
+      () {
+        final BaseCemetery viaVillage = _made(
+          'Cmentarz parafialny',
+          locality: 'Zmyślonka',
+          nearby: ['Testowy Dwór', 'Wymyślanka', 'Przykładowa Wymyślanka'],
+        );
+        expect(
+          foundThrough(viaVillage, 'przykladowa wymyslanka'),
+          'Przykładowa Wymyślanka',
+        );
+        expect(foundThrough(viaVillage, 'wymyslanka'), 'Wymyślanka');
+        expect(foundThrough(viaVillage, 'parafialny zmyslonka'), isNull);
+        // The word starts no word of the card nor of a nearby place: nothing to name.
+        expect(foundThrough(viaVillage, 'yslanka'), isNull);
+        // The district counts as the card.
+        expect(
+          foundThrough(
+            _made(
+              'Cmentarz Testowy',
+              locality: 'Wymyślin',
+              district: 'Zmyślice',
+              nearby: ['Zmyślice'],
+            ),
+            'zmyslice',
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('D8: at most 30 shown, with the number of all hits', () {
       final CemeteryBase base = CemeteryBase([

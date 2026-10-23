@@ -265,11 +265,20 @@ Od ISSUE-027 (ADR-003 w vaulcie) aplikacja ma uprawnienie `INTERNET` — **wył�
 - **Overpass jest zawodny** (pomiary przy ISSUE-027: 504, „server is probably too busy”, instancje bez odpowiedzi) i ma
   limit kilku zapytań naraz **na adres IP** — emulator wychodzi przez ten sam adres co PC, więc zapytania z PC w tym samym
   czasie psują pobieranie na emulatorze. Dlatego: po kolei, najwyżej jedno zapytanie na sekundę, ponowienia na dwóch
-  hostach, cała próba do ok. 60 s, a ekran mówi wprost „serwer map nie odpowiada”.
+  hostach. **Granice czasu z pomiaru przy pierwszym prawdziwym użyciu** (ISSUE-052, 2026-10-22): każda odpowiedź pierwszej
+  instancji trwała 22–47 s, niezależnie od rozmiaru (kolejka serwera), czasem 502, które przechodzi przy następnej próbie; dlatego
+  do 120 s na zapytanie i do 5 min na próbę obu zapytań (do ISSUE-052: 30 s i 60 s — przy tym serwerze plan prawie nigdy nie
+  schodził). Ekran po 15 s mówi „Serwer map odpowiada dziś wolno”, a po nieudanej próbie „Serwer map jest teraz przeciążony”.
 - **Kiedy plan się pobiera** (`PlanDownloads`, ISSUE-027 D3): zapis cmentarza z punktem, zmiana punktu, start aplikacji,
-  powrót do niej, otwarcie cmentarza bez planu, „Pobierz teraz”. Bez zadania w tle przy zamkniętej aplikacji. Brak sieci
-  albo błąd serwera nie zapisuje niczego, więc następny start próbuje znowu; „brak w OSM” się zapisuje i wraca tylko po
-  zmianie punktu.
+  powrót do niej, otwarcie cmentarza bez planu, „Pobierz teraz”, a po błędzie serwera sam po 2, 5, 10, potem co 15 min
+  (ISSUE-052). Brak sieci albo błąd serwera nie zapisuje niczego; „brak w OSM” się zapisuje i wraca tylko po zmianie punktu.
+- **Przy zamkniętej aplikacji** (ISSUE-052 B1): wyjście z aplikacji z brakującymi planami prosi o zadanie WorkManagera
+  `grobing-plans` (`PlanWorker.kt`, warunek: sieć). Zadanie uruchamia bezgłowy silnik Fluttera z wejściem `backgroundPlansMain`
+  (`lib/net/background_plans.dart`) — te same zapytania i ten sam zapis co w aplikacji, po jednym cmentarzu, nowego nie zaczyna
+  po 1 min przebiegu (granica WorkManagera to ok. 10 min); zostały cmentarze → od razu następny przebieg, serwer nic nie dał →
+  czekanie rosnące od 5 min. Zapisany plan zamawia kopię w tle; po powrocie do aplikacji ekrany czytają plany od nowa.
+  **Na emulatorze `am force-stop` anuluje zadania WorkManagera** — „zamknięta aplikacja” to wyjście do ekranu głównego i
+  usunięcie z ostatnich; stan zadania: `adb shell dumpsys jobscheduler | grep -A3 com.grobing.app`.
 - **Build release na emulator jako aktualizacja:** dotychczasowe buildy szły z `--split-per-abi` (kod wersji 4001 dla
   x86_64). Zwykły `flutter build apk --release` ma kod 1 i Android odrzuca go jako „downgrade” — na emulator
   `flutter build apk --release --split-per-abi --target-platform android-x64`.

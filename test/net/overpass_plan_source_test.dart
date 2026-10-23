@@ -81,6 +81,18 @@ void main() {
   );
 
   test(
+    'ISSUE-052 D39: the defaults hold the answers measured at the first real use (22–47 s each, both of a '
+    'cemetery 50–87 s): 120 s a request, 5 min an attempt; the hosts and the pause as before',
+    () {
+      final OverpassPlanSource defaults = OverpassPlanSource();
+      expect(defaults.requestTimeout, const Duration(seconds: 120));
+      expect(defaults.deadline, const Duration(minutes: 5));
+      expect(defaults.retryPause, const Duration(seconds: 5));
+      expect(defaults.hosts, Hosts.overpass);
+    },
+  );
+
+  test(
     'the outline, then the paths in its box: the plan, with the host that gave it; the app says who '
     'asks (User-Agent)',
     () async {

@@ -702,11 +702,14 @@ class _HomeScreenState extends State<HomeScreen>
                   const SizedBox(height: 8),
                   _iconLine(
                     Glyphs.group,
-                    '${gravesLabel(c.graveCount)} · ${peopleLabel(c.personCount)}',
+                    '${gravesLabel(c.graveCount)} ·\u00A0${peopleLabel(c.personCount)}',
                   ),
                   if (c.point == null) ...[
                     const SizedBox(height: 4),
                     _iconLine(Glyphs.locationOff, 'Bez punktu na mapie'),
+                  ] else ...[
+                    const SizedBox(height: 4),
+                    _planLine(c),
                   ],
                 ],
               ),
@@ -753,6 +756,38 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     ],
   );
+
+  /// The plan line under the counts (05_DESIGN/cmentarze.md, element 6, D37): "Plan offline", or why there
+  /// is none in the words of the cemetery's placeholder (cmentarz.md 2a). What is downloading lives in
+  /// memory; after a start a missing plan reads "pobierze się sam" until its download begins.
+  Widget _planLine(CemeterySummary c) {
+    if (c.plan == PlanStatus.ok) {
+      return _iconLine(Glyphs.offlinePin, 'Plan offline');
+    }
+    if (c.plan == PlanStatus.notInOsm) {
+      return _iconLine(
+        Glyphs.notListedLocation,
+        'W\u00A0OpenStreetMap nie ma planu.',
+      );
+    }
+    final PlanDownloads? plans = MapNetwork.maybeOf(context)?.plans;
+    return ValueListenableBuilder<Map<int, PlanDownload>>(
+      valueListenable: plans?.states ?? _noDownloads,
+      builder: (context, downloads, _) => switch (downloads[c.id]) {
+        PlanDownload.downloading ||
+        PlanDownload.slow => _iconLine(Glyphs.cloudDownload, 'Pobieram plan…'),
+        PlanDownload.offline => _iconLine(
+          Glyphs.cloudDownload,
+          'Plan pobierze się, gdy będzie internet.',
+        ),
+        PlanDownload.serverError ||
+        null => _iconLine(Glyphs.cloudOff, 'Bez planu — pobierze się sam.'),
+      },
+    );
+  }
+
+  static final ValueNotifier<Map<int, PlanDownload>> _noDownloads =
+      ValueNotifier(const {});
 
   Widget _iconLine(Glyph icon, String text) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,

@@ -202,7 +202,9 @@ void main() {
       expect(find.text('Twoje cmentarze'), findsOneWidget);
       expect(find.text('Cmentarz Próbny'), findsOneWidget);
       expect(
-        find.text('Wieś Przykładowa · 0 grobów · 0 osób · bez punktu na mapie'),
+        find.text(
+          'Wieś Przykładowa ·\u00A00 grobów ·\u00A00 osób ·\u00A0bez punktu na mapie',
+        ),
         findsOneWidget,
       );
       expect(find.text('Cmentarz Wymyślony'), findsOneWidget);
@@ -304,7 +306,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Cmentarz Wymyślony'), findsOneWidget);
     expect(find.text('Miejscowość Testowa'), findsOneWidget);
-    expect(find.text('2 groby · 3 osoby'), findsOneWidget);
+    expect(find.text('2 groby ·\u00A03 osoby'), findsOneWidget);
     expect(find.byTooltip('Popraw cmentarz'), findsOneWidget);
     expect(pins(tester).single.look, PinLook.selected);
     await cleanUp(tester);
@@ -353,7 +355,7 @@ void main() {
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.byType(CemeteryScreen), findsNothing);
-      expect(find.text('0 grobów · 0 osób'), findsOneWidget);
+      expect(find.text('0 grobów ·\u00A00 osób'), findsOneWidget);
       expect(open, findsOneWidget);
       await cleanUp(tester);
     },
@@ -390,7 +392,7 @@ void main() {
       );
       await _pumpUntil(
         tester,
-        () => find.text('0 grobów · 0 osób').evaluate().isNotEmpty,
+        () => find.text('0 grobów ·\u00A00 osób').evaluate().isNotEmpty,
       );
 
       final CemeterySummary saved = (await tester.runAsync(
@@ -542,11 +544,14 @@ void main() {
       expect(find.text('Cmentarz Powązkowski'), findsNWidgets(2));
       expect(
         find.text(
-          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+          'Warszawa (Żoliborz) ·\u00A0woj.\u00A0mazowieckie ·\u00A0rzymskokatolicki',
         ),
         findsOneWidget,
       );
-      expect(find.text('Marczów ·\u00A0woj. dolnośląskie'), findsOneWidget);
+      expect(
+        find.text('Marczów ·\u00A0woj.\u00A0dolnośląskie'),
+        findsOneWidget,
+      );
       expect(find.text(osmAttribution), findsOneWidget);
       expect(osmAttribution, 'Dane: © autorzy OpenStreetMap (ODbL)');
       expect(
@@ -580,7 +585,7 @@ void main() {
       await search(tester, 'powazki');
       await tester.tap(
         find.text(
-          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+          'Warszawa (Żoliborz) ·\u00A0woj.\u00A0mazowieckie ·\u00A0rzymskokatolicki',
         ),
       );
       await tester.pumpAndSettle();
@@ -656,7 +661,9 @@ void main() {
       );
       await search(tester, 'powazki');
       await tester.tap(
-        find.text('Warszawa (Żoliborz) · woj. mazowieckie · rzymskokatolicki'),
+        find.text(
+          'Warszawa (Żoliborz) ·\u00A0woj.\u00A0mazowieckie ·\u00A0rzymskokatolicki',
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -683,7 +690,7 @@ void main() {
       await search(tester, 'powazki');
       await tester.tap(
         find.text(
-          'Warszawa (Żoliborz) ·\u00A0woj. mazowieckie ·\u00A0rzymskokatolicki',
+          'Warszawa (Żoliborz) ·\u00A0woj.\u00A0mazowieckie ·\u00A0rzymskokatolicki',
         ),
       );
       await tester.pumpAndSettle();
@@ -704,7 +711,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Zapisz'));
       await _pumpUntil(
         tester,
-        () => find.text('0 grobów · 0 osób').evaluate().isNotEmpty,
+        () => find.text('0 grobów ·\u00A00 osób').evaluate().isNotEmpty,
       );
       // The window's closing animation still holds the typed name.
       await tester.pumpAndSettle();
@@ -728,7 +735,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Stare Powązki'), findsOneWidget);
-      expect(find.text('0 grobów · 0 osób'), findsOneWidget);
+      expect(find.text('0 grobów ·\u00A00 osób'), findsOneWidget);
       await cleanUp(tester);
     },
   );

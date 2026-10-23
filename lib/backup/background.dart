@@ -30,7 +30,15 @@ abstract interface class BackgroundBackups {
   Future<void> request();
 }
 
-/// How a background run ended, for the worker (`BackupWorker.kt`).
+/// Asks Android to download the missing cemeteries' plans in the background, with the app closed too
+/// (ISSUE-052 B1, `PlanWorker.kt`): once the phone has a network, again until none is missing.
+abstract interface class BackgroundPlans {
+  /// A run as soon as there is a network, unless one already waits or runs — it reads the missing plans
+  /// again before each cemetery, so it covers this request too.
+  Future<void> requestPlans();
+}
+
+/// How a background run ended, for the worker (`BackupWorker.kt`, `PlanWorker.kt`).
 enum BackgroundOutcome {
   /// Nothing to do, or the backup succeeded.
   done,
@@ -48,8 +56,9 @@ enum BackgroundOutcome {
 /// How a background run ended, and for [BackgroundOutcome.later] how long to wait.
 typedef BackgroundRun = ({BackgroundOutcome outcome, Duration wait});
 
-/// [DataLock] and [BackgroundBackups] over the native channel in `BackgroundBackup.kt`.
-class PlatformBackground implements DataLock, BackgroundBackups {
+/// [DataLock], [BackgroundBackups] and [BackgroundPlans] over the native channel in `BackgroundBackup.kt`.
+class PlatformBackground
+    implements DataLock, BackgroundBackups, BackgroundPlans {
   const PlatformBackground();
 
   static const MethodChannel _channel = MethodChannel(
@@ -65,6 +74,9 @@ class PlatformBackground implements DataLock, BackgroundBackups {
 
   @override
   Future<void> request() => _channel.invokeMethod<void>('request');
+
+  @override
+  Future<void> requestPlans() => _channel.invokeMethod<void>('requestPlans');
 
   /// The last call of a background run: the worker ends with its outcome and destroys the engine.
   Future<void> finished(BackgroundRun run) => _channel.invokeMethod<void>(

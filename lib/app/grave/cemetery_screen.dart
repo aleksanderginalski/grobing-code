@@ -694,6 +694,7 @@ class _CemeteryScreenState extends State<CemeteryScreen>
     if (plan != null) return PlanGap.notInOsm;
     return switch (download) {
       PlanDownload.downloading => PlanGap.downloading,
+      PlanDownload.slow => PlanGap.downloadingSlowly,
       PlanDownload.offline => PlanGap.offline,
       PlanDownload.serverError => PlanGap.serverError,
       null => plans == null ? PlanGap.offline : PlanGap.downloading,

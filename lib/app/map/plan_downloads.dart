@@ -13,19 +13,38 @@ import '../../net/hosts.dart';
 import '../../net/overpass_plan_source.dart';
 
 /// What the cemetery screen shows while a plan is not stored (05_DESIGN/cmentarz.md, element 2a): being
-/// downloaded (a), no internet (b), the servers did not answer (c). Only in memory — a failed download
-/// writes nothing, so the next start tries again (ISSUE-027 D3).
-enum PlanDownload { downloading, offline, serverError }
+/// downloaded (a) — [slow] once the server has kept the queue waiting long enough to say so (D39) — no
+/// internet (b), the servers did not answer (c). Only in memory — a failed download writes nothing, so it
+/// is tried again (ISSUE-027 D3, ISSUE-052 D40).
+enum PlanDownload { downloading, slow, offline, serverError }
 
-/// Cemeteries' plans, downloaded in the app — never in the background with the app closed (ISSUE-027 D3):
-/// when a cemetery with a point is saved, when its point changes, when the app starts or comes back, when a
-/// cemetery without a plan is opened, and on "Pobierz teraz". One download at a time, in the order asked,
-/// one cemetery after another (Overpass's fair use); a cemetery opened on the screen goes first.
+/// Cemeteries' plans, downloaded in the app: when a cemetery with a point is saved, when its point changes,
+/// when the app starts or comes back, when a cemetery without a plan is opened, and on "Pobierz teraz". One
+/// download at a time, in the order asked, one cemetery after another (Overpass's fair use); a cemetery
+/// opened on the screen goes first. A cemetery the servers did not answer for is tried again by itself after
+/// [retryDelays] (D40). With the app closed the background takes over (`background_plans.dart`, B1).
 class PlanDownloads {
-  PlanDownloads({required this.database, required this.source});
+  PlanDownloads({
+    required this.database,
+    required this.source,
+    this.slowAfter = const Duration(seconds: 15),
+    this.retryDelays = const [
+      Duration(minutes: 2),
+      Duration(minutes: 5),
+      Duration(minutes: 10),
+      Duration(minutes: 15),
+    ],
+  });
 
   final GrobingDatabase database;
   final PlanSource source;
+
+  /// How long a download runs before the screen says the server is slow today (D39): on a good day the
+  /// outline came in about 3 s (ISSUE-027), at the first real use every answer took over 20 s.
+  final Duration slowAfter;
+
+  /// The waits before trying a cemetery again after (c), one after another; the last one repeats.
+  final List<Duration> retryDelays;
 
   final ValueNotifier<Map<int, PlanDownload>> _states = ValueNotifier(const {});
 
@@ -36,6 +55,13 @@ class PlanDownloads {
   final Map<int, Completer<PlanDownload?>> _waiting = {};
   bool _running = false;
   bool _closed = false;
+
+  /// The server kept a download of this run of the queue past [slowAfter]: every cemetery waiting in the
+  /// queue says so, until the queue is empty — a cemetery behind a slow one waits for it as well.
+  bool _slow = false;
+  Timer? _slowTimer;
+  final Map<int, Timer> _retries = {};
+  final Map<int, int> _failures = {};
 
   /// Every cemetery with a point and without a plan (start and return of the app).
   Future<void> downloadAll() async {
@@ -66,6 +92,7 @@ class PlanDownloads {
 
   void _enqueue(int id, GeoPoint point, {required bool first}) {
     if (_closed) return;
+    _retries.remove(id)?.cancel();
     if (first) {
       _queue.remove(id);
       final Map<int, GeoPoint> rest = Map.of(_queue);
@@ -76,8 +103,11 @@ class PlanDownloads {
     } else {
       _queue.putIfAbsent(id, () => point);
     }
-    _set(id, PlanDownload.downloading);
+    _set(id, _waitingState);
   }
+
+  PlanDownload get _waitingState =>
+      _slow ? PlanDownload.slow : PlanDownload.downloading;
 
   Future<void> _run() async {
     if (_running) return;
@@ -86,9 +116,21 @@ class PlanDownloads {
       while (_queue.isNotEmpty && !_closed) {
         final int id = _queue.keys.first;
         final GeoPoint point = _queue.remove(id)!;
+        _slowTimer = Timer(slowAfter, () {
+          _slow = true;
+          for (final int waiting in [id, ..._queue.keys]) {
+            _set(waiting, PlanDownload.slow);
+          }
+        });
         final PlanDownload? outcome = await _one(id, point);
+        _slowTimer?.cancel();
         _set(id, outcome);
         _waiting.remove(id)?.complete(outcome);
+        if (outcome == PlanDownload.serverError) {
+          _retryLater(id);
+        } else {
+          _failures.remove(id);
+        }
         // No internet for one, none for the rest: they wait for the next start or return of the app.
         if (outcome == PlanDownload.offline) {
           for (final int other in [..._queue.keys]) {
@@ -100,7 +142,31 @@ class PlanDownloads {
       }
     } finally {
       _running = false;
+      _slow = false;
     }
+  }
+
+  /// (c) promises "Spróbuję sam" (D40): the cemetery goes back to the queue after the next wait, if its
+  /// plan is still missing then — the background or another start may have got it meanwhile.
+  void _retryLater(int id) {
+    if (_closed || retryDelays.isEmpty) return;
+    final int failures = _failures[id] = (_failures[id] ?? 0) + 1;
+    final Duration wait =
+        retryDelays[(failures - 1).clamp(0, retryDelays.length - 1)];
+    _retries.remove(id)?.cancel();
+    _retries[id] = Timer(wait, () async {
+      _retries.remove(id);
+      if (_closed) return;
+      final GeoPoint? point = [
+        for (final ({int id, GeoPoint point}) c in await cemeteriesWithoutPlan(
+          database,
+        ))
+          if (c.id == id) c.point,
+      ].firstOrNull;
+      if (point == null || _closed) return;
+      _enqueue(id, point, first: false);
+      _run();
+    });
   }
 
   Future<PlanDownload?> _one(int id, GeoPoint point) async {
@@ -147,6 +213,11 @@ class PlanDownloads {
   /// After a restore the data is another: downloads in flight finish into nothing.
   void close() {
     _closed = true;
+    _slowTimer?.cancel();
+    for (final Timer t in _retries.values) {
+      t.cancel();
+    }
+    _retries.clear();
     _queue.clear();
     for (final Completer<PlanDownload?> c in _waiting.values) {
       c.complete(null);

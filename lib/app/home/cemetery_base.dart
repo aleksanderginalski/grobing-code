@@ -56,10 +56,16 @@ class CemeteryBase {
   CemeteryBase(List<BaseCemetery> cemeteries)
     : cemeteries = _sorted(cemeteries) {
     for (final BaseCemetery c in this.cemeteries) {
-      final String names = fold([c.name, ...c.otherNames].join(' | '));
-      _names.add(names);
       _all.add(
-        '$names | ${fold([c.locality, ?c.district, ...c.nearby].join(' | '))}',
+        fold(
+          [
+            c.name,
+            ...c.otherNames,
+            c.locality,
+            ?c.district,
+            ...c.nearby,
+          ].join(' | '),
+        ),
       );
     }
   }
@@ -107,26 +113,169 @@ class CemeteryBase {
 
   /// In the order the results show them: by name in the Polish alphabet, then by locality.
   final List<BaseCemetery> cemeteries;
-  final List<String> _names = [];
   final List<String> _all = [];
 
   /// The cemeteries every word of [query] matches — without case, Polish letters or word endings, like
-  /// the family's own (05_DESIGN/cmentarze.md D3). First those whose names match every word, then
-  /// those found through a locality; each group stays in alphabetical order (ISSUE-015 D8).
+  /// the family's own (05_DESIGN/cmentarze.md D3). Which cemeteries match is D3's; their order is D36's
+  /// (ISSUE-052): (1) more words of the query typed in full that are whole words of the cemetery; (2) the
+  /// furthest place a word has to be found in — the name, the locality or district on the card, a nearby
+  /// place, only inside a word; (3) fewer fields holding all the words — a nearby place named in full
+  /// before words scattered over several; (4) alphabetical, as the file is (ISSUE-015 D8).
   BaseResults search(String query, {int limit = 30}) {
     final List<String> stems = searchStems(query);
     if (stems.isEmpty) return (shown: const [], total: 0);
-    final List<int> byName = [], byPlace = [];
+    final _Query q = _Query(query);
+    final List<int> hits = [];
+    final Map<int, _Rank> ranks = {};
     for (int i = 0; i < cemeteries.length; i++) {
       if (!stems.every(_all[i].contains)) continue;
-      (stems.every(_names[i].contains) ? byName : byPlace).add(i);
+      hits.add(i);
+      ranks[i] = q.rank(_fields[i] ??= _Fields.of(cemeteries[i]));
     }
+    // List.sort is not stable: the index keeps the alphabetical order within a rank.
+    hits.sort((a, b) {
+      final int c = ranks[a]!.compareTo(ranks[b]!);
+      return c != 0 ? c : a.compareTo(b);
+    });
     return (
-      shown: [
-        for (final int i in [...byName, ...byPlace].take(limit)) cemeteries[i],
-      ],
-      total: byName.length + byPlace.length,
+      shown: [for (final int i in hits.take(limit)) cemeteries[i]],
+      total: hits.length,
     );
+  }
+
+  /// The words of each cemetery's fields, split the first time a search meets it: most searches meet a
+  /// few hundred of the 16 thousand, so the base does not split them all when it loads (ISSUE-015 D5).
+  late final List<_Fields?> _fields = List.filled(cemeteries.length, null);
+}
+
+/// The nearby place a result of [query] was found through, for "· przy: …" on its card
+/// (05_DESIGN/cmentarze.md, element 12, D35): when a word of the query starts no word of the name, the
+/// locality or the district, the nearby place that the most such words start a word of — the first of
+/// the base's list on a tie. Null when every word is on the card, or no nearby place holds one.
+String? foundThrough(BaseCemetery c, String query) {
+  final _Query q = _Query(query);
+  final _Fields f = _Fields.of(c);
+  final List<String> missing = [
+    for (final String stem in q.stems)
+      if (!f.onCard.any((words) => _startsWord(words, stem))) stem,
+  ];
+  if (missing.isEmpty) return null;
+  String? best;
+  int most = 0;
+  for (int i = 0; i < c.nearby.length; i++) {
+    final int n = missing.where((s) => _startsWord(f.nearby[i], s)).length;
+    if (n > most) {
+      most = n;
+      best = c.nearby[i];
+    }
+  }
+  return best;
+}
+
+/// Letters and digits, split at everything else — spaces, hyphens, dots, brackets ("Wymyślin-Zmyślice",
+/// "przy ul. Testowej"). By Unicode class, because [fold] plains Polish letters only.
+final RegExp _nonWord = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+List<String> _wordsOf(String text) => [
+  for (final String w in fold(text).split(_nonWord))
+    if (w.isNotEmpty) w,
+];
+
+bool _startsWord(List<String> words, String stem) =>
+    words.any((w) => w.startsWith(stem));
+
+/// A cemetery's fields as words, each with how far it is from the card: the name and other names (0), the
+/// locality and the district shown on the card (1), each nearby place (2).
+class _Fields {
+  _Fields(this.name, this.place, this.nearby);
+
+  factory _Fields.of(BaseCemetery c) => _Fields(
+    _wordsOf([c.name, ...c.otherNames].join(' ')),
+    [_wordsOf(c.locality), if (c.district != null) _wordsOf(c.district!)],
+    [for (final String p in c.nearby) _wordsOf(p)],
+  );
+
+  final List<String> name;
+  final List<List<String>> place;
+  final List<List<String>> nearby;
+
+  List<List<String>> get onCard => [name, ...place];
+
+  /// Every field with its distance, nearest first.
+  List<({int reach, List<String> words})> get all => [
+    (reach: 0, words: name),
+    for (final List<String> p in place) (reach: 1, words: p),
+    for (final List<String> p in nearby) (reach: 2, words: p),
+  ];
+}
+
+/// A query as the order reads it: its words without punctuation, and their stems ([searchStems]' rule).
+class _Query {
+  _Query(String query) : words = _wordsOf(query) {
+    stems = [
+      for (final String w in words)
+        w.length >= 5 ? w.substring(0, w.length - 2) : w,
+    ];
+  }
+
+  final List<String> words;
+  late final List<String> stems;
+
+  /// Where this query's words are in [f] (D36). Called only for cemeteries D3 matched.
+  _Rank rank(_Fields f) {
+    final List<({int reach, List<String> words})> fields = f.all;
+    final int whole = words
+        .where((w) => fields.any((field) => field.words.contains(w)))
+        .length;
+    if (stems.isEmpty) return _Rank(whole, 3, 0);
+    // Each stem's nearest field with a word it starts; a stem found only inside a word reaches 3.
+    final List<int> nearest = [
+      for (final String s in stems)
+        fields.indexWhere((field) => _startsWord(field.words, s)),
+    ];
+    if (nearest.contains(-1)) return _Rank(whole, 3, stems.length);
+    final int reach = [
+      for (final int i in nearest) fields[i].reach,
+    ].reduce((a, b) => a > b ? a : b);
+    // Fields holding all the stems, taken greedily — each time the field that holds the most of those
+    // left: one field when one holds them all, and a nearby place named in full is not split into the
+    // first places its words start (measured: "Przykładowe …" + "Wymyśl…" before "Przykładowa Wymyślanka").
+    final List<List<String>> reachable = [
+      for (final field in fields)
+        if (field.reach <= reach) field.words,
+    ];
+    final Set<String> left = {...stems};
+    int spread = 0;
+    while (left.isNotEmpty) {
+      Set<String> most = const {};
+      for (final List<String> words in reachable) {
+        final Set<String> held = {
+          for (final String s in left)
+            if (_startsWord(words, s)) s,
+        };
+        if (held.length > most.length) most = held;
+      }
+      if (most.isEmpty) break;
+      left.removeAll(most);
+      spread++;
+    }
+    return _Rank(whole, reach, spread);
+  }
+}
+
+/// The order of one result (D36): more whole words, then the nearer reach, then fewer fields.
+class _Rank implements Comparable<_Rank> {
+  const _Rank(this.whole, this.reach, this.spread);
+
+  final int whole;
+  final int reach;
+  final int spread;
+
+  @override
+  int compareTo(_Rank other) {
+    if (whole != other.whole) return other.whole.compareTo(whole);
+    if (reach != other.reach) return reach.compareTo(other.reach);
+    return spread.compareTo(other.spread);
   }
 }
 

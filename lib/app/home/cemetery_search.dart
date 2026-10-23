@@ -243,6 +243,7 @@ class _CemeterySearchScreenState extends State<CemeterySearchScreen> {
           for (final BaseCemetery c in found.shown)
             BaseCemeteryCard(
               cemetery: c,
+              through: foundThrough(c, q),
               added: addedAs(c, widget.cemeteries) != null,
               onTap: () => _openFromBase(c, addedAs(c, widget.cemeteries)),
             ),

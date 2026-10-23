@@ -18,6 +18,7 @@ import 'backup/restore_swap.dart';
 import 'data/database.dart';
 import 'data/pre_update_snapshot.dart';
 import 'dev/frame_log.dart';
+import 'net/background_plans.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,7 @@ Future<void> main() async {
       backup: data.backup,
       restore: data.restore,
       reopen: () => _open(support, cache),
+      backgroundPlans: const PlatformBackground(),
     ),
   );
 }
@@ -121,6 +123,24 @@ Future<void> backgroundBackupMain(List<String> args) async {
       firstChangeAt: firstChange == null
           ? DateTime.now()
           : DateTime.fromMillisecondsSinceEpoch(firstChange, isUtc: true),
+    );
+  } on Object {
+    run = (outcome: BackgroundOutcome.retry, wait: Duration.zero);
+  }
+  await background.finished(run);
+}
+
+/// The plans' downloads with the app closed (ISSUE-052 B1): `PlanWorker.kt` runs this in a headless engine
+/// once the phone has a network. `vm:entry-point` keeps it in release builds, as the backup's.
+@pragma('vm:entry-point')
+Future<void> backgroundPlansMain(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const PlatformBackground background = PlatformBackground();
+  BackgroundRun run;
+  try {
+    run = await runBackgroundPlans(
+      dataDir: await getApplicationSupportDirectory(),
+      backups: background,
     );
   } on Object {
     run = (outcome: BackgroundOutcome.retry, wait: Duration.zero);

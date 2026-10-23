@@ -53,14 +53,16 @@ abstract interface class PlanSource {
 /// paths in its box — two requests, one after the other. Each request goes to the hosts of
 /// [Hosts.overpass] in order, twice to a host that answers "busy" (429, 5xx, a timeout or a "runtime
 /// error"), with a pause between; a host that cannot be looked up is passed over at once. Measured before
-/// the plan: the outline in 3 s, the paths of a large cemetery refused twice with 504 by the first host —
-/// so failing here is the normal case, and the screen says so (element 2a (c)).
+/// ISSUE-027: the outline in 3 s, the paths of a large cemetery refused twice with 504 by the first host.
+/// Measured at the first real use (ISSUE-052, 2026-10-22): every answer of the first host 22–47 s, whatever
+/// its size — the server's queue — and a 502 now and then that the next try 5 s later got past; the other
+/// hosts nothing in 90 s. The limits below are those answers with room for a worse day.
 class OverpassPlanSource implements PlanSource {
   OverpassPlanSource({
     List<Uri>? hosts,
     this.retryPause = const Duration(seconds: 5),
-    this.requestTimeout = const Duration(seconds: 30),
-    this.deadline = const Duration(seconds: 60),
+    this.requestTimeout = const Duration(seconds: 120),
+    this.deadline = const Duration(minutes: 5),
     this.maxBytes = 8 << 20,
     HttpClient Function()? client,
   }) : hosts = hosts ?? Hosts.overpass,
@@ -70,12 +72,12 @@ class OverpassPlanSource implements PlanSource {
   final Duration retryPause;
   final Duration requestTimeout;
 
-  /// No new try of a request after this long: the screen shows "Pobieram plan…" meanwhile, and the
-  /// servers measured while building this either answered within seconds or not at all (104 s for
-  /// nothing, with no deadline).
+  /// No new try of a request after this long: the screen shows "Pobieram plan…" meanwhile. Both requests
+  /// of a cemetery took 50–87 s at the first real use (ISSUE-052), so this holds them and one try more;
+  /// the next attempt is [PlanDownloads]' (and the background's) to make, not this one's.
   final Duration deadline;
 
-  /// The largest answer read; a larger one is a fault, not a plan (a large cemetery's paths: ~350 KB).
+  /// The largest answer read; a larger one is a fault, not a plan (a large cemetery's paths: ~440 KB).
   final int maxBytes;
   final HttpClient Function() _client;
 

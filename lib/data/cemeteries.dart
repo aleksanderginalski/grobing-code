@@ -31,6 +31,7 @@ class CemeterySummary {
     required this.graveCount,
     required this.personCount,
     this.photoPath,
+    this.plan,
   });
 
   final int id;
@@ -48,10 +49,15 @@ class CemeterySummary {
   /// The cemetery's photo, relative to the media directory (element 6a; ISSUE-023), or null. At most one;
   /// with several rows the first by id, as a grave's.
   final String? photoPath;
+
+  /// What the download of the cemetery's plan stored (ADR-015): the plan, or that OpenStreetMap has none;
+  /// null while nothing is stored — the plan line of the sheet and "· bez planu" in the list
+  /// (05_DESIGN/cmentarze.md D37).
+  final PlanStatus? plan;
 }
 
-/// The family's cemeteries with their counts and photos, in the order they were added; a new value after
-/// every write to cemeteries, graves, burials or photos.
+/// The family's cemeteries with their counts, photos and stored plans, in the order they were added; a new
+/// value after every write to cemeteries, graves, burials, photos or plans.
 Stream<List<CemeterySummary>> watchCemeteries(GrobingDatabase db) => db
     .customSelect(
       'SELECT c.id, c.name, c.locality, c.center_lat, c.center_lon, '
@@ -59,9 +65,16 @@ Stream<List<CemeterySummary>> watchCemeteries(GrobingDatabase db) => db
       '(SELECT COUNT(DISTINCT b.person_id) FROM burials b '
       'JOIN graves g ON g.id = b.grave_id WHERE g.cemetery_id = c.id) AS person_count, '
       '(SELECT m.relative_path FROM media m WHERE m.cemetery_id = c.id '
-      'ORDER BY m.id LIMIT 1) AS photo_path '
+      'ORDER BY m.id LIMIT 1) AS photo_path, '
+      '(SELECT p.status FROM cemetery_plans p WHERE p.cemetery_id = c.id) AS plan_status '
       'FROM cemeteries c ORDER BY c.id',
-      readsFrom: {db.cemeteries, db.graves, db.burials, db.media},
+      readsFrom: {
+        db.cemeteries,
+        db.graves,
+        db.burials,
+        db.media,
+        db.cemeteryPlans,
+      },
     )
     .watch()
     .map(
@@ -78,6 +91,8 @@ Stream<List<CemeterySummary>> watchCemeteries(GrobingDatabase db) => db
             graveCount: r.read<int>('grave_count'),
             personCount: r.read<int>('person_count'),
             photoPath: r.readNullable<String>('photo_path'),
+            plan: PlanStatus.values
+                .asNameMap()[r.readNullable<String>('plan_status')],
           ),
       ],
     );

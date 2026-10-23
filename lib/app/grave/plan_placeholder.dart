@@ -10,10 +10,13 @@ enum PlanGap {
   /// (a) Being downloaded.
   downloading,
 
+  /// (a) Being downloaded, and the server has been slow long enough to say so (v9, D39).
+  downloadingSlowly,
+
   /// (b) No internet.
   offline,
 
-  /// (c) The servers did not answer.
+  /// (c) The server is overloaded; the app tries again by itself, with the app closed too (v9, D40, B1).
   serverError,
 
   /// (d) OpenStreetMap has no outline around the point.
@@ -53,6 +56,9 @@ class PlanPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // (a) says where the plan will be: in the phone, for the cemetery without coverage (D41).
+    const String kept =
+        'Plan zostanie w\u00A0telefonie — na cmentarzu zasięg nie będzie potrzebny.';
     final (
       Glyph? icon,
       String fact,
@@ -63,7 +69,17 @@ class PlanPlaceholder extends StatelessWidget {
       PlanGap.downloading => (
         null,
         'Pobieram plan cmentarza…',
+        kept,
         null,
+        null,
+      ),
+      // One line in place of [kept], not a third one: at 200% on 360 dp the placeholder has room for about
+      // two, and the rest went under the graves' bar (dev pass, ISSUE-052).
+      PlanGap.downloadingSlowly => (
+        null,
+        'Pobieram plan cmentarza…',
+        'Serwer map odpowiada dziś wolno. Plan zapisze się sam i\u00A0zostanie '
+            'w\u00A0telefonie — możesz zamknąć aplikację.',
         null,
         null,
       ),
@@ -76,10 +92,10 @@ class PlanPlaceholder extends StatelessWidget {
       ),
       PlanGap.serverError => (
         Glyphs.cloudOff,
-        'Nie udało się pobrać planu — serwer map nie odpowiada.',
+        'Serwer map jest teraz przeciążony.',
         hasGraves
-            ? 'Spróbuję znowu później. Groby są na liście.'
-            : 'Spróbuję znowu później.',
+            ? 'Spróbuję sam, także gdy zamkniesz aplikację. Groby są na liście.'
+            : 'Spróbuję sam, także gdy zamkniesz aplikację.',
         'Pobierz teraz',
         onDownload,
       ),
@@ -103,7 +119,8 @@ class PlanPlaceholder extends StatelessWidget {
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: Semantics(
-          liveRegion: gap == PlanGap.downloading,
+          liveRegion:
+              gap == PlanGap.downloading || gap == PlanGap.downloadingSlowly,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

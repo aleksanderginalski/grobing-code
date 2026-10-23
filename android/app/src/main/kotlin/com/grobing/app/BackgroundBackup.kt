@@ -73,17 +73,9 @@ class BackgroundChannel(
                 DataLock.release(this)
                 result.success(null)
             }
-            "request" -> io.execute {
-                val error = try {
-                    BackupWorker.request(context)
-                    null
-                } catch (e: Exception) {
-                    e.javaClass.simpleName
-                }
-                main.post {
-                    if (error == null) result.success(null) else result.error("request_failed", error, null)
-                }
-            }
+            "request" -> requestOffMain(result) { BackupWorker.request(context) }
+            // The cemeteries' plans with the app closed (ISSUE-052 B1).
+            "requestPlans" -> requestOffMain(result) { PlanWorker.request(context) }
             "finished" -> {
                 val finished = onFinished
                 if (finished == null) {
@@ -99,6 +91,19 @@ class BackgroundChannel(
                 }
             }
             else -> result.notImplemented()
+        }
+    }
+
+    /** WorkManager's `get()` blocks, so a request runs on [io] and answers on the main thread. */
+    private fun requestOffMain(result: MethodChannel.Result, request: () -> Unit) = io.execute {
+        val error = try {
+            request()
+            null
+        } catch (e: Exception) {
+            e.javaClass.simpleName
+        }
+        main.post {
+            if (error == null) result.success(null) else result.error("request_failed", error, null)
         }
     }
 

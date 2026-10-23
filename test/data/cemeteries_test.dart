@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:grobing/app/home/cemetery_card.dart' show cemeteryLine;
 import 'package:grobing/data/cemeteries.dart';
+import 'package:grobing/data/cemetery_plans.dart';
 import 'package:grobing/data/claims.dart';
 import 'package:grobing/data/database.dart';
 
@@ -125,4 +127,81 @@ void main() {
     await sub.cancel();
     expect(sizes, [0, 1, 2]);
   });
+
+  test(
+    'ISSUE-052 D37 — each summary says what the plan\'s download stored: nothing, the plan, or "not in '
+    'OpenStreetMap"; a stored plan is a new value of the list; the list line says "bez planu" only while '
+    'it is missing',
+    () async {
+      const GeoPoint a = GeoPoint(51.0, 20.0), b = GeoPoint(51.1, 20.0);
+      final int withPlan = await addCemetery(
+        db,
+        name: 'Cmentarz Wymyślony',
+        locality: 'Wymyślin',
+        point: a,
+      );
+      final int notInOsm = await addCemetery(
+        db,
+        name: 'Cmentarz Testowy',
+        locality: 'Testowo',
+        point: b,
+      );
+      await addCemetery(db, name: 'Cmentarz Próbny', locality: 'Zmyślice');
+      final List<List<PlanStatus?>> seen = [];
+      final sub = watchCemeteries(
+        db,
+      ).listen((l) => seen.add([for (final c in l) c.plan]));
+      await pumpEventQueue();
+      await savePlan(
+        db,
+        withPlan,
+        forPoint: a,
+        areas: const [
+          PlanArea([
+            GeoPoint(51.0, 20.0),
+            GeoPoint(51.0, 20.001),
+            GeoPoint(51.001, 20.001),
+            GeoPoint(51.0, 20.0),
+          ]),
+        ],
+        paths: const [],
+        server: 'overpass.example',
+      );
+      await saveNotInOsm(db, notInOsm, forPoint: b, server: 'overpass.example');
+      await pumpEventQueue();
+      await sub.cancel();
+      expect(seen.first, [null, null, null]);
+      expect(seen.last, [PlanStatus.ok, PlanStatus.notInOsm, null]);
+
+      final List<CemeterySummary> all = await current();
+      expect(cemeteryLine(all[0]), 'Wymyślin ·\u00A00 grobów ·\u00A00 osób');
+      expect(
+        cemeteryLine(all[1]),
+        'Testowo ·\u00A00 grobów ·\u00A00 osób ·\u00A0bez planu w OSM',
+      );
+      expect(
+        cemeteryLine(all[2]),
+        'Zmyślice ·\u00A00 grobów ·\u00A00 osób ·\u00A0bez punktu na mapie',
+      );
+      // The sheet of a group names the cemeteries only.
+      expect(
+        cemeteryLine(all[1], withState: false),
+        'Testowo ·\u00A00 grobów ·\u00A00 osób',
+      );
+      // Before the download, a cemetery with a point says what is left to do.
+      expect(
+        cemeteryLine(
+          const CemeterySummary(
+            id: 9,
+            name: 'Cmentarz Przykładowy',
+            locality: 'Przykładowo',
+            point: a,
+            graveCount: 1,
+            personCount: 2,
+          ),
+        ),
+        'Przykładowo ·\u00A01 grób ·\u00A02 osoby ·\u00A0bez planu',
+      );
+    },
+  );
 }
