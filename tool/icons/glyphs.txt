@@ -65,6 +65,7 @@ play_arrow
 refresh
 remove
 satellite_alt
+screen_rotation
 search
 settings
 settings_backup_restore

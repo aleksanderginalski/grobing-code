@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:grobing/app/tree/presentation_mode.dart';
+import 'package:grobing/app/tree/tree_orientation.dart';
 
 // ISSUE-034 — what the tree's presentation mode asks of the system (05_DESIGN/drzewo.md element 11, D2; Dev
 // report): landscape first, the bars hidden only once the view is landscape — hidden while the screen was
@@ -78,6 +79,27 @@ void main() {
         'setEnabledSystemUIMode SystemUiMode.edgeToEdge',
         'setPreferredOrientations [DeviceOrientation.portraitUp]',
         'setPreferredOrientations []',
+      ]);
+    },
+  );
+
+  testWidgets(
+    'leave — with the tab\'s own choice ("Obróć", drzewo.md D82; ISSUE-055) back to that choice, not to the phone\'s',
+    (tester) async {
+      treeLandscape = true;
+      addTearDown(() => treeLandscape = null);
+      await leavePresentation();
+      expect(chrome, [
+        'setEnabledSystemUIMode SystemUiMode.edgeToEdge',
+        'setPreferredOrientations '
+            '[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]',
+      ]);
+      chrome.clear();
+      treeLandscape = false;
+      await leavePresentation();
+      expect(chrome, [
+        'setEnabledSystemUIMode SystemUiMode.edgeToEdge',
+        'setPreferredOrientations [DeviceOrientation.portraitUp]',
       ]);
     },
   );

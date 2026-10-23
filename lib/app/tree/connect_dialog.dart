@@ -13,30 +13,37 @@ import '../theme.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 
-/// Element 7 (05_DESIGN/drzewo.md v1.16; US-011 AC-1, ISSUE-039): the window "Połącz dwie osoby" with the tiles
-/// "Od" — "Ja" at each opening — and "Do", empty. A tile opens the list of people; choosing "Od" comes back
-/// here, choosing "Do" closes the window with the pair. "Anuluj", back or a tap beside it close it with
-/// nothing (D49).
+/// Element 7 (05_DESIGN/drzewo.md v1.29; US-011 AC-1, ISSUE-039, ISSUE-055): the window "Połącz dwie osoby" with the
+/// tiles "Od" — the person in the middle of the tree, [from], at each opening (D78; "Ja" until v1.28) — and "Do",
+/// empty. A tile opens the list of people; choosing "Od" comes back here, choosing "Do" closes the window with the
+/// pair. "Anuluj", back or a tap beside it close it with nothing (D49).
 Future<({int from, int to})?> showConnectDialog(
   BuildContext context, {
   required GrobingDatabase database,
   required FamilyTreeData family,
+  required int? from,
   Photos? photos,
 }) => showDialog<({int from, int to})>(
   context: context,
-  builder: (_) =>
-      _ConnectDialog(database: database, family: family, photos: photos),
+  builder: (_) => _ConnectDialog(
+    database: database,
+    family: family,
+    from: from,
+    photos: photos,
+  ),
 );
 
 class _ConnectDialog extends StatefulWidget {
   const _ConnectDialog({
     required this.database,
     required this.family,
+    required this.from,
     this.photos,
   });
 
   final GrobingDatabase database;
   final FamilyTreeData family;
+  final int? from;
   final Photos? photos;
 
   @override
@@ -44,7 +51,7 @@ class _ConnectDialog extends StatefulWidget {
 }
 
 class _ConnectDialogState extends State<_ConnectDialog> {
-  late int? _from = widget.family.meId;
+  late int? _from = widget.from ?? widget.family.meId;
 
   Future<void> _choose({required bool from}) async {
     final int? id = await Navigator.of(context).push<int>(

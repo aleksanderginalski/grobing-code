@@ -71,6 +71,7 @@ class MigrationMap extends StatefulWidget {
     this.playing = false,
     this.onEmptyTap,
     this.showPill = true,
+    this.pillTop = 12,
     this.ride = false,
     this.shine = const {},
     this.shineLevel,
@@ -102,6 +103,10 @@ class MigrationMap extends StatefulWidget {
 
   /// The pill (element 3) — not while the caption of ⏭ stands in its place (element 15, ISSUE-050).
   final bool showPill;
+
+  /// Where the pill stands from the top: sideways under the top row of the switch and the icons, which stand over
+  /// the map (drzewo.md element 12, D31).
+  final double pillTop;
 
   /// The year came with ⏭: its moves glide in 0.6 s, as with ▶ (element 15) — the move is the event told.
   final bool ride;
@@ -450,7 +455,7 @@ class _MigrationMapState extends State<MigrationMap>
             ),
             if (!widget.presenting && !empty && widget.showPill)
               Positioned(
-                top: 12,
+                top: widget.pillTop,
                 left: 16,
                 right: 16,
                 child: _Pill(

@@ -84,6 +84,7 @@ abstract final class Glyphs {
   static const Glyph refresh = Glyph(0xe5d5);
   static const Glyph remove = Glyph(0xe15b);
   static const Glyph satelliteAlt = Glyph(0xeb3a);
+  static const Glyph screenRotation = Glyph(0xf2d5);
 
   /// From the author's sheet (line and fill glyphs).
   static const Glyph search = Glyph(0xf8a1, fill: 0xf890);

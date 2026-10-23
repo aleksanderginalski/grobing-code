@@ -36,6 +36,7 @@ import 'presentation_mode.dart';
 import 'tree_events.dart';
 import 'tree_labels.dart';
 import 'tree_layout.dart';
+import 'tree_orientation.dart';
 import 'tree_painter.dart';
 import 'tree_path.dart';
 import 'tree_presentation.dart';
@@ -239,10 +240,14 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   bool _casting = false;
   AppLifecycleListener? _castReturn;
 
-  /// "Połącz dwie osoby" (elements 7–10; US-011, ISSUE-039): the path lit on the tree, or null; its line on the
-  /// layout shown, run step by step ([_pathRun] 0 → 1, 0.7 s a step) once "Do" stands in the middle; how many
+  /// "Połącz dwie osoby" (elements 7–10; US-011, ISSUE-039, ISSUE-055): the path lit on the tree, or null; its line on
+  /// the layout shown, run step by step ([_pathRun] 0 → 1, 0.7 s a step) once "Od" stands in the middle; how many
   /// of its people the line has reached ("Od" from the start); the banner (element 9, or 10 alone).
   TreePath? _path;
+
+  /// The year shown before the path, back when it ends (D81); kept across a new path in its place.
+  int? _yearBeforePath;
+  bool _yearSaved = false;
   List<List<Offset>> _pathRuns = const [];
   late final AnimationController _pathRun;
   int _reached = 0;
@@ -252,8 +257,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   Timer? _bannerTimer;
   Duration _bannerTime = pathBannerTime;
 
-  /// A path or a banner on the tree: a touch, back and the rest of D49 end it first.
+  /// A path or a banner on the tree. A path ends with back and the few things with no room for it (D79); the banner of
+  /// element 10 alone also with a touch (D49).
   bool get _lit => _path != null || _bannerShown;
+
+  /// Tree tabs on the stack: "Pokaż w drzewie" puts a new one in place of the old, and the old one's end must not
+  /// take the tab's orientation away from the new one ("Obróć", D82).
+  static int _alive = 0;
 
   // A double tap on the tree's empty space zooms in (AC-3, SC 2.5.1). Read from raw pointer events, so a
   // tap on a person is not held back waiting for a second one.
@@ -289,6 +299,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _view.addListener(_onView);
     _listen();
     if (_part == _Part.map) _openMap();
+    _alive++;
+    // The tab's own orientation, chosen with "Obróć" earlier while the app runs (D82).
+    if (treeLandscape != null) unawaited(applyTreeOrientation());
   }
 
   void _listen() {
@@ -383,9 +396,17 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     };
   }
 
+  /// The screen stands sideways — the "Obróć" button or the phone's own rotation.
+  bool _landscape = false;
+
+  /// The landscape layout (element 12, L4 — D77): sideways, outside presentation, with a tree — no tab bar, the switch
+  /// and the icons over the tree, the card in one row at the bottom. Without a tree the bar and the tabs stay.
+  bool get _wide => _landscape && !_presenting && _treeShown;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     _noMotion = MediaQuery.disableAnimationsOf(context);
     final bool reader = MediaQuery.accessibleNavigationOf(context);
     if (reader != _readerOn) {
@@ -422,8 +443,16 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _shine.dispose();
     _fade.dispose();
     _castReturn?.dispose();
-    // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same.
-    if (_presenting) unawaited(leavePresentation());
+    // Gone in the middle of a presentation: the phone gets its bars and orientation back all the same. The last tree
+    // tab gone: the phone's own orientation (D82) — after presentation's way out, which would bring the tab's back.
+    final bool presenting = _presenting;
+    final bool last = --_alive == 0;
+    if (presenting || last) {
+      unawaited(() async {
+        if (presenting) await leavePresentation();
+        if (last) await releaseTreeOrientation();
+      }());
+    }
     _move.dispose();
     _glide.dispose();
     _view
@@ -711,7 +740,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// scale it fits, at most [pathMaxScale], at least [treeMinScaleAtLeast] (v1.23 — the scale no longer belongs to a
   /// level; the path may stand under the whole level's scale, as its names keep their size). Under 1 the names keep their size on the screen (I2), so
   /// the frame counts them, not only the people's places — at 200 % the name of "Do" went off the screen (ui review
-  /// of ISSUE-039, MAJOR). A path that would reach under + / − or the level's label is framed clear of them.
+  /// of ISSUE-039, MAJOR). Sideways under the top row, which carries the banner (element 12). The level's + / − are
+  /// gone while a path is lit (D80; until v1.28 the frame kept clear of them).
   Matrix4? _pathFramed() {
     final Size? v = _viewport;
     final TreeLayout? layout = _layout;
@@ -727,22 +757,29 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     if (people.isEmpty) return null;
     const double margin = 24;
     final ({String? top, String text})? banner = _banner;
-    final double under = banner == null
-        ? margin
-        : 12 + PathBanner.heightFor(banner, v.width - 32, _scaler) + 12;
+    final double under;
+    if (_wide) {
+      // The row's three icons, 48 dp each, in their pill's outline.
+      final double room = _WideTop.bannerRoom(
+        v.width,
+        _PartSwitch.wordsWidth(_scaler),
+        3 * 48 + 2,
+      );
+      final double tall = banner == null
+          ? 0
+          : PathBanner.heightFor(banner, room, _scaler);
+      under = math.max(_WideTop.below, _WideTop.top + tall + 12);
+    } else {
+      under = banner == null
+          ? margin
+          : 12 + PathBanner.heightFor(banner, v.width - 32, _scaler) + 12;
+    }
     final double top = math.min(under, v.height / 2);
-    final Matrix4 framed = _pathFrame(
-      layout,
-      family,
-      people,
-      Rect.fromLTRB(margin, top, v.width - margin, v.height - margin),
-    );
-    if (!_underControls(framed, layout, family, people, v)) return framed;
     return _pathFrame(
       layout,
       family,
       people,
-      Rect.fromLTRB(margin, top, v.width - _buttonColumn, v.height - margin),
+      Rect.fromLTRB(margin, top, v.width - margin, v.height - margin),
     );
   }
 
@@ -802,39 +839,6 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   /// A name's width on the tree before the label's scale: as written with its halo, at most the place less 8.
   double _labelWidth(FamilyTreeData family, int n) =>
       math.min(_nameWidth(_label(family, n)) + 6, _metrics.slot - 8);
-
-  /// Whether a person of the path, with their name, would stand under the level's + / − in [view].
-  bool _underControls(
-    Matrix4 view,
-    TreeLayout layout,
-    FamilyTreeData family,
-    List<int> people,
-    Size v,
-  ) {
-    final Rect buttons = Rect.fromLTRB(
-      v.width - 12 - 48,
-      v.height - 12 - 104,
-      v.width - 12,
-      v.height - 12,
-    );
-    final double s = view.entry(0, 0);
-    final Offset shift = Offset(view.entry(0, 3), view.entry(1, 3));
-    final double nameHeight = _scaler.scale(13) * 1.3;
-    for (final int n in people) {
-      final Offset p = shift + layout.positions[n]! * s;
-      final double width = math.max(
-        _metrics.slot * s,
-        s < 1 ? _labelWidth(family, n) : 0,
-      );
-      final double height = math.max(
-        _metrics.labelBottom * s,
-        s < 1 ? (TreeMetrics.node + 4) * s + nameHeight : 0,
-      );
-      final Rect place = Rect.fromLTWH(p.dx - width / 2, p.dy, width, height);
-      if (place.overlaps(buttons)) return true;
-    }
-    return false;
-  }
 
   /// Every change of the view: the names follow the scale (D1 — I2). Since ISSUE-049 the scale changes nothing
   /// else — who is shown is the level's, chosen with its own + / − (element 3a, D51; v1.25, D58).
@@ -1241,11 +1245,12 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         _captionKey.currentContext?.findRenderObject() as RenderBox?;
     // In presentation nothing stands under the year (B — D72): the area starts under its plate and ends over the bar,
     // which carries the caption's line.
+    // Sideways the bubble stands under the top row (element 12).
     final double captionBottom = _presenting
         ? PresentationYear.bottom(context)
         : box == null || !box.hasSize
         ? margin
-        : 10 + box.size.height;
+        : (_wide ? _WideTop.below : 10) + box.size.height;
     final RenderBox? bar =
         _barKey.currentContext?.findRenderObject() as RenderBox?;
     final double barTop = _presenting && bar != null && bar.hasSize
@@ -1341,13 +1346,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
 
   // ---- "Połącz dwie osoby" (elements 7–10; US-011, ISSUE-039) ----
 
-  /// Element 1 → 7: the window, then the path from "Od" to "Do".
+  /// Element 1 → 7: the window, from the person in the middle (D78), then the path from "Od" to "Do". A lit path
+  /// stays while the window is open: "Anuluj" leaves it; a new "Do" takes its place (D79).
   Future<void> _connect() async {
     final FamilyTreeData? family = _family;
-    if (family == null || family.meId == null) return;
-    _endPath();
-    // "Czas na działanie" for the banner — text to read, as a Snackbar without an action (D43); asked as the
-    // window opens, the answer is in before anyone picks a person.
+    if (family == null) return;
+    // "Czas na działanie" for the banner of element 10 — text to read, as a Snackbar without an action (D43); asked
+    // as the window opens, the answer is in before anyone picks a person.
     unawaited(
       recommendedTimeout(pathBannerTime, controls: false).then((time) {
         if (mounted) _bannerTime = time;
@@ -1357,15 +1362,19 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       context,
       database: widget.database,
       family: family,
+      from: _focus,
       photos: widget.photos,
     );
     if (pair == null || !mounted) return;
+    _endPath();
     _showPath(pair.from, pair.to);
   }
 
-  /// Elements 8–10: "Do" moves to the middle (W2 — D45) at the lowest level that shows the whole path, the view
-  /// frames the path (F2 — D46), the slider goes to "dziś" and ▶ stops (Y1 — D48), the rest fades; the line
-  /// runs once "Do" stands in the middle. No path — the banner of element 10, and nothing else changes.
+  /// Elements 8–10: "Od" stays in the middle, or moves there when the window's tile chose someone else (D81; until
+  /// v1.28 "Do" moved there — D45), at the lowest level from it that shows the whole path; the card, its time row and
+  /// + / − go — the tree alone (D80); the view frames the path (F2 — D46), the slider goes to "dziś" and ▶ stops
+  /// (Y1 — D48), the year before kept for the way back (D81); the rest fades, and the line runs once "Od" stands in
+  /// the middle. No path — the banner of element 10, and nothing else changes.
   void _showPath(int from, int to) {
     final FamilyTreeData? family = _family;
     final TreeGraph? graph = _graph;
@@ -1382,7 +1391,7 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _showBanner();
       return;
     }
-    final ({int level, Set<int> also}) at = pathLevel(graph, to, [
+    final ({int level, Set<int> also}) at = pathLevel(graph, from, [
       from,
       for (final KinStep s in steps) s.personId,
     ]);
@@ -1390,12 +1399,16 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     setState(() {
       _stopPlaying();
       _caption = null;
+      if (!_yearSaved) {
+        _yearBeforePath = _year;
+        _yearSaved = true;
+      }
       if (_year != null) _setYear(null);
       _path = TreePath(from: from, to: to, steps: steps, also: at.also);
       _banner = banner;
       _reached = 1;
       _pathRun.value = 0;
-      _focus = to;
+      _focus = from;
       // Up to the path's level, never down: the level chosen stays chosen (D57).
       if (at.level > _level) treeLevel = at.level;
       // The banner stands where the level's pill would (D49).
@@ -1449,17 +1462,20 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _showBanner();
   }
 
-  /// The banner for 4 s — longer when "Czas na działanie" asks for it (D43).
+  /// The banner of a path stays until the path ends (D80); the banner of element 10 alone for 4 s — longer when
+  /// "Czas na działanie" asks for it (D43).
   void _showBanner() {
     _bannerTimer?.cancel();
     setState(() => _bannerShown = true);
+    if (_path != null) return;
     _bannerTimer = Timer(_bannerTime, () {
       if (mounted) setState(() => _bannerShown = false);
     });
   }
 
-  /// The end of the light (D49): a touch of the tree, back, zooming, a level, ▶, the slider, a person's view,
-  /// casting. "Do" stays in the middle at the level and scale it has (D57 — the scale no longer belongs to a level).
+  /// The end of the path (D79): back, the part's switch, casting, a new "Do" — and the banner of element 10 with a
+  /// touch too (D49). Until v1.28 also a touch of the tree, zooming, a level, ▶ and the slider. "Od" stays in the
+  /// middle at the level and scale it has (D81, D57); the card and the year from before the path come back.
   void _endPath() {
     final TreePath? path = _path;
     if (!_lit) return;
@@ -1469,7 +1485,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// The path's state gone, without a build — the caller builds.
+  /// The path's state gone, without a build — the caller builds. The year from before the path comes back (D81),
+  /// ▶ standing.
   void _clearPath() {
     _bannerTimer?.cancel();
     _pathRun.stop();
@@ -1478,6 +1495,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _path = null;
     _pathRuns = const [];
     _reached = 0;
+    if (_yearSaved) {
+      _yearSaved = false;
+      if (_yearBeforePath != _year) _setYear(_yearBeforePath);
+    }
   }
 
   // ---- presentation mode (element 11, D11, D16) ----
@@ -1601,28 +1622,27 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     _armControls();
   }
 
-  /// The double tap: the point [at] of the tree's area stays where it is.
-  void _zoom(double factor, Offset at) {
-    _endPath();
-    _zoomTo(_scale * factor, at);
-  }
+  /// The double tap: the point [at] of the tree's area stays where it is. A lit path stays (D79).
+  void _zoom(double factor, Offset at) => _zoomTo(_scale * factor, at);
 
-  /// D52: under 24 dp a touch zooms in at [at] to [treeTapZoomScale], gliding, and chooses no one.
-  void _zoomIn(Offset at) {
-    _endPath();
-    _zoomTo(math.max(treeTapZoomScale, _scale), at, glide: true);
-  }
+  /// D52: under 24 dp a touch zooms in at [at] to [treeTapZoomScale], gliding, and chooses no one. A lit path stays
+  /// (D79).
+  void _zoomIn(Offset at) =>
+      _zoomTo(math.max(treeTapZoomScale, _scale), at, glide: true);
 
   void _tap(int person) {
-    // The first touch only ends the light, so a stray one does not move the middle (D49).
-    if (_lit) {
-      _endPath();
-      return;
-    }
-    // A place under 24 dp: the touch zooms in to the person first (D52; style-b.md v1.44).
+    // A place under 24 dp: the touch zooms in to the person first (D52; style-b.md v1.44) — the view only, so with a
+    // path lit too (D79).
     final Offset? at = _layout?.positions[person];
     if (_tinyTargets && at != null) {
       _zoomIn(_offset + (at + const Offset(0, TreeMetrics.node / 2)) * _scale);
+      return;
+    }
+    // A lit path: a touch of a person does nothing, so a stray one does not end it (D79). The banner of element 10
+    // alone: the first touch only ends it (D49).
+    if (_path != null) return;
+    if (_lit) {
+      _endPath();
       return;
     }
     if (person == _focus) {
@@ -1648,20 +1668,44 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     return _openView(person);
   }
 
-  Future<void> _openView(int person) => openPersonView(
-    context,
-    widget.database,
-    person,
-    photos: widget.photos,
-    tab: AppTab.tree,
-  );
-
-  Future<void> _chooseMe() => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) =>
-          MePickerScreen(database: widget.database, photos: widget.photos),
+  Future<void> _openView(int person) => _away(
+    () => openPersonView(
+      context,
+      widget.database,
+      person,
+      photos: widget.photos,
+      tab: AppTab.tree,
     ),
   );
+
+  Future<void> _chooseMe() => _away(
+    () => Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            MePickerScreen(database: widget.database, photos: widget.photos),
+      ),
+    ),
+  );
+
+  /// A screen over the tree, outside the tab: the phone's own orientation while it is open, the tab's again after
+  /// it ("Obróć", D82) — that screen has no landscape layout (D76).
+  Future<void> _away(Future<void> Function() open) async {
+    final bool turned = treeLandscape != null;
+    if (turned) unawaited(releaseTreeOrientation());
+    await open();
+    if (turned && mounted) unawaited(applyTreeOrientation());
+  }
+
+  /// "Obróć" (element 1, D82): landscape from portrait, portrait from landscape — kept while the app runs, also over
+  /// the phone's own rotation. A lit path stays and is framed again in the new size (D79).
+  void _rotate() {
+    final bool landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    treeLandscape = !landscape;
+    _centred = false;
+    _touched = false;
+    unawaited(applyTreeOrientation());
+  }
 
   // ---- the double tap, from raw pointer events ----
 
@@ -1692,8 +1736,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _lastTap = null;
       return;
     }
-    // A touch of the tree ends a lit path or a banner (D49), and does nothing more.
-    if (_lit) {
+    // A touch of the tree ends the banner of element 10 (D49), and does nothing more. A lit path stays: the double
+    // tap below zooms over it (D79).
+    if (_path == null && _bannerShown) {
       _lastTap = null;
       _endPath();
       return;
@@ -1745,38 +1790,44 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
   // ---- building ----
 
   // In presentation the same widgets lose the bar, the card, + / − and the tab bar: the tree's area keeps its
-  // place in the tree of widgets, so the view and the moves go on through the change.
+  // place in the tree of widgets, so the view and the moves go on through the change. Sideways (element 12) the bar
+  // and the tab bar go too, and the card turns into one row.
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_presenting && !_lit,
-    onPopInvokedWithResult: (didPop, _) {
-      if (didPop) return;
-      if (_presenting) {
-        _leave();
-      } else if (_lit) {
-        _endPath();
-      }
-    },
-    child: Scaffold(
-      bottomNavigationBar: _presenting
-          ? null
-          : GrobingTabBar(
-              active: AppTab.tree,
-              database: widget.database,
-              photos: widget.photos,
-            ),
-      body: SafeArea(
-        bottom: _presenting,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!_presenting) _bar(),
-            Expanded(child: _content()),
-          ],
+  Widget build(BuildContext context) {
+    final bool wide = _wide;
+    return PopScope(
+      canPop: !_presenting && !_lit,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_presenting) {
+          _leave();
+        } else if (_lit) {
+          _endPath();
+        }
+      },
+      child: Scaffold(
+        bottomNavigationBar: _presenting || wide
+            ? null
+            : GrobingTabBar(
+                active: AppTab.tree,
+                database: widget.database,
+                photos: widget.photos,
+              ),
+        // Sideways the column runs under the system's gesture area too: the card's row takes it inside, so its surface
+        // reaches the edge as the tab bar's does in portrait (ui review of ISSUE-055, MINOR).
+        body: SafeArea(
+          bottom: _presenting,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!_presenting && !wide) _bar(),
+              Expanded(child: _content()),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   /// The tree is on the screen — not the states without it (drzewo.md → States).
   bool get _treeShown =>
@@ -1785,9 +1836,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       _focus != null &&
       _layout != null;
 
-  /// Element 1: "Drzewo" and, with a tree, "Połącz dwie osoby" (US-011; A1 — D44) and "Przesyłaj na telewizor"
-  /// — the system's cast screen, then presentation mode (AC-8, D30). "Połącz dwie osoby" only once "ja" is
-  /// chosen: the window starts from "Ja" and the banner speaks from "ja" (ISSUE-039 D3).
+  /// Element 1: "Drzewo" and, with a tree, "Obróć" (D82), "Połącz dwie osoby" (US-011; A1 — D44) and "Przesyłaj na
+  /// telewizor" — the system's cast screen, then presentation mode (AC-8, D30). "Połącz dwie osoby" on any tree since
+  /// v1.29: the window starts from the person in the middle (D78; until v1.28 only once "ja" was chosen).
   Widget _bar() => ConstrainedBox(
     constraints: const BoxConstraints(minHeight: 64),
     child: Padding(
@@ -1801,37 +1852,50 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
               child: _PartSwitch(
                 part: _part,
                 onChanged: _setPart,
-                linkInTree: _treeShown && _family?.meId != null,
+                linkInTree: _treeShown,
               ),
             ),
           ),
-          // "Połącz dwie osoby" belongs to the tree: the map has no family lines to light (mapa-migracji.md D11).
-          if (_treeShown && _family?.meId != null && _part == _Part.tree)
-            IconButton(
-              icon: const GrobingIcon(Glyphs.link, applyTextScaling: false),
-              color: GrobingColors.amber,
-              tooltip: 'Połącz dwie osoby',
-              onPressed: _connect,
-            ),
-          if (_treeShown)
-            // The reader hears where the tap leads, as with an external link (style-b.md rule 1); the
-            // node keeps its own tap, or Switch Access and Voice Access could not press it (ISSUE-021).
-            Semantics(
-              button: true,
-              label: 'Przesyłaj na telewizor — w ustawieniach telefonu',
-              onTap: _cast,
-              excludeSemantics: true,
-              child: IconButton(
-                icon: const GrobingIcon(Glyphs.cast, applyTextScaling: false),
-                color: GrobingColors.amber,
-                tooltip: 'Przesyłaj na telewizor',
-                onPressed: _cast,
-              ),
-            ),
+          ..._barIcons(),
         ],
       ),
     ),
   );
+
+  /// The bar's icons, in the bar and, sideways, over the tree (element 12): "Obróć", "Połącz dwie osoby" — which
+  /// belongs to the tree: the map has no family lines to light (mapa-migracji.md D11) — and "Przesyłaj na telewizor".
+  List<Widget> _barIcons() => [
+    if (_treeShown)
+      IconButton(
+        icon: const GrobingIcon(Glyphs.screenRotation, applyTextScaling: false),
+        color: GrobingColors.amber,
+        // What it will do (D82).
+        tooltip: _landscape ? 'Obróć pionowo' : 'Obróć poziomo',
+        onPressed: _rotate,
+      ),
+    if (_treeShown && _part == _Part.tree)
+      IconButton(
+        icon: const GrobingIcon(Glyphs.link, applyTextScaling: false),
+        color: GrobingColors.amber,
+        tooltip: 'Połącz dwie osoby',
+        onPressed: _connect,
+      ),
+    if (_treeShown)
+      // The reader hears where the tap leads, as with an external link (style-b.md rule 1); the
+      // node keeps its own tap, or Switch Access and Voice Access could not press it (ISSUE-021).
+      Semantics(
+        button: true,
+        label: 'Przesyłaj na telewizor — w ustawieniach telefonu',
+        onTap: _cast,
+        excludeSemantics: true,
+        child: IconButton(
+          icon: const GrobingIcon(Glyphs.cast, applyTextScaling: false),
+          color: GrobingColors.amber,
+          tooltip: 'Przesyłaj na telewizor',
+          onPressed: _cast,
+        ),
+      ),
+  ];
 
   /// drzewo.md → States.
   Widget _content() {
@@ -1863,11 +1927,13 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: _treeArea(family, layout)),
-        if (!_presenting)
+        // A lit path: the tree alone, its card and time row gone until back (D80).
+        if (!_presenting && _path == null)
           // Its own layer: dragging the tree would repaint the card with it, the slider's thumb and its shadow,
           // in every frame (ISSUE-037 Dev report — on the emulator within the noise of its measure).
           RepaintBoundary(
             child: _TreeCard(
+              row: _wide,
               person: family.people[focus]!,
               isMe: focus == family.meId,
               kin: family.meId == null ? null : _kin[focus],
@@ -1896,7 +1962,10 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
                 null => null,
               },
             ),
-          ),
+          )
+        // Sideways, with no card while a path is lit: the tree stays above the system's gesture area.
+        else if (_wide)
+          SizedBox(height: MediaQuery.paddingOf(context).bottom),
       ],
     );
   }
@@ -1983,8 +2052,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           Positioned.fill(
             child: map ? _mapView(family) : _treeView(family, layout),
           ),
-          // Element 3 (D58): the level's + / − in the corner where + / − zoomed until v1.24.
-          if (!_presenting && !map)
+          // Element 3 (D58): the level's + / − in the corner where + / − zoomed until v1.24 — not with a path lit,
+          // whose level they would change under it (D80).
+          if (!_presenting && !map && _path == null)
             Positioned(right: 12, bottom: 12, child: _levelButtons()),
           // In immersive sticky mode the system's swipe from the edge, which shows the bars for a moment,
           // reaches the app too: it dragged the tree away (found on the emulator) — from the top and the
@@ -2022,27 +2092,77 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           // Element 6a: the caption of ⏭ — on the phone a bubble at the top (on the map in the pill's place); in
           // presentation a small line on the bar (B — D72), and nothing under the year: the family reads the year and
           // sees who glows (D73), the author reads the words from the phone in hand.
+          // Sideways under the top row over the tree, as in presentation (element 12).
           if (_captionShown && !_presenting)
             Positioned(
-              top: 10,
+              top: _wide ? _WideTop.below : 10,
               left: 16,
               right: 16,
               child: _captionBubble(_caption!),
             ),
           if (!map) ...[
             // In presentation under the top row of the controls — 48 dp at any text size — which a level's change
-            // from the bar has shown (D58).
+            // from the bar has shown (D58); sideways under the top row over the tree (element 12).
             // Clear of the year in the corner on both sides, as the controls' switch: on a narrow phone held sideways a
             // long pill reached under the year (ui review of ISSUE-049, round 2, MINOR).
             Positioned(
-              top: _presenting && _controlsShown ? 12 + 48 + 8 : 10,
+              top: _presenting && _controlsShown
+                  ? 12 + 48 + 8
+                  : _wide
+                  ? _WideTop.below
+                  : 10,
               left: _presenting ? PresentationYear.right(context) + 12 : 16,
               right: _presenting ? PresentationYear.right(context) + 12 : 16,
               child: _levelPill(),
             ),
-            // Elements 9 and 10: where the pill stands, which does not show with them (D49).
-            Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
+            // Elements 9 and 10: where the pill stands, which does not show with them (D49); sideways in the top row.
+            if (!_wide)
+              Positioned(top: 12, left: 16, right: 16, child: _bannerView()),
           ],
+          // Element 12 (L4 — D77): sideways the bar's switch and icons stand over the tree, and the path's banner
+          // between them (D80).
+          if (_wide)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: _WideTop.height,
+              child: CustomMultiChildLayout(
+                delegate: _WideTop(),
+                children: [
+                  LayoutId(
+                    id: _WideTop.parts,
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: _PartSwitch(
+                        part: _part,
+                        onChanged: _setPart,
+                        filled: true,
+                      ),
+                    ),
+                  ),
+                  LayoutId(
+                    id: _WideTop.icons,
+                    child: Material(
+                      color: GrobingColors.surface,
+                      shape: const StadiumBorder(
+                        side: BorderSide(color: GrobingColors.outline),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: _barIcons(),
+                      ),
+                    ),
+                  ),
+                  LayoutId(
+                    id: _WideTop.banner,
+                    child: map
+                        ? const SizedBox.shrink()
+                        : _bannerView(centred: false),
+                  ),
+                ],
+              ),
+            ),
           // B2 (D40): the bar at the bottom — the card's time row in one row — and the way out.
           if (_presenting && _controlsShown) ...[
             if (_time case final TreeTime time?)
@@ -2161,6 +2281,8 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
       playing: _playing,
       // Element 15: the caption of ⏭ stands in the pill's place, and the moves of that year glide as with ▶.
       showPill: !_captionShown,
+      // Sideways under the top row over the map (element 12, D31).
+      pillTop: _wide ? _WideTop.below : 12,
       ride: _captionShown,
       // Those who moved glow with it (D30).
       shine: _shining,
@@ -2193,12 +2315,9 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
         boundaryMargin: const EdgeInsets.all(double.infinity),
         minScale: _minScale,
         maxScale: treeMaxScale,
-        // Two fingers zoom in presentation too (AC-4 ISSUE-049, D56; until v1.22 no pinch — D16).
+        // Two fingers zoom in presentation too (AC-4 ISSUE-049, D56; until v1.22 no pinch — D16) — and over a lit path,
+        // which stays (D79; until v1.28 they ended it).
         scaleEnabled: true,
-        // Two fingers end a lit path (D49); one drags it into view and keeps it.
-        onInteractionUpdate: (details) {
-          if (details.pointerCount > 1 && _path != null) _endPath();
-        },
         child: _world(layout, nodes, named),
       ),
     );
@@ -2535,20 +2654,20 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
           ].join(', ') +
           (ring ? ' — przed narodzinami' : ''),
       // In presentation the person in the middle opens nothing (D5): no hint, the touch only brings them back to the
-      // middle. With a path lit a touch only ends it (D49) — the reader hears that (ui review of ISSUE-039). A place
-      // under 24 dp only zooms in (D52).
+      // middle. A place under 24 dp only zooms in (D52). With a path lit a touch of a person does nothing (D79; until
+      // v1.28 it ended the path): no action for the reader either, who ends the path with back.
       hint: ring
           ? null
-          : _path != null
-          ? 'zakończ ścieżkę'
           : _tinyTargets
           ? 'przybliż'
+          : _path != null
+          ? null
           : n != layout.focus
           ? 'w środek'
           : _presenting
           ? null
           : 'otwórz',
-      onTap: ring ? null : () => _tap(n),
+      onTap: ring || (_path != null && !_tinyTargets) ? null : () => _tap(n),
     );
   }
 
@@ -2621,25 +2740,23 @@ class _TreeScreenState extends State<TreeScreen> with TickerProviderStateMixin {
     onBar: onBar,
   );
 
-  /// Elements 9 and 10 for a while at the top of the tree. A live region, as the pill: the reader says it once it
-  /// comes, the focus staying where it is (SC 4.1.3; D43). No touch — the tree under it stays the tree's, and a
-  /// touch there ends the light.
-  Widget _bannerView() {
+  /// Elements 9 and 10 at the top of the tree — the path's banner until the path ends (D80), element 10's for a
+  /// while. A live region, as the pill: the reader says it once it comes, the focus staying where it is (SC 4.1.3;
+  /// D43). No touch — the tree under it stays the tree's. [centred]: across the tree's width; sideways the top row
+  /// places it (element 12).
+  Widget _bannerView({bool centred = true}) {
     final ({String? top, String text})? banner = _banner;
     if (banner == null) return const SizedBox.shrink();
     final Widget box = PathBanner(top: banner.top, text: banner.text);
-    return IgnorePointer(
-      child: Center(
-        child: AnimatedOpacity(
-          opacity: _bannerShown ? 1 : 0,
-          duration: Duration(milliseconds: _noMotion ? 0 : 250),
-          // Its own node: without one the flag went to a node above, not to the banner's text (qa's test).
-          child: _bannerShown
-              ? Semantics(container: true, liveRegion: true, child: box)
-              : ExcludeSemantics(child: box),
-        ),
-      ),
+    final Widget shown = AnimatedOpacity(
+      opacity: _bannerShown ? 1 : 0,
+      duration: Duration(milliseconds: _noMotion ? 0 : 250),
+      // Its own node: without one the flag went to a node above, not to the banner's text (qa's test).
+      child: _bannerShown
+          ? Semantics(container: true, liveRegion: true, child: box)
+          : ExcludeSemantics(child: box),
     );
+    return IgnorePointer(child: centred ? Center(child: shown) : shown);
   }
 
   /// The caption on the phone (element 6a): a bubble at the top of the tree's area, where the level's pill stands
@@ -3196,6 +3313,7 @@ class _TreeCard extends StatelessWidget {
     required this.onShow,
     this.where,
     this.time,
+    this.row = false,
   });
 
   final TreePerson person;
@@ -3207,6 +3325,12 @@ class _TreeCard extends StatelessWidget {
   /// Only in the map's part: "W 1930: Zmyślin, Polska · dziś Ukraina" (mapa-migracji.md element 12).
   final String? where;
   final Widget? time;
+
+  /// Sideways (element 12, L4 — D77): the bar at the bottom, in one row — the person, the time row, "Pokaż".
+  final bool row;
+
+  /// The text of the row: up to 300 dp, wrapped, never cut — as the card's (element 5).
+  static const double rowText = 300;
 
   @override
   Widget build(BuildContext context) {
@@ -3234,6 +3358,8 @@ class _TreeCard extends StatelessWidget {
       ),
     );
     final String years = lifeYears(birth: person.birth, death: person.death);
+    // Sideways a step smaller, for the row's height (element 12): the name 15 sp, the lines under it 13 sp.
+    final double lineSize = row ? 13 : 14;
     final Widget text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -3246,22 +3372,22 @@ class _TreeCard extends StatelessWidget {
           ),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             color: GrobingColors.text,
-            fontSize: 16,
+            fontSize: row ? 15 : 16,
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           kin == null ? years : '$years · $kin',
-          style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
+          style: TextStyle(color: GrobingColors.textMuted, fontSize: lineSize),
         ),
         if (where case final String line) ...[
           const SizedBox(height: 2),
           Text(
             line,
-            style: const TextStyle(color: GrobingColors.text, fontSize: 14),
+            style: TextStyle(color: GrobingColors.text, fontSize: lineSize),
           ),
         ],
       ],
@@ -3281,6 +3407,34 @@ class _TreeCard extends StatelessWidget {
       ),
     );
     final Widget? time = this.time;
+    if (row) {
+      return Material(
+        color: GrobingColors.surface,
+        shape: const Border(top: BorderSide(color: GrobingColors.outline)),
+        // Down to the screen's edge, the system's gesture area inside (ui review of ISSUE-055, MINOR).
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            8,
+            8 + MediaQuery.paddingOf(context).bottom,
+          ),
+          child: Row(
+            children: [
+              avatar,
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: rowText),
+                child: text,
+              ),
+              const SizedBox(width: 12),
+              if (time != null) Expanded(child: time) else const Spacer(),
+              show,
+            ],
+          ),
+        ),
+      );
+    }
     return Material(
       color: GrobingColors.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -3476,6 +3630,60 @@ class _ControlsTop extends MultiChildLayoutDelegate {
   bool shouldRelayout(_ControlsTop old) => old.left != left;
 }
 
+/// The top row of the landscape layout (drzewo.md element 12, L4 — D77): over the tree, 8 dp under its top, the part's
+/// switch 12 dp from the left, the bar's icons 8 dp from the right, and the path's banner in the room between them,
+/// in the middle of it (D80). The empty part takes no touch.
+class _WideTop extends MultiChildLayoutDelegate {
+  static const Object parts = 'parts';
+  static const Object icons = 'icons';
+  static const Object banner = 'banner';
+
+  /// Room for a banner of two lines and more under the row's 48 dp.
+  static const double height = 160;
+  static const double top = 8;
+  static const double _row = 48;
+  static const double _gap = 12;
+
+  /// Under the row: the level's pill, the caption of ⏭ (element 12).
+  static const double below = top + _row + _gap;
+
+  /// The room the banner has in a tree's area [width] wide, the switch [parts] wide and the icons [icons] wide — for
+  /// the path's frame, which leaves the banner free (element 8).
+  static double bannerRoom(double width, double parts, double icons) =>
+      math.max(0, width - 8 - icons - _gap - (12 + parts + _gap));
+
+  @override
+  void performLayout(Size size) {
+    final Size i = layoutChild(icons, BoxConstraints.loose(size));
+    final double iconsLeft = size.width - 8 - i.width;
+    positionChild(icons, Offset(iconsLeft, top));
+    final Size p = layoutChild(
+      parts,
+      BoxConstraints.loose(
+        Size(math.max(_PartSwitch.iconsWidth, iconsLeft - 12 - _gap), _row),
+      ),
+    );
+    positionChild(parts, const Offset(12, top));
+    final double left = 12 + p.width + _gap;
+    final double room = math.max(0, iconsLeft - _gap - left);
+    final Size b = layoutChild(
+      banner,
+      BoxConstraints(maxWidth: room, maxHeight: size.height - top),
+    );
+    // A banner lower than the row stands in its middle.
+    positionChild(
+      banner,
+      Offset(
+        left + (room - b.width) / 2,
+        top + math.max(0, (_row - b.height) / 2),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_WideTop old) => false;
+}
+
 /// Element 1 since v1.20 (W2; mapa-migracji.md element 1): the tab's two parts as a segmented toggle, as in R3 — the
 /// active one with a 2 dp outline and its icon in the accent. 40 dp high in a 48 dp target. When the words do not fit
 /// the room left by the bar's icons (large system text), the icons alone, each with its tooltip.
@@ -3524,21 +3732,26 @@ class _PartSwitch extends StatelessWidget {
   /// The bar's "Połącz dwie osoby", which only the tree's part has.
   static const double _linkIcon = 48;
 
+  /// Both segments with their words in [scaler]: the switch where its words fit.
+  static double wordsWidth(TextScaler scaler) {
+    double needed = 0;
+    for (final (_, _, String label) in _parts) {
+      final TextPainter painter = TextPainter(
+        text: TextSpan(text: label, style: _style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      needed += _withWords(painter.width);
+      painter.dispose();
+    }
+    return needed;
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final TextScaler scaler = MediaQuery.textScalerOf(context);
-      double needed = 0;
-      for (final (_, _, String label) in _parts) {
-        final TextPainter painter = TextPainter(
-          text: TextSpan(text: label, style: _style),
-          textDirection: TextDirection.ltr,
-          textScaler: scaler,
-          maxLines: 1,
-        )..layout();
-        needed += _withWords(painter.width);
-        painter.dispose();
-      }
+      final double needed = wordsWidth(MediaQuery.textScalerOf(context));
       // Measured against the tree's room — with "Połącz dwie osoby" beside it — in both parts: the switch must not
       // change its shape under the finger that has just changed the part (seen at 200% on 360 dp: words on the map,
       // icons on the tree).

@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 
+import 'tree_orientation.dart';
+
 /// The tree's presentation mode (05_DESIGN/drzewo.md element 11, D11, D16; ISSUE-034): the screen turned
 /// landscape and the system bars hidden. A swipe from the edge shows them for a moment and they hide again
 /// — immersive sticky, Android's mode for "presentation slides" (developer.android.com → Hide system bars for
@@ -35,9 +37,10 @@ Future<void> _untilLandscape() async {
 /// Back from presentation: the bars as the app has them (edge to edge — the default of a Flutter app
 /// targeting Android 15+) and the orientation the phone's own setting gives (D2) — the app is not locked
 /// in portrait. Portrait comes first, for a moment: without it a locked rotation stayed landscape (seen on
-/// the emulator).
+/// the emulator). With the tab's own choice ("Obróć", drzewo.md D82) back to that choice instead.
 Future<void> leavePresentation() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  if (treeLandscape != null) return applyTreeOrientation();
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
   ]);

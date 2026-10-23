@@ -400,6 +400,24 @@ Wieniec rodu przy portrecie i na drzewie (ISSUE-044; vault: `05_DESIGN/wieniec.m
   `python tool/wreaths/build_wreaths.py <katalog>` (Python 3, Pillow, numpy). Nowy wzór to też nowa wartość `WreathMotif` w
   `lib/data/clans.dart` — bez zmiany schematu.
 
+## Drzewo — obrót i układ poziomy
+
+ISSUE-055 (vault: `05_DESIGN/drzewo.md` element 12, D76–D82).
+
+- **„Obróć”** w pasku drzewa i mapy migracji ustawia ekran poziomo albo pionowo — także przy zablokowanym obracaniu w
+  telefonie (`lib/app/tree/tree_orientation.dart`, `SystemChrome.setPreferredOrientations`). Wybór trzyma, dopóki działa
+  aplikacja, ale **tylko w zakładce Drzewo**: widok osoby, inne zakładki i wyjście z drzewa wracają do ustawienia telefonu,
+  a powrót do drzewa — znowu do wyboru. Bez wyboru aplikacja idzie za telefonem, jak przed ISSUE-055.
+- **Poziomo** (z przycisku albo z obracania telefonu) drzewo i mapa nie mają dolnego paska zakładek; przełącznik
+  „Drzewo · Mapa” i ikony stoją nad drzewem, karta z czasem jest jednym paskiem na dole (`_WideTop`, `_TreeCard(row:)`).
+- **Tryb prezentacji** dalej stawia ekran poziomo sam; wyjście z niego wraca do wyboru „Obróć”, a bez wyboru — do
+  ustawienia telefonu (`leavePresentation`).
+- **Obejście wyścigu w silniku Fluttera 3.41.1** (`MainActivity.kt` → `refitSurface`): po obrocie spóźniona klatka w starym rozmiarze
+  przypinała powierzchni widoku Fluttera stary rozmiar (`FlutterView.resizeEngineView`), a aplikacja rysowała się w pionie w poziomym
+  oknie aż do ponownego otwarcia — na emulatorze przy każdym obrocie z blokady. Gdy powierzchnia nie wypełnia widoku, wraca do
+  `MATCH_PARENT` i `requestApplyInsets` wysyła Flutterowi rozmiar; logcat: `GROBING_SURFACE … refitted`. **Przy aktualizacji
+  Fluttera** sprawdź, czy silnik nadal tak robi (`external_view_embedder.cc` → `MaybeResizeSurfaceView`) — jeśli nie, obejście można zdjąć.
+
 ## Ikony
 
 Ikony w aplikacji i ikona aplikacji (ISSUE-046; vault: `05_DESIGN/brand/style-b.md` reguły 3 i 8).
