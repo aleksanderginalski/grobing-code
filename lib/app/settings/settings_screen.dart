@@ -21,7 +21,7 @@ import 'hand_over_note_screen.dart';
 
 /// The app's version, as `pubspec.yaml` gives it (`version`, without the build number) — kept here so the
 /// app needs no package to read it; a test holds the two together.
-const String appVersion = '1.0.3';
+const String appVersion = '1.0.4';
 
 /// When the last backup was made, the way the settings say it (05_DESIGN/ustawienia.md, element 2):
 /// "dziś, 11:42", "wczoraj, 18:05", "03.10.2026, 09:30" — in the phone's time.

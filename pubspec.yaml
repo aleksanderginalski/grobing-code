@@ -3,7 +3,7 @@ description: "Grobing — groby rodziny, osoby i to, jak łączą się z autorem
 publish_to: 'none'
 
 # Android: build-name → versionName, build-number → versionCode (must grow with every install).
-version: 1.0.3+6
+version: 1.0.4+7
 
 environment:
   sdk: ^3.11.0

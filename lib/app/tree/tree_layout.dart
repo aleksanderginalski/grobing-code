@@ -300,15 +300,27 @@ class TreeLayout {
         ? PairInYear(married: u.married, ended: u.ended)
         : time.pair(u, year);
     return [
-      ..._lines(_graph, _pairs, positions, _gen, _vis, _metrics, on, pairOf),
+      ..._lines(
+        _graph,
+        _pairs,
+        positions,
+        _gen,
+        _vis,
+        _metrics,
+        on,
+        pairOf,
+        floors: _today.floors,
+      ),
       ..._traces(_graph, positions, _vis, _metrics, focus, on, pairOf),
     ];
   }
 
-  /// Each union's line to its children on the tree today: where it leaves the parents ([sx]) and the rail it
-  /// runs along ([ry]) — the path's line goes the same way (ISSUE-039).
-  late final Map<TreeUnion, ({double sx, double ry})> _rails = () {
-    final Map<TreeUnion, ({double sx, double ry})> rails = {};
+  /// The rails of the tree today (ISSUE-039, ISSUE-056): each union's line to its children — where it leaves the
+  /// parents and the rail it runs along, the path's line goes the same way — the rails' floors, which every year
+  /// of the slider keeps (drzewo.md D84: the tree never jumps while ▶ runs), and the jumps over other families'
+  /// rails (D83).
+  late final _RailsToday _today = () {
+    final _RailsToday today = _RailsToday();
     _lines(
       _graph,
       _pairs,
@@ -318,10 +330,15 @@ class TreeLayout {
       _metrics,
       (_) => true,
       (u) => PairInYear(married: u.married, ended: u.ended),
-      rails: rails,
+      today: today,
     );
-    return rails;
+    return today;
   }();
+
+  /// Crossings of the lines the tree draws today — a drop to a child or from the parents across another
+  /// family's rail (drzewo.md D84, ISSUE-056 AC-1). [crossings] is what the order in a row minimises: straight
+  /// lines from the parents' middle, which the eye never sees.
+  int get drawnCrossings => _today.crossings;
 
   /// The path of "Połącz dwie osoby" as lines on this tree (drzewo.md element 8, D49): one run of points for
   /// each step from [from], along the family's lines — a pair level between the two; a parent and a child
@@ -349,34 +366,54 @@ class TreeLayout {
       case KinEdge.parent:
         return _down(b, a).reversed.toList();
       case KinEdge.sibling:
-        final double y = _railOf(a)?.ry ?? math.min(pa.dy, pb.dy) - 9;
+        final ({double sx, double ry})? rail = _railOf(a);
+        if (rail == null) {
+          final double y = math.min(pa.dy, pb.dy) - 9;
+          return [
+            _middleOf(pa),
+            Offset(pa.dx, y),
+            Offset(pb.dx, y),
+            _middleOf(pb),
+          ];
+        }
+        // Up from one along its drop, down to the other along its own — over the same jumps (D83). A half-sibling
+        // hangs from another rail, so its drop's jumps are not on this way.
+        final bool sameRail =
+            _graph._parentUnion[a]?.u == _graph._parentUnion[b]?.u;
         return [
-          _middleOf(pa),
-          Offset(pa.dx, y),
-          Offset(pb.dx, y),
-          _middleOf(pb),
+          ..._drop(pa.dx, pa.dy + _half, rail.ry, _today.childJumps[a]),
+          ..._drop(
+            pb.dx,
+            rail.ry,
+            pb.dy + _half,
+            sameRail ? _today.childJumps[b] : null,
+          ),
         ];
     }
   }
 
   /// From a parent down to a child: along the pair's line to where the line to the children leaves it, down to
-  /// the rail, along it, down to the child.
+  /// the rail, along it, down to the child — over the jumps the lines make there (drzewo.md D83).
   List<Offset> _down(int parent, int child) {
     final Offset pp = positions[parent]!, pc = positions[child]!;
     final ({double sx, double ry})? rail = _railOf(child);
     if (rail == null) return [_middleOf(pp), _middleOf(pc)];
+    final List<Offset> fromParents = _drop(
+      rail.sx,
+      pp.dy + _half,
+      rail.ry,
+      _today.parentJumps[_graph._parentUnion[child]!.u],
+    );
     return [
       _middleOf(pp),
-      if ((rail.sx - pp.dx).abs() > 1) Offset(rail.sx, pp.dy + _half),
-      Offset(rail.sx, rail.ry),
-      Offset(pc.dx, rail.ry),
-      _middleOf(pc),
+      ...((rail.sx - pp.dx).abs() > 1 ? fromParents : fromParents.skip(1)),
+      ..._drop(pc.dx, rail.ry, pc.dy + _half, _today.childJumps[child]),
     ];
   }
 
   ({double sx, double ry})? _railOf(int child) {
     final _Union? u = _graph._parentUnion[child];
-    return u == null ? null : _rails[u.u];
+    return u == null ? null : _today.rails[u.u];
   }
 
   final double width;
@@ -793,9 +830,10 @@ const double _half = TreeMetrics.node / 2;
 
 /// The relation lines (drzewo.md element 4): a pair — level, between neighbours in a row; parent–child —
 /// from the middle of the pair's line (or from under a lone parent) down to a rail and to each child. Rails
-/// that would overlap get their own heights, so two families never share one line. Only between people [on]
-/// the tree, a pair as [pairOf] says (the slider's year, ISSUE-037). [rails] gets each union's line to the
-/// children, for the path's route (ISSUE-039).
+/// that would overlap get their own floors, so two families never share one line, and the floor is the one
+/// with the fewest crossings (D84); a drop across another family's rail jumps it (D83). Only between people
+/// [on] the tree, a pair as [pairOf] says (the slider's year, ISSUE-037), on the [floors] of the tree today.
+/// [today] gets the rails, their floors, the jumps and the crossings, for the path's route (ISSUE-039).
 List<TreeLines> _lines(
   TreeGraph graph,
   List<(int, int)> pairs,
@@ -805,7 +843,8 @@ List<TreeLines> _lines(
   TreeMetrics metrics,
   bool Function(int) on,
   PairInYear? Function(TreeUnion) pairOf, {
-  Map<TreeUnion, ({double sx, double ry})>? rails,
+  Map<TreeUnion, int>? floors,
+  _RailsToday? today,
 }) {
   final List<Offset> married = [], together = [], parentChild = [], ended = [];
   for (final (int a, int b) in pairs) {
@@ -864,6 +903,7 @@ List<TreeLines> _lines(
     }
     (byGap[gen[ks.first]!] ??= []).add(_Rail(u, sx, sy, ks));
   }
+  final List<_Rail> placed = [];
   for (final List<_Rail> list in byGap.values) {
     for (final _Rail e in list) {
       final Iterable<double> xs = e.children.map((c) => px[c]!.dx);
@@ -871,25 +911,67 @@ List<TreeLines> _lines(
       e.hi = math.max(e.sx, xs.reduce(math.max));
     }
     final List<_Rail> sorted = _stable(list, (a, b) => a.lo.compareTo(b.lo));
-    final List<double> ends = [];
+    if (floors != null) {
+      // A year's rail is the rail of today or a shorter one, so today's floors never clash (D84).
+      for (final _Rail e in sorted) {
+        e.floor = floors[e.union] ?? 0;
+      }
+    } else {
+      // The left edge (channel routing, Hashimoto and Stevens 1971): the fewest floors…
+      final List<double> ends = [];
+      for (final _Rail e in sorted) {
+        int k = ends.indexWhere((x) => x < e.lo - 6);
+        if (k < 0) {
+          k = ends.length;
+          ends.add(e.hi);
+        } else {
+          ends[k] = e.hi;
+        }
+        e.floor = k;
+      }
+      // …then, among them, the floor of each rail with the fewest crossings.
+      _fewestCrossings(sorted, px, ends.length);
+    }
     for (final _Rail e in sorted) {
-      int k = ends.indexWhere((x) => x < e.lo - 6);
-      if (k < 0) {
-        k = ends.length;
-        ends.add(e.hi);
-      } else {
-        ends[k] = e.hi;
+      e.ty = px[e.children.first]!.dy;
+      e.ry = e.ty - 9 - math.min(e.floor, 3) * 7;
+      today?.floors[e.union] = e.floor;
+      today?.rails[e.union] = (sx: e.sx, ry: e.ry);
+      placed.add(e);
+    }
+  }
+
+  // Where a drop crosses another family's rail (D83): the parents' drop from above to its rail, a child's from
+  // its rail down to the child — the ends are joints, not crossings.
+  final Map<_Rail, List<double>> parentsAcross = {};
+  final Map<int, List<double>> childAcross = {};
+  bool inside(double x, _Rail r) => x > r.lo + 0.5 && x < r.hi - 0.5;
+  bool between(double y, double a, double b) => y > a + 0.5 && y < b - 0.5;
+  for (final _Rail e in placed) {
+    for (final _Rail o in placed) {
+      if (identical(e, o)) continue;
+      if (inside(e.sx, o) && between(o.ry, e.sy, e.ry)) {
+        (parentsAcross[e] ??= []).add(o.ry);
       }
-      final double ty = px[e.children.first]!.dy;
-      final double ry = ty - 9 - math.min(k, 3) * 7;
-      rails?[e.union] = (sx: e.sx, ry: ry);
-      parentChild
-        ..addAll([Offset(e.sx, e.sy), Offset(e.sx, ry)])
-        ..addAll([Offset(e.lo, ry), Offset(e.hi, ry)]);
       for (final int c in e.children) {
-        final double x = px[c]!.dx;
-        parentChild.addAll([Offset(x, ry), Offset(x, ty)]);
+        if (inside(px[c]!.dx, o) && between(o.ry, e.ry, e.ty)) {
+          (childAcross[c] ??= []).add(o.ry);
+        }
       }
+    }
+  }
+  for (final _Rail e in placed) {
+    final List<(double, double)> fromParents = _jumps(parentsAcross[e]);
+    today?.parentJumps[e.union] = fromParents;
+    today?.crossings += parentsAcross[e]?.length ?? 0;
+    parentChild
+      ..addAll(_segments(_drop(e.sx, e.sy, e.ry, fromParents)))
+      ..addAll([Offset(e.lo, e.ry), Offset(e.hi, e.ry)]);
+    for (final int c in e.children) {
+      final List<(double, double)> toChild = _jumps(childAcross[c]);
+      today?.childJumps[c] = toChild;
+      today?.crossings += childAcross[c]?.length ?? 0;
+      parentChild.addAll(_segments(_drop(px[c]!.dx, e.ry, e.ty, toChild)));
     }
   }
   return [
@@ -909,6 +991,147 @@ class _Rail {
   final List<int> children;
   double lo = 0;
   double hi = 0;
+
+  /// 0 just above the children, up to 3 (drzewo.md D84).
+  int floor = 0;
+  double ry = 0;
+
+  /// The top of the children's row.
+  double ty = 0;
+}
+
+/// The rails of the tree today (drzewo.md D83, D84): what the path's route and every year of the slider take from
+/// them.
+class _RailsToday {
+  final Map<TreeUnion, ({double sx, double ry})> rails = {};
+  final Map<TreeUnion, int> floors = {};
+
+  /// Where the parents' drop and a child's drop jump other families' rails: (top, bottom) of each arc.
+  final Map<TreeUnion, List<(double, double)>> parentJumps = {};
+  final Map<int, List<(double, double)>> childJumps = {};
+  int crossings = 0;
+}
+
+/// A jump over another family's rail (drzewo.md D83): half an ellipse to the right, this wide, from this far
+/// above the rail to as far below it; rails closer than two of these (they stand 7 dp apart) share one arc.
+const double _jump = 4;
+const int _arcSteps = 12;
+
+/// The arcs a drop makes over the rails it crosses at [ys], top to bottom.
+List<(double, double)> _jumps(List<double>? ys) {
+  if (ys == null || ys.isEmpty) return const [];
+  final List<double> sorted = [...ys]..sort();
+  final List<(double, double)> arcs = [];
+  double top = sorted.first, last = sorted.first;
+  for (final double y in sorted.skip(1)) {
+    if (y - last < 2 * _jump) {
+      last = y;
+      continue;
+    }
+    arcs.add((top - _jump, last + _jump));
+    top = last = y;
+  }
+  arcs.add((top - _jump, last + _jump));
+  return arcs;
+}
+
+/// A drop at [x] from [from] to [to] (either way) as a run of points, with [arcs] bulging to the right.
+List<Offset> _drop(
+  double x,
+  double from,
+  double to,
+  List<(double, double)>? arcs,
+) {
+  final double lo = math.min(from, to), hi = math.max(from, to);
+  final List<Offset> run = [Offset(x, from)];
+  final List<(double, double)> on = [
+    for (final (double, double) a in arcs ?? const <(double, double)>[])
+      if (a.$2 > lo && a.$1 < hi) a,
+  ];
+  for (final (double top, double bottom) in to >= from ? on : on.reversed) {
+    final double a = math.max(top, lo), b = math.min(bottom, hi);
+    final List<Offset> arc = [
+      for (int i = 0; i <= _arcSteps; i++)
+        Offset(
+          x + _jump * math.cos(-math.pi / 2 + math.pi * i / _arcSteps),
+          (a + b) / 2 +
+              (b - a) / 2 * math.sin(-math.pi / 2 + math.pi * i / _arcSteps),
+        ),
+    ];
+    run.addAll(to >= from ? arc : arc.reversed);
+  }
+  run.add(Offset(x, to));
+  return run;
+}
+
+/// A run of points as the straight segments [TreeLines] holds, start and end in pairs.
+List<Offset> _segments(List<Offset> run) => [
+  for (int i = 0; i + 1 < run.length; i++) ...[run[i], run[i + 1]],
+];
+
+/// The floor of each rail in one gap, among the [count] floors the left edge needed, for the fewest crossings
+/// (drzewo.md D84). With a above b, b's drop from the parents crosses a, and each of a's children standing over
+/// b crosses b. Moves one rail at a time, then swaps two, while the crossings go down — a few rails a gap.
+void _fewestCrossings(List<_Rail> rails, Map<int, Offset> px, int count) {
+  bool overlap(_Rail a, _Rail b) => a.lo <= b.hi + 6 && b.lo <= a.hi + 6;
+  bool inside(double x, _Rail r) => x > r.lo + 0.5 && x < r.hi - 0.5;
+  int cost(_Rail a, _Rail b) {
+    if (a.floor == b.floor) return overlap(a, b) ? 1 << 20 : 0;
+    final _Rail up = a.floor > b.floor ? a : b,
+        down = a.floor > b.floor ? b : a;
+    int c = inside(down.sx, up) ? 1 : 0;
+    for (final int k in up.children) {
+      if (inside(px[k]!.dx, down)) c++;
+    }
+    return c;
+  }
+
+  int total() {
+    int t = 0;
+    for (int i = 0; i < rails.length; i++) {
+      for (int j = i + 1; j < rails.length; j++) {
+        t += cost(rails[i], rails[j]);
+      }
+    }
+    return t;
+  }
+
+  int best = total();
+  for (int pass = 0; pass < 20; pass++) {
+    bool better = false;
+    for (final _Rail r in rails) {
+      for (int k = 0; k < count; k++) {
+        final int was = r.floor;
+        if (k == was) continue;
+        r.floor = k;
+        final int c = total();
+        if (c < best) {
+          best = c;
+          better = true;
+        } else {
+          r.floor = was;
+        }
+      }
+    }
+    for (int i = 0; i < rails.length; i++) {
+      for (int j = i + 1; j < rails.length; j++) {
+        final _Rail a = rails[i], b = rails[j];
+        final int fa = a.floor, fb = b.floor;
+        if (fa == fb) continue;
+        a.floor = fb;
+        b.floor = fa;
+        final int c = total();
+        if (c < best) {
+          best = c;
+          better = true;
+        } else {
+          a.floor = fa;
+          b.floor = fb;
+        }
+      }
+    }
+    if (!better) break;
+  }
 }
 
 /// The trace of the family beyond the view (D9): up — parents, down — children, sideways — a partner, 14 dp,
