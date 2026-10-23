@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../../data/cemeteries.dart';
 import '../../data/cemetery_plans.dart';
 import '../../data/database.dart';
+import '../../data/deletion.dart';
 import '../../data/graves.dart';
 import '../../data/sectors.dart';
 import '../map/plan_downloads.dart';
@@ -16,6 +17,7 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/candle.dart';
+import '../widgets/deletion.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart';
@@ -459,6 +461,39 @@ class _PinScreenState extends State<PinScreen>
   }
 
   void _leave() => Navigator.of(context).pop();
+
+  /// "Usuń pinezkę" (element 12b, ISSUE-053; D43): the grave stays, its address too. The mode closes and the bar
+  /// with "Cofnij" shows on the map under it.
+  Future<void> _deletePin(GraveSummary? grave) async {
+    final NavigatorState navigator = Navigator.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final bool hasAddress =
+        grave != null &&
+        graveAddress(grave.sector, grave.row, grave.plot) != null;
+    final DeletionSnapshot? taken = await confirmDeletion<DeletionSnapshot>(
+      context,
+      title: 'Usunąć pinezkę?',
+      content: [
+        // Names in quotes are the grave's own; without one it is "Ten grób" — the mode's subtitle names it just
+        // above (ui review of ISSUE-053: people's names in quotes read as the grave's name).
+        DeletionText(
+          '${grave?.name == null ? 'Ten grób' : '„${grave!.name}”'} zostanie bez pinezki.'
+          '${hasAddress ? ' Adres kwatery zostaje.' : ''}',
+        ),
+      ],
+      delete: () => deleteGravePin(widget.database, widget.graveId),
+    );
+    if (taken == null || !mounted) return;
+    navigator.pop();
+    unawaited(
+      showUndoBar(
+        messenger,
+        database: widget.database,
+        message: 'Usunięto pinezkę.',
+        snapshot: taken,
+      ),
+    );
+  }
 
   // --- build ---
 
@@ -964,6 +999,17 @@ class _PinScreenState extends State<PinScreen>
           ),
         ],
         const SizedBox(height: 12),
+        // Element 12b: in a correction only, on its own line — never next to the mode's main button.
+        if (original != null) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: DeleteButton(
+              'Usuń pinezkę',
+              onPressed: _saving ? null : () => _deletePin(grave),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
         Row(
           children: [
             TextButton(

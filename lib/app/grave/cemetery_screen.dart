@@ -431,7 +431,8 @@ class _CemeteryScreenState extends State<CemeteryScreen>
     ),
   );
 
-  /// ✎ (element 1) and "Wskaż na mapie" (2a (e)): the same way as the ✎ on the map of Poland.
+  /// ✎ (element 1) and "Wskaż na mapie" (2a (e)): the same way as the ✎ on the map of Poland. A deleted cemetery
+  /// closes this screen; the bar with "Cofnij" shows on the one under it (cmentarze.md 15a).
   Future<void> _editCemetery(CemeteryGraves c, {bool pointOnly = false}) async {
     final List<CemeterySummary> all = await watchCemeteries(
       widget.database,
@@ -448,6 +449,9 @@ class _CemeteryScreenState extends State<CemeteryScreen>
       ],
       cemetery: (id: c.id, name: c.name, locality: c.locality, point: c.point),
       pointOnly: pointOnly,
+      onDeleted: () {
+        if (mounted) Navigator.of(context).pop();
+      },
     );
   }
 

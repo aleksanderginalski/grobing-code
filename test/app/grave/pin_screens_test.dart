@@ -18,6 +18,8 @@ import 'package:grobing/data/graves.dart';
 import 'package:grobing/net/overpass_plan_source.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../support/a11y.dart';
+
 // ISSUE-029 — the pin at the grave (05_DESIGN/cmentarz.md v7, elements 10, 10a, 11, 12, 12a; grob.md v7, element 4),
 // happy path per AC: US-008 AC-1 "gdzie jestem" with the blue dot, the system's question and a refusal · AC-2 a pin
 // placed in the dot (GPS) and by hand (the plan), saved with its source and date · AC-3 a pin corrected from its
@@ -701,6 +703,94 @@ void main() {
         expect(r.right, lessThanOrEqualTo(screen.width), reason: t);
       }
       expect(tester.takeException(), isNull);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-053 AC-7 (cmentarz.md 12b) — "Popraw pinezkę" has "Usuń pinezkę" on its own line: the window says the '
+    'grave stays without a pin, "Usuń" closes the mode with the bar, "Cofnij" puts back the same pin',
+    (tester) async {
+      final ids = await cemeteryWithGraves(tester);
+      final _FakeHere here = _FakeHere()..now = HereAccess.precise;
+      await pumpApp(
+        tester,
+        CemeteryScreen(database: db, cemeteryId: ids.cemetery),
+        here,
+      );
+      await _pumpUntil(tester, () => _shown(find.text('Plan offline')));
+      await _settle(tester);
+      await tester.tap(find.bySemanticsLabel('Grób: Jan Wymyślony'));
+      await _pumpUntil(tester, () => _shown(find.text('Popraw pinezkę')));
+      await _settle(tester);
+      await tester.tap(find.text('Popraw pinezkę'));
+      await _pumpUntil(tester, () => _shown(find.text('Usuń pinezkę')));
+      // Its own line, above "Anuluj" · "Zapisz pinezkę" — never beside the mode's main button.
+      expect(
+        tester.getRect(find.text('Usuń pinezkę')).bottom,
+        lessThan(tester.getRect(find.text('Zapisz pinezkę')).top),
+      );
+
+      await tester.tap(find.text('Usuń pinezkę'));
+      await _pumpUntil(tester, () => _shown(find.text('Usunąć pinezkę?')));
+      expect(
+        // A grave without a name is "Ten grób" — the mode's subtitle names it (ui review of ISSUE-053).
+        find.text('Ten grób zostanie bez pinezki.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Usuń'));
+      await _pumpUntil(tester, () => _shown(find.text('Usunięto pinezkę.')));
+      // The mode leaves with its own transition, under the bar already shown.
+      await _pumpUntil(tester, () => !_shown(find.text('Pinezka grobu')));
+      expect(find.text('Usunięto pinezkę.'), findsOneWidget);
+      // The bar grows in (Material 3, floating): a tap during it lands above it.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Cofnij'));
+      await _pumpUntil(tester, () => !_shown(find.text('Usunięto pinezkę.')));
+      final GravePin pin = (await pinOf(tester, ids.pinned))!;
+      expect(pin.source, PositionSource.gps);
+      expect(pin.accuracyM, 7);
+      expect(pin.recordedAt, DateTime(2026, 10, 12));
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'ISSUE-053 (cmentarz.md 12b) — a new pin has no "Usuń pinezkę"; a correction at 200 % on 360 × 640 dp shows it '
+    'whole, above the buttons, without an overflow, every button with a tap action',
+    (tester) async {
+      final ids = await cemeteryWithGraves(tester);
+      final _FakeHere here = _FakeHere()..now = HereAccess.precise;
+      await pumpApp(
+        tester,
+        PinScreen(database: db, cemeteryId: ids.cemetery, graveId: ids.bare),
+        here,
+      );
+      await _pumpUntil(tester, () => _shown(find.text('Zapisz pinezkę')));
+      expect(find.text('Usuń pinezkę'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      await pumpApp(
+        tester,
+        PinScreen(database: db, cemeteryId: ids.cemetery, graveId: ids.pinned),
+        here,
+        textScale: 2,
+        size: const Size(1080, 1920),
+      );
+      await _pumpUntil(tester, () => _shown(find.text('Usuń pinezkę')));
+      await _settle(tester);
+      final Rect delete = tester.getRect(find.text('Usuń pinezkę'));
+      expect(delete.top, greaterThanOrEqualTo(0));
+      expect(delete.bottom, lessThanOrEqualTo(640));
+      expect(
+        delete.bottom,
+        lessThan(tester.getRect(find.text('Zapisz pinezkę')).top),
+      );
+      expect(tester.takeException(), isNull);
+      expectEveryButtonTappable(tester);
+      semantics.dispose();
       await cleanUp(tester);
     },
   );

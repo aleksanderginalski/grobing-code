@@ -40,6 +40,7 @@ Future<void> openPersonView(
   AppTab tab = AppTab.map,
 }) => Navigator.of(context).push(
   MaterialPageRoute<void>(
+    settings: RouteSettings(name: PersonScreen.viewRoute(personId)),
     builder: (_) => PersonScreen(
       database: database,
       personId: personId,
@@ -67,6 +68,9 @@ class PersonScreen extends StatefulWidget {
   /// Null only in tests of other features: then the view has no photos.
   final Photos? photos;
   final AppTab tab;
+
+  /// The route of [personId]'s view: "Usuń osobę" leaves it with the correction (wpis-osoby.md 12, ISSUE-053).
+  static String viewRoute(int personId) => '/person/$personId';
 
   @override
   State<PersonScreen> createState() => _PersonScreenState();

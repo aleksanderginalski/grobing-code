@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/deletion.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 
@@ -9,13 +10,15 @@ typedef CemeteryFormValues = ({String name, String? locality});
 
 /// The window "Nowy cmentarz" / "Popraw cmentarz" (05_DESIGN/cmentarze.md, element 15): name and an
 /// optional locality, then "Dalej" to the pick mode — or, for a cemetery from the database, whose point
-/// is known, "Zapisz" (ISSUE-015). Null when cancelled.
+/// is known, "Zapisz" (ISSUE-015). Null when cancelled — and after [onDelete], which shows "Usuń cmentarz"
+/// in a correction (element 15a, ISSUE-053) and answers whether the cemetery went.
 Future<CemeteryFormValues?> showCemeteryForm(
   BuildContext context, {
   required String title,
   String name = '',
   String? locality,
   bool fromBase = false,
+  Future<bool> Function(BuildContext context)? onDelete,
 }) => showDialog<CemeteryFormValues>(
   context: context,
   builder: (_) => _CemeteryForm(
@@ -23,6 +26,7 @@ Future<CemeteryFormValues?> showCemeteryForm(
     name: name,
     locality: locality ?? '',
     fromBase: fromBase,
+    onDelete: onDelete,
   ),
 );
 
@@ -32,12 +36,14 @@ class _CemeteryForm extends StatefulWidget {
     required this.name,
     required this.locality,
     required this.fromBase,
+    required this.onDelete,
   });
 
   final String title;
   final String name;
   final String locality;
   final bool fromBase;
+  final Future<bool> Function(BuildContext context)? onDelete;
 
   @override
   State<_CemeteryForm> createState() => _CemeteryFormState();
@@ -70,6 +76,13 @@ class _CemeteryFormState extends State<_CemeteryForm> {
     ));
   }
 
+  /// "Usuń cmentarz" (15a): the window "Usunąć cmentarz?" over this one; once the cemetery went, this one closes
+  /// too.
+  Future<void> _delete() async {
+    final bool deleted = await widget.onDelete!(context);
+    if (deleted && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Focus and keyboard at once, in the first empty field.
@@ -85,6 +98,9 @@ class _CemeteryFormState extends State<_CemeteryForm> {
     return AlertDialog(
       backgroundColor: GrobingColors.surface,
       surfaceTintColor: Colors.transparent,
+      // At 200% on 360 dp with the keyboard up the window is taller than what is left: the title and the fields
+      // scroll, the buttons stay at the foot — not drawn over the fields (ui review of ISSUE-053, MAJOR).
+      scrollable: true,
       title: Text(
         widget.title,
         style: const TextStyle(
@@ -143,16 +159,26 @@ class _CemeteryFormState extends State<_CemeteryForm> {
         ],
       ),
       actions: [
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Anuluj'),
-        ),
-        TextButton(
-          onPressed: _next,
-          child: Text(widget.fromBase ? 'Zapisz' : 'Dalej'),
-        ),
+        if (widget.onDelete == null)
+          ..._actions()
+        else
+          DeletionActions(
+            delete: DeleteButton('Usuń cmentarz', onPressed: _delete),
+            actions: _actions(),
+          ),
       ],
     );
   }
+
+  List<Widget> _actions() => [
+    TextButton(
+      style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
+      onPressed: () => Navigator.of(context).pop(),
+      child: const Text('Anuluj'),
+    ),
+    TextButton(
+      onPressed: _next,
+      child: Text(widget.fromBase ? 'Zapisz' : 'Dalej'),
+    ),
+  ];
 }

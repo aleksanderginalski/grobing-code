@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
+import '../../data/deletion.dart';
 import '../../data/graves.dart';
+import '../../data/people.dart' show watchMe;
 import '../../data/places.dart' show PlaceList;
 import '../../data/residences.dart';
 import '../family/family_section.dart';
@@ -18,6 +22,7 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart';
+import '../widgets/deletion.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import '../widgets/sex_toggle.dart';
@@ -231,6 +236,10 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
   bool _saveFailed = false;
   bool _done = false;
 
+  /// "Ja" — whose entry has no "Usuń osobę" (element 12, ISSUE-053); read once in a correction.
+  int? _meId;
+  bool _meRead = false;
+
   late final String _initialSnapshot = _snapshot();
 
   /// The person's residences while the form is open, in the order they were entered (element 9b); written
@@ -278,6 +287,14 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
     _photos?.load();
     if (widget.mode case Correction(:final BuriedPerson person)) {
       PersonFormScreen._correcting.add(person.id);
+      watchMe(widget.database).first.then((me) {
+        if (mounted) {
+          setState(() {
+            _meId = me;
+            _meRead = true;
+          });
+        }
+      }, onError: (Object _) {});
       residencesOf(widget.database, person.id).then((stored) {
         if (!mounted) return;
         setState(() {
@@ -524,6 +541,7 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
           // where they are on the list now (style-b.md rule 10).
           await navigator.pushReplacement(
             MaterialPageRoute<void>(
+              settings: RouteSettings(name: PersonScreen.viewRoute(person)),
               builder: (_) => PersonScreen(
                 database: widget.database,
                 personId: person,
@@ -563,6 +581,84 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
         });
       }
     }
+  }
+
+  /// The person as stored — the names the bar after a deletion gives, not what was typed since.
+  String get _storedName => personName(_initial.givenNames, _initial.surname);
+
+  /// "Usuń z grobu" (element 12a; grob.md D29): the person stays, without this grave. The correction closes and
+  /// the bar with "Cofnij" shows where it was opened from — usually their view, "bez grobu" now.
+  Future<void> _removeFromGrave(BuriedPerson person, int graveId) async {
+    final NavigatorState navigator = Navigator.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final ({String? graveName, String cemeteryName}) grave = await graveLabel(
+      widget.database,
+      graveId,
+    );
+    if (!mounted) return;
+    final String name = _storedName;
+    final DeletionSnapshot? taken = await confirmDeletion<DeletionSnapshot>(
+      context,
+      title: 'Usunąć z\u00A0grobu?',
+      content: [
+        DeletionText(
+          '$name zostaje w\u00A0aplikacji z\u00A0datami, rodziną i\u00A0zdjęciami — '
+          'bez grobu ${graveWords(grave)}.',
+        ),
+        const DeletionNote(
+          'Do innego grobu dodasz tę osobę przez „Dodaj osobę” w\u00A0tamtym grobie.',
+        ),
+        if (_dirty)
+          const DeletionNote('Niezapisane zmiany w\u00A0tym wpisie przepadną.'),
+      ],
+      delete: () => removeFromGrave(widget.database, person.id, graveId),
+    );
+    if (taken == null || !mounted) return;
+    _done = true;
+    navigator.pop();
+    unawaited(
+      showUndoBar(
+        messenger,
+        database: widget.database,
+        message: 'Usunięto z\u00A0grobu: $name.',
+        snapshot: taken,
+      ),
+    );
+  }
+
+  /// "Usuń osobę" (element 12): the window lists what goes with the person; then the correction and their view
+  /// close, and the bar with "Cofnij" shows on the screen under them.
+  Future<void> _deletePerson(BuriedPerson person) async {
+    final NavigatorState navigator = Navigator.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final PersonDeletionPreview preview = await previewPersonDeletion(
+      widget.database,
+      person.id,
+    );
+    if (!mounted) return;
+    final String name = _storedName;
+    final DeletionSnapshot? taken = await confirmDeletion<DeletionSnapshot>(
+      context,
+      title: 'Usunąć osobę?',
+      content: personDeletionContent(name, preview, unsaved: _dirty),
+      delete: () => deletePerson(widget.database, person.id),
+    );
+    if (taken == null || !mounted) return;
+    _done = true;
+    navigator.popUntil(
+      (route) =>
+          route.isFirst ||
+          (route.settings.name != PersonFormScreen.correctionRoute(person.id) &&
+              route.settings.name != PersonScreen.viewRoute(person.id)),
+    );
+    unawaited(
+      showUndoBar(
+        messenger,
+        database: widget.database,
+        message: 'Usunięto: $name.',
+        snapshot: taken,
+      ),
+    );
   }
 
   /// Back with something typed asks first (style-b.md rule 10: a window only when something may be
@@ -827,6 +923,40 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
             onAdd: () => _editResidence(null),
           ),
         ],
+        // Elements 12a and 12 (v7.1, ISSUE-053): at the very end of a correction, far from "Zapisz" — the lighter
+        // above the heavier (style-b.md rule 16). "Ja" has no "Usuń osobę", but the fact where it would be.
+        if (widget.mode case Correction(
+          :final BuriedPerson person,
+          :final int? graveId,
+        ) when _meRead) ...[
+          const SizedBox(height: 24),
+          if (graveId != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: DeleteButton(
+                'Usuń z\u00A0grobu',
+                onPressed: _saving
+                    ? null
+                    : () => _removeFromGrave(person, graveId),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_meId == person.id)
+            const Text(
+              'To Ty („ja”) — tego wpisu nie da się usunąć. Inną osobę jako „ja” '
+              'wskażesz w\u00A0Ustawieniach.',
+              style: TextStyle(color: GrobingColors.textMuted, fontSize: 13),
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: DeleteButton(
+                'Usuń osobę',
+                onPressed: _saving ? null : () => _deletePerson(person),
+              ),
+            ),
+        ],
       ],
     ),
   );
@@ -857,6 +987,60 @@ class _PersonFormScreenState extends State<PersonFormScreen> {
       ],
     ),
   );
+}
+
+/// The grave as the windows of a deletion name it: "„Grób rodzinny”", or "na cmentarzu „…”" without a name.
+String graveWords(({String? graveName, String cemeteryName}) grave) =>
+    switch (grave.graveName) {
+      final String name => '„$name”',
+      null => 'na cmentarzu „${grave.cemeteryName}”',
+    };
+
+/// The words of "Usunąć osobę?" (05_DESIGN/wpis-osoby.md 12): only what [p] says the person has, each with what
+/// stays. [name] in the nominative — the app does not decline names (v7.1).
+List<Widget> personDeletionContent(
+  String name,
+  PersonDeletionPreview p, {
+  bool unsaved = false,
+}) {
+  final List<String> items = [
+    if (p.burial case final ({String? graveName, String cemeteryName}) b)
+      'pochówkiem w\u00A0grobie ${graveWords(b)} — grób zostaje',
+    if (p.unions.isNotEmpty) _unionsLeft(p.unions),
+    if (p.hasParents) 'miejscem w\u00A0rodzinie rodziców — rodzice zostają',
+    if (p.residences > 0)
+      '${p.residences}\u00A0${p.residences == 1 ? 'miejscem' : 'miejscami'} zamieszkania',
+    if (p.ownPhotos == 1) '1\u00A0zdjęciem, na którym nie ma nikogo innego',
+    if (p.ownPhotos > 1)
+      '${p.ownPhotos}\u00A0zdjęciami, na których nie ma nikogo innego',
+  ];
+  return [
+    DeletionText(
+      items.isEmpty
+          ? '$name zniknie z\u00A0aplikacji.'
+          : '$name zniknie z\u00A0aplikacji razem z:',
+    ),
+    if (items.isNotEmpty) DeletionList(items),
+    if (p.sharedPhotos > 0)
+      const DeletionNote('Zdjęcia z\u00A0innymi osobami zostają przy nich.'),
+    if (unsaved)
+      const DeletionNote('Niezapisane zmiany w\u00A0tym wpisie też przepadną.'),
+  ];
+}
+
+/// "1 związkiem — Anna Testowa i dzieci zostają": the unions, then who of them stays.
+String _unionsLeft(List<UnionLeft> unions) {
+  final List<String> who = [
+    for (final UnionLeft u in unions)
+      if (u.partner case final ({String? givenNames, String? surname}) p)
+        personName(p.givenNames, p.surname),
+    if (unions.any((u) => u.children > 0)) 'dzieci',
+  ];
+  final int n = unions.length;
+  final String verb = who.length == 1 && who.single != 'dzieci'
+      ? 'zostaje'
+      : 'zostają';
+  return '$n\u00A0${n == 1 ? 'związkiem' : 'związkami'} — ${andList(who)} $verb';
 }
 
 /// Element 1a (05_DESIGN/wpis-osoby.md v4): without photos, an 80 dp circle with an outline, the icon in

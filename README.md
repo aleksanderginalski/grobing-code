@@ -179,6 +179,15 @@ paczce. Później korzysta z `.dart_tool/`, więc build offline działa dopiero 
 - **Zapis osoby w grobie** (`lib/data/graves.dart`) to jedna transakcja: grób (przy nowym), osoba,
   pochówek i daty, każde z twierdzeniem „notatki”, a od v4 także zmiany jej zdjęć. Błąd w środku nie zostawia
   „pół osoby”.
+- **Usuwanie i „Cofnij” (ISSUE-053, bez zmiany schematu).** Wszystko, co da się dodać, da się usunąć — mapa „co i gdzie” jest w
+  vaulcie (`05_DESIGN/brand/style-b.md`, reguła 16). Nowe usunięcia są w `lib/data/deletion.dart`: cmentarz (z grobami), grób (z
+  pochówkami), osoba z grobu, osoba, pinezka, ród. Każde to jedna transakcja, która zwraca **migawkę** — usunięte wiersze z ich `id`
+  i wiersze zmienione w miejscu — a `restoreDeletion` wstawia je z powrotem w kolejności kluczy obcych (pasek „Cofnij” przez 4 s,
+  dłużej przy „Czasie na działanie”; przy TalkBack nie znika sam). Osoby grobu albo cmentarza **nigdy nie znikają** razem z nim —
+  zostają bez grobu. Związek, w którym po usunięciu osoby nie ma partnera albo dwóch osób, znika cały (jak „Usuń związek”). Kosza
+  nie ma: po pasku drogą powrotu jest kopia, a kopia w tle po 10 min ciszy zapisuje już stan bez usuniętego. Pliki zdjęć zostają
+  do sprzątania przy kopii i przy starcie (`sweepOrphanMedia`), więc „Cofnij” znajduje je na miejscu. **Okno ryzyka:** „Zrób kopię
+  teraz” w czasie paska sprząta pliki usuniętych zdjęć — „Cofnij” przywróci wtedy wiersze bez plików.
 - **Odcisk danych** (ekran „Stan danych”, `lib/data/data_state.dart`) jest miarą dla kopii i
   odtworzenia (NFR-002). Liczy się z **treści**, nie z pliku: tabele po nazwie, wiersze po wszystkich
   kolumnach, wartości w stałym kodowaniu, potem pliki zdjęć po ścieżce. `VACUUM INTO` go nie zmienia.

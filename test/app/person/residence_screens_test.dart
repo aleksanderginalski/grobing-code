@@ -603,24 +603,14 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 1));
 
+      // The whole correction on one screen: a target cut by the list's edge is under 48 dp for the guideline,
+      // and where the edges fall moved with every section the form got at its end — the wreath's row (ISSUE-044,
+      // then a drag of 6 dp), "Usuń z grobu" and "Usuń osobę" (ISSUE-053: the drag began on "Dodaj partnera" and
+      // opened its sheet as a tap). The view above keeps the phone's height.
+      tester.view.physicalSize = const Size(411 * 2.625, 2400 * 2.625);
       await openCorrection(tester);
-      // The wreath's row (ISSUE-044) first, whole: at the end of the form its button stood 2 dp under the top
-      // edge, and a target cut by the edge is under 48 dp for the guideline. Then the section, if it is not
-      // on the screen already.
-      await tester.ensureVisible(find.text('Dodaj miejsce'));
       await _settle(tester);
-      // At the end of the form the wreath's button stands 2 dp past the top edge; 6 dp back down shows it whole,
-      // and the section stays on the screen above the list's bottom padding.
-      await tester.drag(
-        find
-            .ancestor(
-              of: find.text('Dodaj miejsce'),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-        const Offset(0, 6),
-      );
-      await _settle(tester);
+      expect(find.text('Usuń osobę'), findsOneWidget);
       await check();
       await tapScrolled(tester, find.byTooltip('Popraw miejsce'));
       await check();

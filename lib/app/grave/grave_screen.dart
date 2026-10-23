@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../data/address_text.dart';
 import '../../data/database.dart';
+import '../../data/deletion.dart';
 import '../../data/graves.dart';
 import '../../data/photos.dart' show PhotoCrop, gravePhotoPath;
 import '../../data/sectors.dart';
@@ -21,6 +23,7 @@ import '../tabs.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart' show ErrorLine;
+import '../widgets/deletion.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import 'cemetery_plan_map.dart' show MapLayer;
@@ -133,7 +136,8 @@ class _GraveScreenState extends State<GraveScreen> {
       );
 
   /// ✎, "Wpisz adres" and "Wpisz" (elements 3, 4, 7): the window "Popraw grób" with the cemetery's sectors
-  /// as chips, its keyboard in [focus].
+  /// as chips, its keyboard in [focus]. "Usuń grób" there (3d, ISSUE-053) closes this view too, and the bar with
+  /// "Cofnij" shows on the screen under it.
   Future<void> _editGrave(
     GraveDetail g, {
     GraveField focus = GraveField.name,
@@ -143,6 +147,8 @@ class _GraveScreenState extends State<GraveScreen> {
       g.cemeteryId,
     ).first;
     if (!mounted) return;
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    DeletionSnapshot? deleted;
     await showDialog<void>(
       context: context,
       builder: (_) => GraveDialog(
@@ -158,7 +164,40 @@ class _GraveScreenState extends State<GraveScreen> {
           plot: plot,
           paidUntil: paidUntil,
         ),
+        onDelete: (dialogContext) async {
+          deleted = await _confirmDelete(dialogContext, g);
+          return deleted != null;
+        },
       ),
+    );
+    if (deleted case final DeletionSnapshot taken when mounted) {
+      Navigator.of(context).pop();
+      unawaited(
+        showUndoBar(
+          messenger,
+          database: widget.database,
+          message: 'Usunięto grób.',
+          snapshot: taken,
+        ),
+      );
+    }
+  }
+
+  /// "Usunąć grób?" (3d, D28): what the grave has goes with it; its people stay, named, without a grave.
+  Future<DeletionSnapshot?> _confirmDelete(
+    BuildContext context,
+    GraveDetail g,
+  ) async {
+    final GraveDeletionPreview preview = await previewGraveDeletion(
+      widget.database,
+      g.id,
+    );
+    if (!context.mounted) return null;
+    return confirmDeletion<DeletionSnapshot>(
+      context,
+      title: 'Usunąć grób?',
+      content: graveDeletionContent(preview),
+      delete: () => deleteGrave(widget.database, g.id),
     );
   }
 
@@ -769,6 +808,44 @@ class _PaidUntilRow extends StatelessWidget {
   }
 }
 
+/// The words of "Usunąć grób?" (grob.md 3d): only what [p] says the grave has, then the people who stay
+/// without it — three by name, the rest counted.
+List<Widget> graveDeletionContent(GraveDeletionPreview p) {
+  final List<String> own = [
+    if (p.hasPhoto) 'zdjęciem nagrobka',
+    if (p.hasPin) 'pinezką',
+    if (p.hasAddress) 'adresem',
+  ];
+  // A grave without a name is "Ten grób", not a word in quotes, which reads as a name (ui review of ISSUE-053).
+  final String title = switch (p.name) {
+    final String name => '„$name”',
+    null => 'Ten grób',
+  };
+  final List<String> names = [
+    for (final person in p.people.take(3))
+      personName(person.givenNames, person.surname),
+  ];
+  final int rest = p.people.length - names.length;
+  final String people = rest == 0
+      ? names.join(', ')
+      : '${names.join(', ')} i\u00A0$rest\u00A0${plural(rest, 'inna', 'inne', 'innych')}';
+  return [
+    DeletionText(
+      own.isEmpty
+          ? '$title zniknie z\u00A0cmentarza.'
+          : '$title zniknie z\u00A0cmentarza razem ${withWord(own.first)}${andList(own)}.',
+    ),
+    if (p.people.length == 1)
+      DeletionNote(
+        'Osoba z\u00A0tego grobu zostaje w\u00A0aplikacji — bez grobu: $people.',
+      )
+    else if (p.people.length > 1)
+      DeletionNote(
+        'Osoby z\u00A0tego grobu zostają w\u00A0aplikacji — bez grobu: $people.',
+      ),
+  ];
+}
+
 /// Where the window "Popraw grób" opens its keyboard: ✎ — the name; "Wpisz adres" — the sector (element 4);
 /// "Wpisz" in "Opłacone do" — the fee (element 7, grob.md v8).
 enum GraveField { name, sector, paidUntil }
@@ -780,7 +857,8 @@ enum GraveField { name, sector, paidUntil }
 /// nothing: a date it cannot read saves nothing, and a failed save keeps it open with the message.
 ///
 /// Without a [grave] it is "Nowy grób" (cmentarz.md v8, element 9a; D38): the same window, empty, and its
-/// [save] writes the new grave.
+/// [save] writes the new grave. With one and [onDelete], "Usuń grób" stands at the left of its buttons (3d,
+/// ISSUE-053); [onDelete] answers whether the grave went, and then the window closes.
 class GraveDialog extends StatefulWidget {
   const GraveDialog({
     super.key,
@@ -788,7 +866,10 @@ class GraveDialog extends StatefulWidget {
     required this.sectors,
     required this.save,
     this.focus = GraveField.name,
+    this.onDelete,
   });
+
+  final Future<bool> Function(BuildContext context)? onDelete;
 
   /// The grave corrected; null for a new one.
   final GraveDetail? grave;
@@ -918,6 +999,13 @@ class _GraveDialogState extends State<GraveDialog> {
         });
       }
     }
+  }
+
+  /// "Usuń grób" (3d): the window "Usunąć grób?" over this one; once the grave went, this one closes too, and
+  /// what was typed in it goes with the grave.
+  Future<void> _delete() async {
+    final bool deleted = await widget.onDelete!(context);
+    if (deleted && mounted) Navigator.of(context).pop();
   }
 
   /// The cemetery's sector the field names — "b" is "B" — or null.
@@ -1104,20 +1192,30 @@ class _GraveDialogState extends State<GraveDialog> {
             ],
           ),
           actions: [
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Anuluj'),
-            ),
-            TextButton(
-              onPressed: _saving ? null : _save,
-              child: const Text('Zapisz'),
-            ),
+            if (widget.grave == null || widget.onDelete == null)
+              ..._actions()
+            else
+              DeletionActions(
+                delete: DeleteButton(
+                  'Usuń grób',
+                  onPressed: _saving ? null : _delete,
+                ),
+                actions: _actions(),
+              ),
           ],
         ),
       ),
     );
   }
+
+  List<Widget> _actions() => [
+    TextButton(
+      style: TextButton.styleFrom(foregroundColor: GrobingColors.text),
+      onPressed: () => Navigator.of(context).pop(),
+      child: const Text('Anuluj'),
+    ),
+    TextButton(onPressed: _saving ? null : _save, child: const Text('Zapisz')),
+  ];
 }
 
 /// A sector of the cemetery under "Kwatera" (element 3b; style-b.md rule 11 — a chip with an outline, a

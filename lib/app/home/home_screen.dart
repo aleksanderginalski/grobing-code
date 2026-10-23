@@ -333,7 +333,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// Adding by hand ([cemetery] null) or correcting — one way with the cemetery screen's ✎
-  /// (`cemetery_edit.dart`); the saved candle and its sheet show it.
+  /// (`cemetery_edit.dart`); the saved candle and its sheet show it. A deleted cemetery takes its sheet with it,
+  /// and "Cofnij" brings both back (cmentarze.md 15a).
   Future<void> _edit(CemeterySummary? cemetery, {String name = ''}) async {
     final ({int id, GeoPoint? point})? saved = await editCemetery(
       context,
@@ -349,6 +350,12 @@ class _HomeScreenState extends State<HomeScreen>
               point: cemetery.point,
             ),
       name: name,
+      onDeleted: () {
+        if (mounted) _closeSheet();
+      },
+      onRestored: (id) {
+        if (mounted) _showSaved(id, cemetery?.point);
+      },
     );
     if (saved != null && mounted) _showSaved(saved.id, saved.point);
   }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/clans.dart';
 import '../../data/database.dart';
+import '../../data/deletion.dart';
 import '../../data/family_tree.dart';
 import '../../data/wreaths.dart';
 import '../family/union_wizard.dart' show shortPersonName;
@@ -9,6 +12,7 @@ import '../polish.dart';
 import '../theme.dart';
 import '../widgets/buttons.dart';
 import '../widgets/date_block.dart' show ErrorLine;
+import '../widgets/deletion.dart';
 import '../widgets/glyphs.dart';
 import '../widgets/grobing_icon.dart';
 import '../widgets/title_bar.dart';
@@ -362,12 +366,19 @@ class _WreathSheet extends StatelessWidget {
                   ? const WreathChoice.inherit()
                   : WreathChoice.clan(clan.id),
             ),
-            onEdit: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    ClanScreen(database: database, data: data, clan: clan),
-              ),
-            ),
+            // A deleted line closes the sheet too: its bar with "Cofnij" shows on the form under it, which the
+            // sheet would cover (wieniec.md F7).
+            onEdit: () async {
+              final Object? result = await Navigator.of(context).push<Object?>(
+                MaterialPageRoute<Object?>(
+                  builder: (_) =>
+                      ClanScreen(database: database, data: data, clan: clan),
+                ),
+              );
+              if (result is ClanDeleted && context.mounted) {
+                Navigator.of(context).pop();
+              }
+            },
           ),
         _ActionRow(
           icon: const GrobingIcon(Glyphs.add, color: GrobingColors.amber),
@@ -531,8 +542,13 @@ class _ActionRow extends StatelessWidget {
   );
 }
 
+/// What [ClanScreen] pops after "Usuń ród" (wieniec.md F7, ISSUE-053).
+class ClanDeleted {
+  const ClanDeleted();
+}
+
 /// The screen of one line (wieniec.md F): "Nowy ród" for [forPersonId], or "Ród" — the correction of
-/// [clan]. Pops `true` after a save.
+/// [clan]. Pops `true` after a save, [ClanDeleted] after "Usuń ród".
 class ClanScreen extends StatefulWidget {
   const ClanScreen({
     super.key,
@@ -607,6 +623,39 @@ class _ClanScreenState extends State<ClanScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// F7 (v1.3, D21): the line goes, and its choice at the people who chose it — they get what the rule gives
+  /// without it. The bar with "Cofnij" shows on the form under the sheet.
+  Future<void> _delete() async {
+    final Clan clan = widget.clan!;
+    final NavigatorState navigator = Navigator.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final int n = widget.data.wreaths.countWith(clan.id);
+    final DeletionSnapshot? taken = await confirmDeletion<DeletionSnapshot>(
+      context,
+      title: 'Usunąć ród „${clan.name}”?',
+      content: [
+        DeletionText(
+          n == 0
+              ? 'Nikt jeszcze nie ma tego wieńca.'
+              : 'Wieniec tego rodu zniknie u\u00A0$n\u00A0${n == 1 ? 'osoby' : 'osób'} '
+                    '(także jako połowa wieńca po ślubie). Kto go wybrał, dostanie '
+                    'wieniec po ojcu albo żaden.',
+        ),
+      ],
+      delete: () => deleteClan(widget.database, clan.id),
+    );
+    if (taken == null || !mounted) return;
+    navigator.pop(const ClanDeleted());
+    unawaited(
+      showUndoBar(
+        messenger,
+        database: widget.database,
+        message: 'Usunięto ród „${clan.name}”.',
+        snapshot: taken,
+      ),
+    );
   }
 
   /// F5: whom the line reaches.
@@ -729,6 +778,14 @@ class _ClanScreenState extends State<ClanScreen> {
         _reach(),
         style: const TextStyle(color: GrobingColors.textMuted, fontSize: 14),
       ),
+      // F7 (v1.3): the last thing of the correction, far from the pinned "Zapisz".
+      if (!_isNew) ...[
+        const SizedBox(height: 24),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DeleteButton('Usuń ród', onPressed: _saving ? null : _delete),
+        ),
+      ],
     ],
   );
 

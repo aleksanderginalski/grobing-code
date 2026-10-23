@@ -16,9 +16,11 @@ import 'package:grobing/backup/restore_service.dart';
 import 'package:grobing/backup/tar_writer.dart';
 import 'package:grobing/data/cemeteries.dart';
 import 'package:grobing/data/cemetery_plans.dart';
+import 'package:grobing/data/claims.dart' show firstBurial;
 import 'package:grobing/data/clans.dart';
 import 'package:grobing/data/data_state.dart';
 import 'package:grobing/data/database.dart';
+import 'package:grobing/data/deletion.dart';
 import 'package:grobing/data/families.dart';
 import 'package:grobing/data/family_tree.dart';
 import 'package:grobing/data/graves.dart';
@@ -3044,6 +3046,87 @@ void main() {
       expect((m.left?.name, m.right?.name), ('Zmyśleńscy 1', 'Wymyślscy 1'));
       expect(m.isHalved, isTrue);
       expect((c.own?.name, c.origin), ('Wymyślscy 1', WreathOrigin.fromFather));
+    },
+  );
+
+  test(
+    'ISSUE-053 AC-5 — a backup made after a deletion restores without the deleted person and grave, with the '
+    'fingerprint of the phone after the deletion; who stayed is whole',
+    () async {
+      final GrobingDatabase db = GrobingDatabase(
+        NativeDatabase(File('${source.path}/grobing.db')),
+      );
+      final int father = (await (db.select(
+        db.persons,
+      )..where((p) => p.givenNames.equals('Ojciec 1'))).getSingle()).id;
+      await deletePerson(db, father);
+      final int addressGrave = (await (db.select(
+        db.graves,
+      )..where((g) => g.row.equals('3'))).getSingle()).id;
+      await deleteGrave(db, addressGrave);
+      final DataState after = await readDataState(
+        db,
+        mediaDir: Directory('${source.path}/media'),
+      );
+      expect(after.fingerprint, isNot(sourceFingerprint));
+      await db.customStatement('VACUUM INTO ?', ['${tmp.path}/deleted.db']);
+      await db.close();
+      final File backup = File('${tmp.path}/deleted.age');
+      await writeEncryptedBackup(
+        snapshot: File('${tmp.path}/deleted.db'),
+        mediaDir: Directory('${source.path}/media'),
+        recipient: identity.recipient,
+        output: backup,
+        createdAt: _createdAt,
+      );
+      final String uri = upload('deleted.age', backup.readAsBytesSync());
+
+      final ({Directory dir, GrobingDatabase db}) fresh = await phone(
+        'after-deletion',
+      );
+      final RestoreResult result =
+          await restoreServiceIn(fresh.dir, fresh.db, drive).restore(
+            backupUri: uri,
+            keyUri: FakeDocumentStore.uriOf('klucz.age'),
+            passphrase: _passphrase,
+          );
+
+      expect(result.dataFingerprint, after.fingerprint);
+      expect((await stateOnDisk(fresh.dir)).fingerprint, after.fingerprint);
+      final GrobingDatabase restored = GrobingDatabase(
+        NativeDatabase(File('${fresh.dir.path}/grobing.db')),
+      );
+      try {
+        expect(
+          await (restored.select(
+            restored.persons,
+          )..where((p) => p.givenNames.equals('Ojciec 1'))).get(),
+          isEmpty,
+        );
+        expect(
+          await (restored.select(
+            restored.graves,
+          )..where((g) => g.id.equals(addressGrave))).get(),
+          isEmpty,
+        );
+        // The child of that grave is in the app, buried nowhere; the mother keeps her union with the child.
+        final int child = (await (restored.select(
+          restored.persons,
+        )..where((p) => p.givenNames.equals('Dziecko 1'))).getSingle()).id;
+        expect(await firstBurial(restored, child), isNull);
+        final int mother = (await (restored.select(
+          restored.persons,
+        )..where((p) => p.givenNames.equals('Matka 1'))).getSingle()).id;
+        expect(
+          (await loadRelations(
+            restored,
+            mother,
+          )).unions.single.children.single.id,
+          child,
+        );
+      } finally {
+        await restored.close();
+      }
     },
   );
 }
